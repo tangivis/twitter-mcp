@@ -23,7 +23,7 @@
 13. [工作原理详解](#工作原理详解)
 14. [Claude Code 中 MCP 的配置体系](#claude-code-中-mcp-的配置体系)
 15. [常见问题](#常见问题)
-16. [部署到其他机器](#部署到其他机器)
+16. [部署到其他机器](#部署到其他机器)（含 [Windows 部署](#windows-部署)）
 17. [自定义和扩展](#自定义和扩展)
 
 ---
@@ -1128,6 +1128,82 @@ git pull && uv sync
 □ claude mcp list                      → twitter: ... ✓ Connected
 □ 重启 Claude Code 后测试               → 能搜索/发推
 ```
+
+### Windows 部署
+
+Windows 上也能用，流程和 macOS/Linux 基本一致，只是路径和命令稍有不同。
+
+#### 前置条件
+
+```powershell
+# 1. 安装 uv
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 2. 确认
+uv --version
+python --version   # >= 3.14（Windows 上是 python 不是 python3）
+claude --version
+```
+
+#### Step 1: 配置 Cookies
+
+```powershell
+# 创建目录（用 %APPDATA% 或 用户目录下的 .config 都行）
+mkdir %APPDATA%\twitter-mcp
+
+# 创建 cookies.json，写入你的 ct0 和 auth_token
+# 文件内容：
+# {
+#   "ct0": "你的ct0值",
+#   "auth_token": "你的auth_token值"
+# }
+```
+
+也可以放在 `C:\Users\你的用户名\.config\twitter-mcp\cookies.json`，Python 的 `os.path.expanduser("~")` 在 Windows 上会解析到 `C:\Users\你的用户名\`。
+
+#### Step 2: 注册到 Claude Code
+
+**用 HTTPS（推荐，不需要 SSH key）：**
+
+```powershell
+claude mcp add twitter -s user ^
+  -e "TWITTER_COOKIES=%APPDATA%\twitter-mcp\cookies.json" ^
+  -- uvx --from "git+https://github.com/tangivis/twitter-mcp.git" twitter-mcp
+```
+
+**用 SSH（需要配好 GitHub SSH key）：**
+
+```powershell
+claude mcp add twitter -s user ^
+  -e "TWITTER_COOKIES=%APPDATA%\twitter-mcp\cookies.json" ^
+  -- uvx --from "git+ssh://git@github.com/tangivis/twitter-mcp.git" twitter-mcp
+```
+
+> Windows 命令行用 `^` 换行（cmd）或 `` ` `` 换行（PowerShell）。
+
+#### 验证
+
+```powershell
+claude mcp list
+# twitter: uvx ... - ✓ Connected
+```
+
+#### Windows 常见问题
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `uvx` 命令找不到 | uv 没加入 PATH | 重新打开终端，或手动添加 `%USERPROFILE%\.local\bin` 到 PATH |
+| SSL 证书错误 | 公司网络代理 | 设置 `set REQUESTS_CA_BUNDLE=你的证书路径` |
+| cookies 路径找不到 | 路径分隔符问题 | 用正斜杠 `C:/Users/.../cookies.json` 或环境变量 `%APPDATA%` |
+| Python 版本太低 | Windows Store 版本旧 | 从 python.org 下载 3.14+，或 `uv python install 3.14` |
+
+#### Windows vs macOS/Linux 路径对照
+
+| 用途 | macOS/Linux | Windows |
+|------|------------|---------|
+| Cookies | `~/.config/twitter-mcp/cookies.json` | `%APPDATA%\twitter-mcp\cookies.json` |
+| Claude 配置 | `~/.claude.json` | `%USERPROFILE%\.claude.json` |
+| uv 缓存 | `~/.cache/uv/` | `%LOCALAPPDATA%\uv\cache\` |
 
 ---
 
