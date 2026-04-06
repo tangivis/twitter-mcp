@@ -1,8 +1,31 @@
-# Twitter MCP Server
+# twikit-mcp
 
-基于 [twikit](https://github.com/d60/twikit) 的 Twitter MCP Server，**不需要 Twitter API Key**，通过浏览器 cookies 认证。
+[![CI](https://github.com/tangivis/twitter-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/tangivis/twitter-mcp/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/twikit-mcp)](https://pypi.org/project/twikit-mcp/)
+
+基于 [twikit](https://github.com/d60/twikit) 的 Twitter/X MCP Server，**不需要 Twitter API Key**，通过浏览器 cookies 认证，**完全免费**。
+
+> **vs 其他方案：** PyPI 上的 `twitter-mcp` 基于 tweepy，需要 Twitter API（$200+/月）。
+> 本项目基于 twikit，用浏览器 cookies 认证，零成本。
 
 注册到 Claude Code 后，任何 Claude 实例都能用自然语言操作 Twitter（发推、搜索、点赞等）。
+
+## 快速开始（2 步）
+
+```bash
+# 1. 配置 Twitter cookies（从浏览器 DevTools 获取 ct0 和 auth_token）
+mkdir -p ~/.config/twitter-mcp
+cat > ~/.config/twitter-mcp/cookies.json << 'EOF'
+{"ct0": "你的ct0", "auth_token": "你的auth_token"}
+EOF
+
+# 2. 注册到 Claude Code（一次性）
+claude mcp add twitter -s user \
+  -e "TWITTER_COOKIES=$HOME/.config/twitter-mcp/cookies.json" \
+  -- uvx twikit-mcp
+```
+
+重启 Claude Code，然后直接说 "搜一下关于 AI 的推文" 就行了。
 
 ---
 
@@ -24,7 +47,7 @@
 14. [Claude Code 中 MCP 的配置体系](#claude-code-中-mcp-的配置体系)
 15. [常见问题](#常见问题)
 16. [部署到其他机器](#部署到其他机器)（含 [Windows 部署](#windows-部署)）
-17. [测试和 CI/CD](#测试和-cicd)
+17. [测试和 CI/CD](#测试和-cicd)（详见 [CONTRIBUTING.md](CONTRIBUTING.md)）
 18. [自定义和扩展](#自定义和扩展)
 
 ---
@@ -136,11 +159,10 @@ claude mcp add twitter -s user \
 3. **依赖特定 PR 分支** — twikit 主分支有 bug（`get_tweet_by_id` 的 entries 解析问题），需要用 PR#412 的修复版本
 4. **完全可控** — 可以随时添加新工具、调整行为
 
-如果将来有人把 twikit MCP 发布到 PyPI，你就可以改为：
+本项目已发布到 PyPI（`twikit-mcp`），一行安装：
 ```bash
-claude mcp add twitter -- uvx twitter-mcp
+claude mcp add twitter -- uvx twikit-mcp
 ```
-一行搞定，不需要维护本地代码。
 
 ---
 
@@ -978,20 +1000,10 @@ chmod 600 ~/.config/twitter-mcp/cookies.json
 
 #### Step 2: 注册到 Claude Code（一次性）
 
-**Private 仓库**（通过 SSH key 认证）：
-
 ```bash
 claude mcp add twitter -s user \
   -e "TWITTER_COOKIES=$HOME/.config/twitter-mcp/cookies.json" \
-  -- uvx --from "git+ssh://git@github.com/tangivis/twitter-mcp.git" twitter-mcp
-```
-
-**Public 仓库**（任何人都能用）：
-
-```bash
-claude mcp add twitter -s user \
-  -e "TWITTER_COOKIES=$HOME/.config/twitter-mcp/cookies.json" \
-  -- uvx --from "git+https://github.com/tangivis/twitter-mcp.git" twitter-mcp
+  -- uvx twikit-mcp
 ```
 
 完成。重启 Claude Code 即可使用。
@@ -1004,7 +1016,7 @@ Step 1 — 放认证文件:
 
 Step 2 — claude mcp add:
   写入一条配置到 ~/.claude.json      ← 告诉 Claude Code 以后怎么启动 server
-  （uvx 会在首次调用时自动从 GitHub 下载代码并缓存）
+  （uvx 会在首次调用时自动从 PyPI 下载 twikit-mcp 并缓存）
 
 之后每次启动 Claude Code:
   读配置 → uvx 启动 server（已缓存，秒开） → 可用 → 退出时自动关闭
@@ -1036,17 +1048,7 @@ uv --version         # 没有的话: curl -LsSf https://astral.sh/uv/install.sh 
 claude --version     # Claude Code 已安装
 ```
 
-> 不需要 git（`uvx` 内部自己处理），不需要手动 clone 任何仓库。
-
-### Private vs Public 仓库怎么选？
-
-| 场景 | 仓库可见性 | 认证方式 | `--from` 前缀 |
-|------|-----------|---------|--------------|
-| 只有自己的多台机器用 | Private | SSH key | `git+ssh://git@github.com/...` |
-| 有 GitHub 访问权限的合作者 | Private | SSH key | `git+ssh://git@github.com/...` |
-| 想让任何人都能一行安装 | Public | 无需认证 | `git+https://github.com/...` |
-
-> Private 仓库要求目标机器配置了 GitHub SSH key（`ssh -T git@github.com` 能成功）。
+> 不需要 git，不需要 SSH key，不需要手动 clone — `uvx` 从 PyPI 自动下载。
 
 ### 手动部署（备选方案）
 
@@ -1164,23 +1166,13 @@ mkdir %APPDATA%\twitter-mcp
 
 #### Step 2: 注册到 Claude Code
 
-**用 HTTPS（推荐，不需要 SSH key）：**
-
 ```powershell
 claude mcp add twitter -s user ^
   -e "TWITTER_COOKIES=%APPDATA%\twitter-mcp\cookies.json" ^
-  -- uvx --from "git+https://github.com/tangivis/twitter-mcp.git" twitter-mcp
+  -- uvx twikit-mcp
 ```
 
-**用 SSH（需要配好 GitHub SSH key）：**
-
-```powershell
-claude mcp add twitter -s user ^
-  -e "TWITTER_COOKIES=%APPDATA%\twitter-mcp\cookies.json" ^
-  -- uvx --from "git+ssh://git@github.com/tangivis/twitter-mcp.git" twitter-mcp
-```
-
-> Windows 命令行用 `^` 换行（cmd）或 `` ` `` 换行（PowerShell）。
+> Windows cmd 用 `^` 换行，PowerShell 用 `` ` `` 换行。
 
 #### 验证
 
@@ -1210,131 +1202,17 @@ claude mcp list
 
 ## 测试和 CI/CD
 
-### 测试策略
-
-这个项目的特殊之处在于：**核心功能（调用 Twitter API）需要真实的 cookies 认证，无法在 CI 中测试。**
-
-因此测试分两层：
-
-| 测试类型 | 在 CI 中 | 覆盖内容 |
-|---------|---------|---------|
-| 导入和注册 | 可以 | server 能启动、7 个工具都注册成功 |
-| 工具 Schema | 可以 | 参数名、必填/可选、类型都正确 |
-| MCP 协议 | 可以 | initialize 握手、tools/list 响应正确 |
-| URL 解析 | 可以 | 推文 URL → ID 的提取逻辑 |
-| 环境变量 | 可以 | TWITTER_COOKIES 能正确覆盖默认路径 |
-| Lint/格式 | 可以 | 代码风格一致 |
-| **发推/搜索/点赞** | **不行** | **需要真实 cookies，只能本地手动测** |
-
-### 本地运行测试
-
 ```bash
-cd ~/mcp-servers/twitter-mcp
-
-# 安装开发依赖
+# 本地运行测试
 uv sync --group dev
-
-# 运行所有测试
 uv run pytest -v
-
-# 单独运行 lint 和格式检查
-uv run ruff check .
-uv run ruff format --check .
+uv run ruff check . && uv run ruff format --check .
 ```
 
-### 15 个测试用例
+- **CI：** 每次 push/PR 自动跑 lint + pytest（Linux/macOS/Windows）+ MCP 协议握手
+- **CD：** 打 `v*` tag 自动发布到 PyPI
 
-```
-tests/test_server.py
-├── 导入测试
-│   ├── test_import_server           — server 模块可导入
-│   └── test_import_client_helper    — _get_client 函数存在
-├── 工具注册测试
-│   ├── test_tools_registered        — 7 个工具名全部正确
-│   └── test_tool_count              — 工具数量恰好 7 个
-├── 工具 Schema 测试
-│   ├── test_send_tweet_has_text_param        — text 是必��参数
-│   ├── test_send_tweet_has_optional_reply_to — reply_to 是可选参数
-│   ├── test_search_tweets_has_query_param    — query 是必填参数
-│   ├── test_search_tweets_has_product_param  — product 参数存在
-│   ├── test_get_user_tweets_has_screen_name  — screen_name 必填
-│   ├── test_get_tweet_has_tweet_id           — tweet_id 参数存在
-│   └── test_all_tools_have_descriptions      — 所有工具都有描述
-├── URL 解析测试
-│   └── test_get_tweet_url_parsing   — 各种 URL 格式正确提取 ID
-├── MCP 协议测试
-│   └── test_mcp_initialize_handshake — JSON-RPC initialize 握手
-└── 配置测试
-    ├── test_cookies_path_env_override — 环境变量覆盖默认路径
-    └── test_server_name               — server 名称是 "twitter"
-```
-
-### GitHub Actions CI
-
-每次 push 到 `main` 或创建 PR 时自动运行，包含三个 job：
-
-```yaml
-# .github/workflows/ci.yml
-
-jobs:
-  lint:        # ruff 格式和风格检查
-  test:        # pytest 在 Linux/macOS/Windows × Python 3.14 上跑
-  protocol:    # 真实的 MCP 协议握手测试
-```
-
-#### CI 做了什么？
-
-```
-push/PR → GitHub Actions 触发
-  │
-  ├── lint job
-  │   ├── ruff format --check    → 格式正确？
-  │   └── ruff check             → 没有 lint 错误？
-  │
-  ├── test job (3 个 OS 并行)
-  │   ├── ubuntu-latest   ─┐
-  │   ├── macos-latest    ─┤─── uv sync → pytest -v
-  │   └── windows-latest  ─┘
-  │
-  └── protocol job
-      └── 发送 MCP initialize 请求 → 验证响应正确
-```
-
-#### CI 不做什么？
-
-- **不调用 Twitter API** — 没有 cookies，也不应该在 CI 里操作真实账号
-- **不发推/搜索/点赞** — 这些是"集成测试"，只能本地手动验证
-- **不需要任何 secrets** — 所有测试都不依赖认证信息
-
-#### 查看 CI 状态
-
-push 后在 GitHub repo 页面可以看到 Actions 标签页的运行结果。
-也可以在 README 顶部加一个 badge（仓库设为 public 后）：
-
-```markdown
-![CI](https://github.com/tangivis/twitter-mcp/actions/workflows/ci.yml/badge.svg)
-```
-
-### 添加新工具时的测试
-
-如果你在 `server.py` 里加了新工具，对应也要：
-
-1. 更新 `test_tools_registered` 和 `test_tool_count` 里的数字
-2. 为新工具的参数写 schema 测试
-3. 如果有纯逻辑（如 URL 解析），单独测试那部分逻辑
-
-例如添加了 `follow_user` 工具后：
-
-```python
-def test_follow_user_has_screen_name():
-    """follow_user requires 'screen_name'."""
-    from twitter_mcp.server import mcp
-
-    tool = mcp._tool_manager._tools["follow_user"]
-    schema = tool.parameters
-    assert "screen_name" in schema["properties"]
-    assert "screen_name" in schema.get("required", [])
-```
+详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ---
 
@@ -1380,23 +1258,20 @@ async def _get_client(account: str = "default") -> Client:
     return client
 ```
 
-### 发布到 PyPI
+### 发布新版本到 PyPI
 
-如果你想让别人一行命令就能用：
+本项目通过 GitHub Actions 自动发布。打 tag 即可触发：
 
 ```bash
-# 发布后，别人只需要：
-claude mcp add twitter -- uvx twitter-mcp
-
-# 不需要克隆代码、不需要知道目录在哪
+# 1. 更新 pyproject.toml 里的 version
+# 2. 提交并打 tag
+git add -A && git commit -m "release: v0.2.0"
+git tag v0.2.0
+git push && git push --tags
+# 3. GitHub Actions 自动: 跑测试 → 构建 → 发布到 PyPI
 ```
 
-发布步骤：
-```bash
-cd ~/mcp-servers/twitter-mcp
-uv build
-uv publish  # 需要 PyPI token
-```
+> 首次发布需要在 PyPI 上配置 Trusted Publisher（见下方说明）。
 
 ### 写其他 MCP Server
 

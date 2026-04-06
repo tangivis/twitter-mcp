@@ -748,9 +748,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "twitter-mcp"
+name = "twikit-mcp"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "twikit" },
