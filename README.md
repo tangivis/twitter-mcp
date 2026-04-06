@@ -1242,7 +1242,7 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-### 16 个测试用例
+### 15 个测试用例
 
 ```
 tests/test_server.py
@@ -1263,8 +1263,7 @@ tests/test_server.py
 ├── URL 解析测试
 │   └── test_get_tweet_url_parsing   — 各种 URL 格式正确提取 ID
 ├── MCP 协议测试
-│   ├── test_mcp_initialize_handshake — JSON-RPC initialize 握手
-│   └── test_mcp_tools_list           — tools/list 返回全部工具
+│   └── test_mcp_initialize_handshake — JSON-RPC initialize 握手
 └── 配置测试
     ├── test_cookies_path_env_override — 环境变量覆盖默认路径
     └── test_server_name               — server 名称是 "twitter"

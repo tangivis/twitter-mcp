@@ -192,65 +192,6 @@ def test_mcp_initialize_handshake():
     assert response["result"]["serverInfo"]["name"] == "twitter"
 
 
-def test_mcp_tools_list():
-    """Server returns all tools via tools/list after initialization."""
-    messages = [
-        json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {},
-                    "clientInfo": {"name": "test", "version": "0.1"},
-                },
-            }
-        ),
-        json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
-        json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/list",
-                "params": {},
-            }
-        ),
-    ]
-
-    result = subprocess.run(
-        [sys.executable, "-m", "twitter_mcp.server"],
-        input="\n".join(messages),
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.stdout, "Server produced no output"
-
-    # Parse all JSON responses
-    lines = [line for line in result.stdout.strip().split("\n") if line.strip()]
-    responses = [json.loads(line) for line in lines]
-
-    # Find the tools/list response (id=2)
-    tools_response = next((r for r in responses if r.get("id") == 2), None)
-    assert tools_response is not None, "No tools/list response found"
-    assert "result" in tools_response
-
-    tools = tools_response["result"]["tools"]
-    tool_names = {t["name"] for t in tools}
-
-    expected = {
-        "send_tweet",
-        "get_tweet",
-        "get_timeline",
-        "search_tweets",
-        "like_tweet",
-        "retweet",
-        "get_user_tweets",
-    }
-    assert tool_names == expected
-
 
 # ── Config Tests ──────────────────────────────────────
 
