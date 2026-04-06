@@ -1,0 +1,13 @@
+[project]
+name = "twitter-mcp"
+version = "0.1.0"
+description = "Twitter MCP server powered by twikit"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "mcp[cli]",
+    "twikit @ git+https://github.com/d60/twikit.git@refs/pull/412/head",
+]
+
+[project.scripts]
+twitter-mcp = "twitter_mcp.server:main"
