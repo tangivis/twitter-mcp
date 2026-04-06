@@ -22,9 +22,7 @@ async def _get_client() -> Client:
     """Create an authenticated twikit client."""
     cookies = json.loads(COOKIES_PATH.read_text())
     client = Client("en")
-    client.set_cookies(
-        {"auth_token": cookies["auth_token"], "ct0": cookies["ct0"]}
-    )
+    client.set_cookies({"auth_token": cookies["auth_token"], "ct0": cookies["ct0"]})
     return client
 
 
@@ -95,9 +93,7 @@ async def get_timeline(count: int = 20) -> str:
 
 
 @mcp.tool()
-async def search_tweets(
-    query: str, count: int = 20, product: str = "Latest"
-) -> str:
+async def search_tweets(query: str, count: int = 20, product: str = "Latest") -> str:
     """Search tweets.
 
     Args:

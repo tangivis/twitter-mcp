@@ -24,7 +24,8 @@
 14. [Claude Code 中 MCP 的配置体系](#claude-code-中-mcp-的配置体系)
 15. [常见问题](#常见问题)
 16. [部署到其他机器](#部署到其他机器)（含 [Windows 部署](#windows-部署)）
-17. [自定义和扩展](#自定义和扩展)
+17. [测试和 CI/CD](#测试和-cicd)
+18. [自定义和扩展](#自定义和扩展)
 
 ---
 
@@ -1204,6 +1205,137 @@ claude mcp list
 | Cookies | `~/.config/twitter-mcp/cookies.json` | `%APPDATA%\twitter-mcp\cookies.json` |
 | Claude 配置 | `~/.claude.json` | `%USERPROFILE%\.claude.json` |
 | uv 缓存 | `~/.cache/uv/` | `%LOCALAPPDATA%\uv\cache\` |
+
+---
+
+## 测试和 CI/CD
+
+### 测试策略
+
+这个项目的特殊之处在于：**核心功能（调用 Twitter API）需要真实的 cookies 认证，无法在 CI 中测试。**
+
+因此测试分两层：
+
+| 测试类型 | 在 CI 中 | 覆盖内容 |
+|---------|---------|---------|
+| 导入和注册 | 可以 | server 能启动、7 个工具都注册成功 |
+| 工具 Schema | 可以 | 参数名、必填/可选、类型都正确 |
+| MCP 协议 | 可以 | initialize 握手、tools/list 响应正确 |
+| URL 解析 | 可以 | 推文 URL → ID 的提取逻辑 |
+| 环境变量 | 可以 | TWITTER_COOKIES 能正确覆盖默认路径 |
+| Lint/格式 | 可以 | 代码风格一致 |
+| **发推/搜索/点赞** | **不行** | **需要真实 cookies，只能本地手动测** |
+
+### 本地运行测试
+
+```bash
+cd ~/mcp-servers/twitter-mcp
+
+# 安装开发依赖
+uv sync --group dev
+
+# 运行所有测试
+uv run pytest -v
+
+# 单独运行 lint 和格式检查
+uv run ruff check .
+uv run ruff format --check .
+```
+
+### 16 个测试用例
+
+```
+tests/test_server.py
+├── 导入测试
+│   ├── test_import_server           — server 模块可导入
+│   └── test_import_client_helper    — _get_client 函数存在
+├── 工具注册测试
+│   ├── test_tools_registered        — 7 个工具名全部正确
+│   └── test_tool_count              — 工具数量恰好 7 个
+├── 工具 Schema 测试
+│   ├── test_send_tweet_has_text_param        — text 是必��参数
+│   ├── test_send_tweet_has_optional_reply_to — reply_to 是可选参数
+│   ├── test_search_tweets_has_query_param    — query 是必填参数
+│   ├── test_search_tweets_has_product_param  — product 参数存在
+│   ├── test_get_user_tweets_has_screen_name  — screen_name 必填
+│   ├── test_get_tweet_has_tweet_id           — tweet_id 参数存在
+│   └── test_all_tools_have_descriptions      — 所有工具都有描述
+├── URL 解析测试
+│   └── test_get_tweet_url_parsing   — 各种 URL 格式正确提取 ID
+├── MCP 协议测试
+│   ├── test_mcp_initialize_handshake — JSON-RPC initialize 握手
+│   └── test_mcp_tools_list           — tools/list 返回全部工具
+└── 配置测试
+    ├── test_cookies_path_env_override — 环境变量覆盖默认路径
+    └── test_server_name               — server 名称是 "twitter"
+```
+
+### GitHub Actions CI
+
+每次 push 到 `main` 或创建 PR 时自动运行，包含三个 job：
+
+```yaml
+# .github/workflows/ci.yml
+
+jobs:
+  lint:        # ruff 格式和风格检查
+  test:        # pytest 在 Linux/macOS/Windows × Python 3.14 上跑
+  protocol:    # 真实的 MCP 协议握手测试
+```
+
+#### CI 做了什么？
+
+```
+push/PR → GitHub Actions 触发
+  │
+  ├── lint job
+  │   ├── ruff format --check    → 格式正确？
+  │   └── ruff check             → 没有 lint 错误？
+  │
+  ├── test job (3 个 OS 并行)
+  │   ├── ubuntu-latest   ─┐
+  │   ├── macos-latest    ─┤─── uv sync → pytest -v
+  │   └── windows-latest  ─┘
+  │
+  └── protocol job
+      └── 发送 MCP initialize 请求 → 验证响应正确
+```
+
+#### CI 不做什么？
+
+- **不调用 Twitter API** — 没有 cookies，也不应该在 CI 里操作真实账号
+- **不发推/搜索/点赞** — 这些是"集成测试"，只能本地手动验证
+- **不需要任何 secrets** — 所有测试都不依赖认证信息
+
+#### 查看 CI 状态
+
+push 后在 GitHub repo 页面可以看到 Actions 标签页的运行结果。
+也可以在 README 顶部加一个 badge（仓库设为 public 后）：
+
+```markdown
+![CI](https://github.com/tangivis/twitter-mcp/actions/workflows/ci.yml/badge.svg)
+```
+
+### 添加新工具时的测试
+
+如果你在 `server.py` 里加了新工具，对应也要：
+
+1. 更新 `test_tools_registered` 和 `test_tool_count` 里的数字
+2. 为新工具的参数写 schema 测试
+3. 如果有纯逻辑（如 URL 解析），单独测试那部分逻辑
+
+例如添加了 `follow_user` 工具后：
+
+```python
+def test_follow_user_has_screen_name():
+    """follow_user requires 'screen_name'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["follow_user"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+```
 
 ---
 
