@@ -733,9 +733,9 @@ wheels = [
 ]
 
 [[package]]
-name = "twikit"
-version = "2.3.3"
-source = { git = "https://github.com/d60/twikit.git?rev=refs%2Fpull%2F412%2Fhead#213c8751c12a38a92d34172b1c8bd3de7df1198d" }
+name = "twikit-mcp"
+version = "0.1.1"
+source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "filetype" },
@@ -743,17 +743,9 @@ dependencies = [
     { name = "js2py-3-13" },
     { name = "lxml" },
     { name = "m3u8" },
+    { name = "mcp", extra = ["cli"] },
     { name = "pyotp" },
     { name = "webvtt-py" },
-]
-
-[[package]]
-name = "twikit-mcp"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "mcp", extra = ["cli"] },
-    { name = "twikit" },
 ]
 
 [package.dev-dependencies]
@@ -765,8 +757,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "beautifulsoup4" },
+    { name = "filetype" },
+    { name = "httpx", extras = ["socks"] },
+    { name = "js2py-3-13" },
+    { name = "lxml" },
+    { name = "m3u8" },
     { name = "mcp", extras = ["cli"] },
-    { name = "twikit", git = "https://github.com/d60/twikit.git?rev=refs%2Fpull%2F412%2Fhead" },
+    { name = "pyotp" },
+    { name = "webvtt-py" },
 ]
 
 [package.metadata.requires-dev]

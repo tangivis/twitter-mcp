@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "twikit-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "Twitter/X MCP server powered by twikit — no API key needed, free forever"
 readme = "README.md"
 license = "MIT"
@@ -18,7 +18,14 @@ classifiers = [
 ]
 dependencies = [
     "mcp[cli]",
-    "twikit @ git+https://github.com/d60/twikit.git@refs/pull/412/head",
+    "httpx[socks]",
+    "beautifulsoup4",
+    "filetype",
+    "pyotp",
+    "lxml",
+    "webvtt-py",
+    "m3u8",
+    "js2py-3-13",
 ]
 
 [project.urls]
@@ -36,9 +43,6 @@ dev = [
     "ruff>=0.11",
 ]
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [tool.hatch.build.targets.wheel]
 packages = ["twitter_mcp"]
 
@@ -51,3 +55,7 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"twitter_mcp/_vendor/**" = ["E", "F", "W", "I"]

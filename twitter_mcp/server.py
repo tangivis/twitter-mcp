@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
-from twikit import Client
+
+from twitter_mcp._vendor.twikit import Client
 
 mcp = FastMCP("twitter")
 

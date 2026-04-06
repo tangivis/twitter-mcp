@@ -208,5 +208,6 @@ def test_package_builds():
         text=True,
         timeout=60,
     )
-    assert result.returncode == 0, f"Build failed: {result.stderr}"
-    assert "Successfully built" in result.stdout
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, f"Build failed: {output}"
+    assert "Successfully built" in output
