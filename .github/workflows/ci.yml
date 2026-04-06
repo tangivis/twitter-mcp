@@ -27,7 +27,7 @@ jobs:
         run: uv run ruff check .
 
   test:
-    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    name: "Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -48,7 +48,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Import check
-        run: uv run python -c "from twitter_mcp.server import mcp; print(f'OK: {len(mcp._tool_manager._tools)} tools')"
+        run: uv run python -c "from twitter_mcp.server import mcp; print('OK:', len(mcp._tool_manager._tools), 'tools')"
 
       - name: Run tests
         run: uv run pytest -v
@@ -70,9 +70,4 @@ jobs:
         run: |
           echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"0.1"}}}' \
             | uv run python -m twitter_mcp.server \
-            | python -c "
-          import json, sys
-          resp = json.loads(sys.stdin.readline())
-          assert resp['result']['serverInfo']['name'] == 'twitter', 'Wrong server name'
-          print('MCP handshake OK:', json.dumps(resp['result']['serverInfo']))
-          "
+            | uv run python -c "import json, sys; resp = json.loads(sys.stdin.readline()); assert resp['result']['serverInfo']['name'] == 'twitter'; print('MCP handshake OK')"
