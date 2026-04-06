@@ -714,6 +714,65 @@ asyncio.run(test())
 
 ## 工作原理详解
 
+### 核心机制：配置一次，永久生效
+
+这是最重要的概念——**所有设置只需要做一次**：
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  一次性操作（只在首次部署时做）                             │
+│                                                         │
+│  1. 安装代码和依赖     → uv sync                         │
+│  2. 配置认证           → cookies.json                    │
+│  3. 注册到 Claude Code → claude mcp add ...              │
+│                                                         │
+│  这三步完成后，你再也不需要碰它们了（除非 cookies 过期）     │
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│  自动循环（每次你打开 Claude Code 都会自动发生）            │
+│                                                         │
+│  claude 启动                                             │
+│    → 读 ~/.claude.json，发现 twitter MCP 配置             │
+│    → 自动执行: uv run ... python -m twitter_mcp.server   │
+│    → server 进程启动，等待调用                             │
+│    → 你说"搜推文" → Claude 调用 search_tweets → 返回结果   │
+│    → 你说"发一条推" → Claude 调用 send_tweet → 推文发出    │
+│    → ...（可以反复调用，不限次数）                          │
+│    → 你退出 Claude Code                                   │
+│    → server 进程自动终止                                   │
+│                                                         │
+│  下次再打开 Claude Code → 同样的循环自动开始               │
+└─────────────────────────────────────────────────────────┘
+```
+
+**`claude mcp add` 做了什么？**
+
+它只是在 `~/.claude.json` 里写入一条 JSON 配置：
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "...", "python", "-m", "twitter_mcp.server"],
+      "env": {"TWITTER_COOKIES": "..."}
+    }
+  }
+}
+```
+
+这条配置告诉 Claude Code："以后每次启动时，用这个命令拉起 twitter server"。
+它不会启动任何进程、不会修改系统服务、不会开机自启。仅仅是一条配置。
+
+**Server 什么时候在运行？**
+
+- Claude Code 打开时 → server 运行中（作为 Claude Code 的子进程）
+- Claude Code 关闭后 → server 不存在（进程已被终止）
+- 不占用任何后台资源，不需要 systemd、不需要 Docker、不需要 tmux
+
 ### MCP 通信流程
 
 ```
