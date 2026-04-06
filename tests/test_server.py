@@ -192,7 +192,6 @@ def test_mcp_initialize_handshake():
     assert response["result"]["serverInfo"]["name"] == "twitter"
 
 
-
 # ── Config Tests ──────────────────────────────────────
 
 
