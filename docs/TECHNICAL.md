@@ -266,14 +266,14 @@ pip install twikit-mcp
 
 ## 前置条件
 
-- **Python 3.14+**
+- **Python 3.10+**
 - **包管理器**（任选一个）：[uv](https://docs.astral.sh/uv/)（推荐）、pip、pipx
 - **MCP 客户端**（任选一个）：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline 等
 - **Twitter 账号** — 需要已登录的浏览器 cookies
 
 ```bash
 # 检查
-python3 --version   # >= 3.14
+python3 --version   # >= 3.10
 
 # 以下任选其一
 uv --version         # 推荐
@@ -311,7 +311,7 @@ name = "twikit-mcp"
 version = "0.1.1"
 description = "Twitter/X MCP server powered by twikit — no API key needed, free forever"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
     "mcp[cli]",
     "httpx[socks]",
@@ -1103,7 +1103,7 @@ claude
 目标机器需要：
 
 ```bash
-python3 --version   # >= 3.14
+python3 --version   # >= 3.10
 
 # 包管理器（任选一个）
 uv --version         # 推荐。没有的话: curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -1193,7 +1193,7 @@ git pull && uv sync
 ### 部署检查清单
 
 ```
-□ python3 --version                    → >= 3.14
+□ python3 --version                    → >= 3.10
 □ uv/pip/pipx --version                → 至少一个已安装
 □ MCP 客户端已安装                      → Claude Code / Cursor / opencode 等
 □ cat ~/.config/twitter-mcp/cookies.json → ct0 和 auth_token 存在
@@ -1214,7 +1214,7 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # uv（推荐）
 # 或直接用 pip
 
 # 2. 确认
-python --version   # >= 3.14（Windows 上是 python 不是 python3）
+python --version   # >= 3.10（Windows 上是 python 不是 python3）
 uv --version       # 或 pip --version
 ```
 
@@ -1265,7 +1265,7 @@ claude mcp list
 | `uvx` 命令找不到 | uv 没加入 PATH | 重新打开终端，或手动添加 `%USERPROFILE%\.local\bin` 到 PATH |
 | SSL 证书错误 | 公司网络代理 | 设置 `set REQUESTS_CA_BUNDLE=你的证书路径` |
 | cookies 路径找不到 | 路径分隔符问题 | 用正斜杠 `C:/Users/.../cookies.json` 或环境变量 `%APPDATA%` |
-| Python 版本太低 | Windows Store 版本旧 | 从 python.org 下载 3.14+，或 `uv python install 3.14` |
+| Python 版本太低 | Windows Store 版本旧 | 从 python.org 下载 3.10+，或 `uv python install 3.12` |
 
 #### Windows vs macOS/Linux 路径对照
 
