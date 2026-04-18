@@ -1169,7 +1169,7 @@ wheels = [
 
 [[package]]
 name = "twikit-mcp"
-version = "0.1.2"
+version = "0.1.4"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

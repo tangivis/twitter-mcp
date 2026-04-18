@@ -1010,6 +1010,23 @@ uv cache clean
 pip install --upgrade twikit-mcp
 ```
 
+### 报错 `KeyError: 'xxx'`（pinned_tweet_ids_str、withheld_in_countries、entities 等）？
+
+这是 `User` 对象解析时 `legacy.*` 字段缺失的问题。X 的 GraphQL 响应并不保证所有 legacy 字段都存在（例如没 pinned tweet 的账号不会返回 `pinned_tweet_ids_str`），上游 twikit 硬索引这些字段会直接抛 KeyError。
+
+- **0.1.3** 修了 `legacy.entities.description.urls` 和 `legacy.withheld_in_countries`
+- **0.1.4** 全面防御化了 `User.__init__` 里所有 `legacy.*` 字段
+
+升级到 `>=0.1.4` 即可：
+
+```bash
+uv tool upgrade twikit-mcp     # uv tool
+uv cache clean                  # uvx（下次自动取新版）
+pip install --upgrade twikit-mcp
+```
+
+详见 [VENDORING.md](VENDORING.md#本地-patch-清单)。
+
 ### 想让其他 Claude 实例也能用？
 
 MCP 注册在 `~/.claude.json` 的用户级配置中（`-s user`），所以**同一台机器上所有 Claude Code 会话自动共享**。不需要额外配置。

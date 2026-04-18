@@ -34,6 +34,43 @@ PyPI 上的 twikit 2.3.3 有两个已知 bug：
 
 ---
 
+## 本地 patch 清单
+
+除了从 PR#412 引入的两个修复外，vendored 代码还包含我们自己发现并修复的 bug。
+
+| 版本 | 文件 | 修复内容 |
+|------|------|---------|
+| 0.1.3 | `_vendor/twikit/user.py` | `User.__init__` 容忍 `legacy.entities.description.urls` 和 `legacy.withheld_in_countries` 缺失 |
+| 0.1.4 | `_vendor/twikit/user.py` | `User.__init__` 全面防御化，所有 `legacy.*` 字段改 `.get()` 带默认值 |
+
+### 为什么要防御化 `User.__init__`
+
+**问题：** X 的 GraphQL 响应并不保证 `legacy.*` 下的所有字段都存在。实际观察到的缺失场景：
+
+- 账号没 pinned tweet → `pinned_tweet_ids_str` 不返回（触发 `@ClaudeDevs` 的 bug）
+- 账号没受地区限制 → `withheld_in_countries` 不返回（触发 `@elonmusk` 的 bug）
+- 账号 profile description 为空 → `entities.description.urls` 不返回
+- 新建/冻结/不活跃账号 → counts、flags 等字段可能大面积缺失
+
+上游 twikit 在 `__init__` 里用 `legacy["key"]` 严格索引，任一字段缺失就抛 `KeyError`，连锁导致所有依赖 `User` 对象的工具（`get_user_tweets`、`client.user()` 等）全部不可用。
+
+**解决方式：** `__init__` 里所有 `legacy[...]` 改为 `.get(..., 默认值)`，默认值按类型：
+
+| 类型 | 默认 |
+|------|------|
+| 计数类（`*_count`） | `0` |
+| 布尔标志 | `False` |
+| 列表类（`*_ids`、`withheld_in_countries`） | `[]` |
+| 字符串类（`name`、`location`、`description`） | `""` |
+| 可选 URL（`profile_banner_url`、`url`） | `None`（保留原行为） |
+| `translator_type` | `"none"` |
+
+外层 `data["rest_id"]` 保留严格访问 —— `rest_id` 是 X API 的核心标识，缺失才是真异常。
+
+**回归测试：** `tests/test_user_parsing.py` 对每个可缺失字段做单独的参数化测试，外加「整个 `legacy` 为空 dict」的兜底用例，总 29 个。
+
+---
+
 ## PR#412 修复内容
 
 PR#412 包含 5 个 commit，改了 2 个文件（忽略 .gitignore）：
