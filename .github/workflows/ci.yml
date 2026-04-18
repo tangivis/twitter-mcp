@@ -50,8 +50,8 @@ jobs:
       - name: Import check
         run: uv run python -c "from twitter_mcp.server import mcp; print('OK:', len(mcp._tool_manager._tools), 'tools')"
 
-      - name: Run tests
-        run: uv run pytest -v
+      - name: Run tests with coverage
+        run: uv run pytest -v --cov --cov-report=term --cov-fail-under=95
 
   protocol:
     name: MCP Protocol Check
