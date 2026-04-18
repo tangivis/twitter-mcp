@@ -94,3 +94,68 @@ def test_user_parses_when_both_missing(entities, include_withheld):
     user = User(client=None, data=data)
     assert user.description_urls == []
     assert user.withheld_in_countries == []
+
+
+# ── Phase 2: full defensive parsing ───────────────────
+#
+# X's GraphQL may omit almost any legacy.* field depending on the account's
+# state (no pinned tweet → no pinned_tweet_ids_str; fresh/suspended accounts
+# may drop counts, flags, etc.). User.__init__ must not raise KeyError when
+# any of these are absent — parse what's present, default the rest.
+
+
+def test_user_parses_when_legacy_is_empty():
+    """legacy = {} must not raise — every non-essential field defaults."""
+    data = {
+        "rest_id": "1",
+        "is_blue_verified": False,
+        "legacy": {},
+    }
+    user = User(client=None, data=data)
+    # Counts default to 0
+    assert user.followers_count == 0
+    assert user.statuses_count == 0
+    assert user.media_count == 0
+    # Flags default to False
+    assert user.verified is False
+    assert user.can_dm is False
+    # Lists default to []
+    assert user.pinned_tweet_ids == []
+    assert user.description_urls == []
+    assert user.withheld_in_countries == []
+
+
+@pytest.mark.parametrize(
+    "drop_field",
+    [
+        "pinned_tweet_ids_str",
+        "verified",
+        "followers_count",
+        "friends_count",
+        "favourites_count",
+        "listed_count",
+        "media_count",
+        "statuses_count",
+        "fast_followers_count",
+        "normal_followers_count",
+        "can_dm",
+        "can_media_tag",
+        "want_retweets",
+        "default_profile",
+        "default_profile_image",
+        "has_custom_timelines",
+        "possibly_sensitive",
+        "is_translator",
+        "translator_type",
+        "location",
+        "description",
+        "created_at",
+        "profile_image_url_https",
+    ],
+)
+def test_user_parses_when_single_legacy_field_missing(drop_field):
+    """Any individual legacy.* field may be absent — User must still construct."""
+    data = _minimal_user_data()
+    del data["legacy"][drop_field]
+    # Must not raise
+    User(client=None, data=data)
