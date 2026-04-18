@@ -100,7 +100,7 @@ class Tweet:
     def __init__(self, client: Client, data: dict, user: User = None) -> None:
         self._client = client
         self._data = data
-        self._legacy: dict = self._data["legacy"]
+        self._legacy: dict = self._data.get("legacy", {})
         self.user = user
 
         self.replies: Result[Tweet] | None = None
@@ -114,15 +114,15 @@ class Tweet:
 
     @property
     def created_at(self) -> str:
-        return self._legacy["created_at"]
+        return self._legacy.get("created_at", "")
 
     @property
     def text(self) -> str:
-        return self._legacy["full_text"]
+        return self._legacy.get("full_text", "")
 
     @property
     def lang(self) -> str:
-        return self._legacy["lang"]
+        return self._legacy.get("lang", "")
 
     @property
     def in_reply_to(self) -> str | None:
@@ -130,7 +130,7 @@ class Tweet:
 
     @property
     def is_quote_status(self) -> bool:
-        return self._legacy["is_quote_status"]
+        return self._legacy.get("is_quote_status", False)
 
     @property
     def possibly_sensitive(self) -> bool:
@@ -146,19 +146,19 @@ class Tweet:
 
     @property
     def reply_count(self) -> int:
-        return self._legacy["reply_count"]
+        return self._legacy.get("reply_count", 0)
 
     @property
     def favorite_count(self) -> int:
-        return self._legacy["favorite_count"]
+        return self._legacy.get("favorite_count", 0)
 
     @property
     def favorited(self) -> bool:
-        return self._legacy["favorited"]
+        return self._legacy.get("favorited", False)
 
     @property
     def retweet_count(self) -> int:
-        return self._legacy["retweet_count"]
+        return self._legacy.get("retweet_count", 0)
 
     @property
     def _place_data(self):
@@ -238,7 +238,7 @@ class Tweet:
             entity_set = note_tweet_results["result"]["entity_set"]
             hashtags = entity_set.get("hashtags", [])
         else:
-            hashtags = self._legacy["entities"].get("hashtags", [])
+            hashtags = self._legacy.get("entities", {}).get("hashtags", [])
         return [i["text"] for i in hashtags]
 
     @property
@@ -247,7 +247,7 @@ class Tweet:
         if note_tweet_results:
             entity_set = note_tweet_results["result"]["entity_set"]
             return entity_set.get("urls")
-        return self._legacy["entities"].get("urls")
+        return self._legacy.get("entities", {}).get("urls")
 
     @property
     def community_note(self) -> dict | None:
@@ -315,7 +315,7 @@ class Tweet:
 
     @property
     def media(self) -> list[MEDIA_TYPE]:
-        media_data = self._legacy["entities"].get("media", [])
+        media_data = self._legacy.get("entities", {}).get("media", [])
         m = []
         for entry in media_data:
             media_obj = _media_from_data(self._client, entry)

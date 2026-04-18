@@ -1010,14 +1010,15 @@ uv cache clean
 pip install --upgrade twikit-mcp
 ```
 
-### 报错 `KeyError: 'xxx'`（pinned_tweet_ids_str、withheld_in_countries、entities 等）？
+### 报错 `KeyError: 'xxx'`（pinned_tweet_ids_str、withheld_in_countries、full_text、entities 等）？
 
-这是 `User` 对象解析时 `legacy.*` 字段缺失的问题。X 的 GraphQL 响应并不保证所有 legacy 字段都存在（例如没 pinned tweet 的账号不会返回 `pinned_tweet_ids_str`），上游 twikit 硬索引这些字段会直接抛 KeyError。
+这是 `User` 或 `Tweet` 对象解析时 `legacy.*` 字段缺失的问题。X 的 GraphQL 响应并不保证所有 legacy 字段都存在（例如没 pinned tweet 的账号不会返回 `pinned_tweet_ids_str`），上游 twikit 硬索引这些字段会直接抛 KeyError。
 
-- **0.1.3** 修了 `legacy.entities.description.urls` 和 `legacy.withheld_in_countries`
+- **0.1.3** 修了 `legacy.entities.description.urls` 和 `legacy.withheld_in_countries`（User 特定字段）
 - **0.1.4** 全面防御化了 `User.__init__` 里所有 `legacy.*` 字段
+- **0.1.5** 同样防御化了 `Tweet` 的属性（`text`、`created_at`、计数类、`entities.*` 子树等）
 
-升级到 `>=0.1.4` 即可：
+升级到 `>=0.1.5` 即可：
 
 ```bash
 uv tool upgrade twikit-mcp     # uv tool

@@ -42,6 +42,7 @@ PyPI 上的 twikit 2.3.3 有两个已知 bug：
 |------|------|---------|
 | 0.1.3 | `_vendor/twikit/user.py` | `User.__init__` 容忍 `legacy.entities.description.urls` 和 `legacy.withheld_in_countries` 缺失 |
 | 0.1.4 | `_vendor/twikit/user.py` | `User.__init__` 全面防御化，所有 `legacy.*` 字段改 `.get()` 带默认值 |
+| 0.1.5 | `_vendor/twikit/tweet.py` | `Tweet` 属性全面防御化：`text`/`created_at`/`lang`/`favorite_count`/`retweet_count`/`reply_count`/`favorited`/`is_quote_status` 以及 `entities.*` 子树（hashtags/urls/media）都走 `.get()`。构造时 `_data["legacy"]` 也改为可选。|
 
 ### 为什么要防御化 `User.__init__`
 
@@ -67,7 +68,16 @@ PyPI 上的 twikit 2.3.3 有两个已知 bug：
 
 外层 `data["rest_id"]` 保留严格访问 —— `rest_id` 是 X API 的核心标识，缺失才是真异常。
 
-**回归测试：** `tests/test_user_parsing.py` 对每个可缺失字段做单独的参数化测试，外加「整个 `legacy` 为空 dict」的兜底用例，总 29 个。
+**回归测试：** `tests/test_user_parsing.py` 和 `tests/test_tweet_parsing.py` 对每个可缺失字段做单独的参数化测试，外加「整个 `legacy` 为空 dict」的兜底用例，合计 51 个模型解析测试。
+
+### 0.1.5：同时补齐 server.py 的测试覆盖
+
+发现 `User` / `Tweet` 这类字段稳定性问题后，补了一整层 mock-based 行为测试：
+
+- `tests/test_tools.py` — 7 个 MCP 工具的行为测试（args 传参、JSON 输出形状、text 截断、URL 解析）
+- `tests/test_cookies.py` — `_get_client` 的错误路径（文件缺失、JSON 损坏、缺 `ct0`/`auth_token` 键）
+
+现在 `twitter_mcp/server.py` 达到 **100% 覆盖**，CI 启用 `--cov-fail-under=95` 作为底线。
 
 ---
 
