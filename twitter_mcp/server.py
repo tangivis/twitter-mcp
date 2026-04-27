@@ -2,11 +2,15 @@
 
 import json
 import os
+import re
 from pathlib import Path
 
+import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
 from twitter_mcp._vendor.twikit import Client
+from twitter_mcp._vendor.twikit.constants import TWEET_RESULT_BY_REST_ID_FEATURES
 
 mcp = FastMCP("twitter")
 
@@ -18,6 +22,11 @@ COOKIES_PATH = Path(
     )
 )
 
+# Matches /i/article/<digits> in any twitter.com / x.com URL.
+_ARTICLE_URL_RE = re.compile(r"/i/article/(\d+)")
+_SYNDICATION_URL = "https://cdn.syndication.twimg.com/tweet-result"
+_GRAPHQL_BASE = "https://x.com/i/api/graphql"
+
 
 async def _get_client() -> Client:
     """Create an authenticated twikit client."""
@@ -25,6 +34,25 @@ async def _get_client() -> Client:
     client = Client("en")
     client.set_cookies({"auth_token": cookies["auth_token"], "ct0": cookies["ct0"]})
     return client
+
+
+def _parse_article_url_or_id(value: str | None) -> str | None:
+    """Return the article rest_id if `value` is an /i/article/<id> URL, else None.
+
+    Bare numeric IDs are NOT treated as articles — article and tweet IDs share
+    the same numeric shape, and we cannot distinguish them without an HTTP call.
+    """
+    if not value:
+        return None
+    m = _ARTICLE_URL_RE.search(value)
+    return m.group(1) if m else None
+
+
+def _extract_tweet_id(value: str) -> str:
+    """Strip a tweet URL down to its numeric ID; pass numeric IDs through."""
+    if "/" in value:
+        return value.rstrip("/").split("/")[-1]
+    return value
 
 
 # ── Tools ──────────────────────────────────────────────
@@ -50,12 +78,22 @@ async def get_tweet(tweet_id: str) -> str:
     Args:
         tweet_id: The tweet ID (numeric string) or full URL.
     """
-    # Handle full URL input
-    if "/" in tweet_id:
-        tweet_id = tweet_id.rstrip("/").split("/")[-1]
+    article_id = _parse_article_url_or_id(tweet_id)
+    if article_id is not None:
+        raise ToolError(
+            f"This is an X Article (id={article_id}), not a tweet. "
+            f"Use get_article instead."
+        )
+
+    tweet_id = _extract_tweet_id(tweet_id)
 
     client = await _get_client()
     tweets = await client.get_tweets_by_ids([tweet_id])
+    if not tweets or tweets[0] is None:
+        raise ToolError(
+            f"Tweet {tweet_id} not found. If this is an X Article URL, "
+            f"use get_article instead."
+        )
     t = tweets[0]
     return json.dumps(
         {
@@ -164,6 +202,74 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
                 "retweets": t.retweet_count,
             }
         )
+    return json.dumps(result)
+
+
+@mcp.tool()
+async def get_article_preview(tweet_id: str) -> str:
+    """Get title/preview/cover of an X Article embedded in a tweet.
+
+    Uses X's public syndication endpoint — no authentication required.
+
+    Args:
+        tweet_id: ID (numeric string) or full URL of a tweet that links to an article.
+    """
+    tweet_id = _extract_tweet_id(tweet_id)
+    async with httpx.AsyncClient() as c:
+        resp = await c.get(
+            _SYNDICATION_URL,
+            params={"id": tweet_id, "token": "a"},
+            timeout=15,
+        )
+    resp.raise_for_status()
+    data = resp.json()
+    article = data.get("article")
+    if not article:
+        raise ToolError(f"Tweet {tweet_id} does not embed an article.")
+    cover = (
+        article.get("cover_media", {}).get("media_info", {}).get("original_img_url")
+    )
+    return json.dumps(
+        {
+            "rest_id": article["rest_id"],
+            "title": article.get("title", ""),
+            "preview_text": article.get("preview_text", ""),
+            "cover_image": cover,
+            "tweet_id": data.get("id_str", tweet_id),
+            "author": data.get("user", {}).get("screen_name", ""),
+        }
+    )
+
+
+@mcp.tool()
+async def get_article(article_id: str) -> str:
+    """Fetch the full body of an X Article (long-form post) via GraphQL.
+
+    Requires the env var `TWITTER_ARTICLE_QUERY_ID` to be set to the current
+    `TwitterArticleByRestId` queryId hash captured from a logged-in browser
+    session (DevTools → Network → filter `/i/api/graphql/` while opening
+    `https://x.com/i/article/<id>`). X rotates these hashes periodically.
+
+    Args:
+        article_id: Article rest_id (numeric string) or full /i/article/<id> URL.
+    """
+    query_id = os.environ.get("TWITTER_ARTICLE_QUERY_ID")
+    if not query_id:
+        raise ToolError(
+            "TWITTER_ARTICLE_QUERY_ID env var is not set. Capture the current "
+            "`TwitterArticleByRestId` queryId from a logged-in browser session "
+            "(DevTools → Network → filter `/i/api/graphql/`) and export it."
+        )
+
+    rest_id = _parse_article_url_or_id(article_id) or article_id
+    variables = {
+        "twitterArticleId": rest_id,
+        "withArticleRichContentState": True,
+        "withArticlePlainText": True,
+    }
+    url = f"{_GRAPHQL_BASE}/{query_id}/TwitterArticleByRestId"
+    client = await _get_client()
+    result = await client.gql.gql_get(url, variables, TWEET_RESULT_BY_REST_ID_FEATURES)
     return json.dumps(result)
 
 

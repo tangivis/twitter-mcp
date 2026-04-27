@@ -25,7 +25,7 @@ def test_import_client_helper():
 
 
 def test_tools_registered():
-    """All 7 tools are registered in the MCP server."""
+    """All 9 tools are registered in the MCP server."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
@@ -37,16 +37,18 @@ def test_tools_registered():
         "like_tweet",
         "retweet",
         "get_user_tweets",
+        "get_article_preview",
+        "get_article",
     }
     assert set(tools.keys()) == expected
 
 
 def test_tool_count():
-    """Exactly 7 tools are registered."""
+    """Exactly 9 tools are registered."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 7
+    assert len(tools) == 9
 
 
 # ── Tool Schema Tests ─────────────────────────────────
