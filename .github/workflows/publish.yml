@@ -4,10 +4,45 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - main
 
 jobs:
+  detect:
+    name: Detect publishable version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.detect.outputs.tag }}
+      should_publish: ${{ steps.detect.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        shell: bash
+        run: |
+          set -e
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          v=$(grep -E '^version' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          tag="v$v"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists; nothing to publish"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $tag missing; will publish"
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Run tests before publish
+    needs: detect
+    if: needs.detect.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +64,8 @@ jobs:
 
   publish:
     name: Build & Publish
-    needs: test
+    needs: [detect, test]
+    if: needs.detect.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -48,7 +84,8 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: publish
+    needs: [detect, publish]
+    if: needs.detect.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -60,8 +97,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag_name: ${{ needs.detect.outputs.tag }}
+          name: ${{ needs.detect.outputs.tag }}
           generate_release_notes: true
           draft: false
           prerelease: false
