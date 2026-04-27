@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "twikit-mcp"
-version = "0.1.5"
+version = "0.1.6"
 description = "Twitter/X MCP server powered by twikit — no API key needed, free forever"
 readme = "README.md"
 license = "MIT"

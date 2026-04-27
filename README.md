@@ -130,6 +130,10 @@ That's it. Start talking:
 | `like_tweet` | Like a tweet |
 | `retweet` | Retweet a tweet |
 | `get_user_tweets` | Get tweets from a specific user |
+| `get_article_preview` | Get title / preview / cover of an X Article embedded in a tweet (no auth) |
+| `get_article` | Fetch full body of an X Article — needs `TWITTER_ARTICLE_QUERY_ID` env var |
+
+> **X Articles note**: long-form posts at `https://x.com/i/article/<id>` live in a different ID namespace than tweets. `get_tweet` will refuse them with a clear error pointing to `get_article`. `get_article_preview` works without auth via the public syndication endpoint. `get_article` uses the `TwitterArticleByRestId` GraphQL persisted query — X rotates its hash, so capture the current one from a logged-in browser session (DevTools → Network → filter `/i/api/graphql/`) and export it as `TWITTER_ARTICLE_QUERY_ID`.
 
 ### How It Works
 
