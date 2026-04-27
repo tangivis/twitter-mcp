@@ -226,9 +226,7 @@ async def get_article_preview(tweet_id: str) -> str:
     article = data.get("article")
     if not article:
         raise ToolError(f"Tweet {tweet_id} does not embed an article.")
-    cover = (
-        article.get("cover_media", {}).get("media_info", {}).get("original_img_url")
-    )
+    cover = article.get("cover_media", {}).get("media_info", {}).get("original_img_url")
     return json.dumps(
         {
             "rest_id": article["rest_id"],

@@ -40,6 +40,39 @@ uv run ruff check --fix .
 
 ---
 
+## Pre-commit hook（推荐一次性安装）
+
+为了避免"本地忘了 format → push → CI 红"这种来回,仓库自带了一份 [`pre-commit`](https://pre-commit.com) 配置,会在每次 `git commit` 之前自动跑 `ruff format` 和 `ruff check --fix`。
+
+**clone 后执行一次:**
+
+```bash
+uv sync --group dev
+uv run pre-commit install
+```
+
+之后每次 `git commit` 都会自动:
+
+1. 对 staged 的 Python 文件跑 `ruff format` — 如果有改动,**aborted 这次 commit**,需要 `git add` 重新 commit。
+2. 对 staged 文件跑 `ruff check --fix`(包括 import 排序) — 如果还有 lint error,abort。
+3. 全过才放行。
+
+**手动对全仓跑一次**(等价于 CI 的检查):
+
+```bash
+uv run pre-commit run --all-files
+```
+
+**升级 hook 版本**(`.pre-commit-config.yaml` 里的 `rev` 应与 `uv.lock` 里的 ruff 对齐):
+
+```bash
+uv run pre-commit autoupdate
+```
+
+> ⚠️ Pre-commit 是"兜底",不是终极防线 — 新人忘了 `pre-commit install` 时它不会生效。**`.github/workflows/ci.yml` 里的 `ruff format --check` 仍然是最终守门员。**
+
+---
+
 ## 15 个测试用例
 
 ```

@@ -201,7 +201,9 @@ async def test_get_article_calls_graphql_with_correct_args(
         "withArticlePlainText": True,
     }
     # Article-related feature flags are present and enabled
-    assert features.get("responsive_web_twitter_article_tweet_consumption_enabled") is True
+    assert (
+        features.get("responsive_web_twitter_article_tweet_consumption_enabled") is True
+    )
     assert features.get("articles_preview_enabled") is True
 
 
@@ -212,9 +214,7 @@ async def test_get_article_accepts_url(monkeypatch, fake_client_with_gql):
     assert args[1]["twitterArticleId"] == "2046813551021760512"
 
 
-async def test_get_article_rejects_non_article_input(
-    monkeypatch, fake_client_with_gql
-):
+async def test_get_article_rejects_non_article_input(monkeypatch, fake_client_with_gql):
     monkeypatch.setenv("TWITTER_ARTICLE_QUERY_ID", "abc123hash")
     # Bare numeric ID is allowed (caller may pass either a URL or an id)
     await server.get_article("2046813551021760512")
