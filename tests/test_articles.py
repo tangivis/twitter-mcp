@@ -227,7 +227,17 @@ def _tweet_response_with_article(plain_text="full body 13984 chars goes here"):
                                     },
                                     "media_entities": [
                                         {
-                                            "media_url_https": f"https://pbs.twimg.com/media/M{i}.jpg"
+                                            "id": f"AbC{i}=",
+                                            "media_id": f"204842333717368422{i}",
+                                            "media_key": f"3_204842333717368422{i}",
+                                            "media_info": {
+                                                "__typename": "ApiImage",
+                                                "original_img_url": (
+                                                    f"https://pbs.twimg.com/media/M{i}.jpg"
+                                                ),
+                                                "original_img_width": 2400,
+                                                "original_img_height": 1600,
+                                            },
                                         }
                                         for i in range(10)
                                     ],
@@ -573,11 +583,15 @@ async def test_get_article_format_plain_includes_body_and_media_urls(
     assert "cover_media" not in payload
 
 
-async def test_get_article_format_plain_falls_back_to_media_url_when_https_absent(
+async def test_get_article_format_plain_extracts_from_media_info(
     monkeypatch, fake_two_hop_client
 ):
-    """media_entities entries use media_url_https when present, fall back to media_url."""
-    # First entry has only media_url, second has both, third is empty.
+    """Issue #16: article media URL lives at media_info.original_img_url.
+
+    The flat `media_url_https` / `media_url` keys (tweet schema, the wrong
+    field names #14's snippet used) do not exist on article media entities —
+    the URL is one level deeper inside `media_info`.
+    """
     payload = {
         "data": {
             "tweetResult": {
@@ -592,12 +606,24 @@ async def test_get_article_format_plain_falls_back_to_media_url_when_https_absen
                                 "preview_text": "p",
                                 "plain_text": "body",
                                 "media_entities": [
-                                    {"media_url": "http://legacy.example/a.jpg"},
+                                    # canonical shape — URL inside media_info
                                     {
-                                        "media_url_https": "https://new.example/b.jpg",
-                                        "media_url": "http://old.example/b.jpg",
+                                        "media_info": {
+                                            "__typename": "ApiImage",
+                                            "original_img_url": (
+                                                "https://pbs.twimg.com/media/A.jpg"
+                                            ),
+                                        }
                                     },
-                                    {},  # nothing usable
+                                    # video — different __typename, same URL slot
+                                    {
+                                        "media_info": {
+                                            "__typename": "ApiVideo",
+                                            "original_img_url": (
+                                                "https://pbs.twimg.com/media/B.png"
+                                            ),
+                                        }
+                                    },
                                 ],
                             }
                         }
@@ -609,10 +635,84 @@ async def test_get_article_format_plain_falls_back_to_media_url_when_https_absen
     fake_two_hop_client.tweet_result.return_value = _as_twikit_return(payload)
     out = json.loads(await server.get_article("999", format="plain"))
     assert out["media"] == [
-        "http://legacy.example/a.jpg",
-        "https://new.example/b.jpg",
-        None,
+        "https://pbs.twimg.com/media/A.jpg",
+        "https://pbs.twimg.com/media/B.png",
     ]
+
+
+async def test_get_article_format_plain_skips_unparseable_media_entries(
+    monkeypatch, fake_two_hop_client
+):
+    """Issue #16: drop Nones / empty-info / missing-info entries entirely.
+
+    Previously the projection emitted a `null` per missing URL; the
+    resulting `[null, null, ..., null]` array was pure noise to the LLM.
+    """
+    payload = {
+        "data": {
+            "tweetResult": {
+                "result": {
+                    "__typename": "Tweet",
+                    "rest_id": "999",
+                    "article": {
+                        "article_results": {
+                            "result": {
+                                "rest_id": "999",
+                                "title": "t",
+                                "plain_text": "body",
+                                "media_entities": [
+                                    None,
+                                    {},  # no media_info at all
+                                    {"media_info": None},  # explicit null
+                                    {"media_info": {}},  # empty dict
+                                    {"media_info": {"__typename": "ApiImage"}},
+                                    # only this last one is usable
+                                    {
+                                        "media_info": {
+                                            "original_img_url": (
+                                                "https://pbs.twimg.com/media/Z.jpg"
+                                            )
+                                        }
+                                    },
+                                ],
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+    fake_two_hop_client.tweet_result.return_value = _as_twikit_return(payload)
+    out = json.loads(await server.get_article("999", format="plain"))
+    assert out["media"] == ["https://pbs.twimg.com/media/Z.jpg"]
+
+
+async def test_get_article_format_plain_no_media_entities_returns_empty_list(
+    monkeypatch, fake_two_hop_client
+):
+    """Article without media_entities → media: []."""
+    payload = {
+        "data": {
+            "tweetResult": {
+                "result": {
+                    "__typename": "Tweet",
+                    "rest_id": "999",
+                    "article": {
+                        "article_results": {
+                            "result": {
+                                "rest_id": "999",
+                                "title": "t",
+                                "plain_text": "body",
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+    fake_two_hop_client.tweet_result.return_value = _as_twikit_return(payload)
+    out = json.loads(await server.get_article("999", format="plain"))
+    assert out["media"] == []
 
 
 async def test_get_article_format_full_returns_content_state(
