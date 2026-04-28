@@ -259,9 +259,12 @@ async def get_article_preview(tweet_id: str) -> str:
     )
 
 
+_ARTICLE_FORMATS = ("preview", "plain", "full")
+
+
 @mcp.tool()
-async def get_article(article_id: str) -> str:
-    """Fetch the full body of an X Article (long-form post) by rest_id or URL.
+async def get_article(article_id: str, format: str = "plain") -> str:
+    """Fetch an X Article (long-form post) by rest_id or URL.
 
     Two-hop reader flow (issue #10):
 
@@ -269,15 +272,26 @@ async def get_article(article_id: str) -> str:
          underlying tweet rest_id.
       2. `TweetResultByRestId` (twikit's existing helper) fetches the tweet
          with article fieldToggles enabled. The body lives at
-         `tweet.article.article_results.result` (title, plain_text,
-         content_state, cover_media, media_entities, …).
+         `tweet.article.article_results.result`.
 
     Requires authentication via cookies — same as every other authenticated
     tool here. No env-var setup.
 
     Args:
         article_id: Article rest_id (numeric string) or full /i/article/<id> URL.
+        format: Output shape, one of:
+            - "preview" (~1 KB) — rest_id, title, preview_text, cover_image
+            - "plain"   (~20 KB, default) — above + plain_text + media URL list
+              + lifecycle_state. The LLM-friendly shape.
+            - "full"    (~150 KB+) — raw GraphQL payload including the heavy
+              content_state rich-block tree. Use only when you need it
+              (rich-content rendering, archiving, structure analysis).
     """
+    if format not in _ARTICLE_FORMATS:
+        raise ToolError(
+            f"format must be one of {'/'.join(_ARTICLE_FORMATS)}, got: {format!r}"
+        )
+
     rest_id = _parse_article_url_or_id(article_id) or article_id
     client = await _get_client()
 
@@ -322,7 +336,33 @@ async def get_article(article_id: str) -> str:
             f"Tweet {tweet_id} did not return an article payload "
             f"(article may be unavailable)."
         )
-    return json.dumps(article)
+
+    if format == "full":
+        return json.dumps(article, ensure_ascii=False)
+
+    cover = article.get("cover_media", {}).get("media_info", {}).get("original_img_url")
+
+    if format == "preview":
+        out = {
+            "rest_id": article.get("rest_id"),
+            "title": article.get("title"),
+            "preview_text": article.get("preview_text", ""),
+            "cover_image": cover,
+        }
+    else:  # "plain"
+        out = {
+            "rest_id": article.get("rest_id"),
+            "title": article.get("title"),
+            "preview_text": article.get("preview_text", ""),
+            "plain_text": article.get("plain_text", ""),
+            "cover_image": cover,
+            "media": [
+                m.get("media_url_https") or m.get("media_url")
+                for m in article.get("media_entities", [])
+            ],
+            "lifecycle_state": article.get("lifecycle_state"),
+        }
+    return json.dumps(out, ensure_ascii=False)
 
 
 def _get_version() -> str:

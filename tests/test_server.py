@@ -113,6 +113,21 @@ def test_get_tweet_has_tweet_id():
     assert "tweet_id" in schema["properties"]
 
 
+def test_get_article_format_param_in_schema():
+    """get_article exposes a `format` arg with 'plain' as the default (issue #14)."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_article"]
+    schema = tool.parameters
+    assert "format" in schema["properties"]
+    # format is optional — only article_id is required.
+    assert "format" not in schema.get("required", [])
+    assert "article_id" in schema.get("required", [])
+    # Default must be "plain" so existing callers don't suddenly get the
+    # 150KB+ raw payload that would blow MAX_MCP_OUTPUT_TOKENS.
+    assert schema["properties"]["format"].get("default") == "plain"
+
+
 def test_all_tools_have_descriptions():
     """Every tool has a non-empty description."""
     from twitter_mcp.server import mcp
