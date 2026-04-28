@@ -715,6 +715,35 @@ async def test_get_article_format_plain_no_media_entities_returns_empty_list(
     assert out["media"] == []
 
 
+async def test_get_article_format_plain_explicit_null_media_entities(
+    monkeypatch, fake_two_hop_client
+):
+    """media_entities: null (vs missing) → media: [], no TypeError on `for x in None`."""
+    payload = {
+        "data": {
+            "tweetResult": {
+                "result": {
+                    "__typename": "Tweet",
+                    "rest_id": "999",
+                    "article": {
+                        "article_results": {
+                            "result": {
+                                "rest_id": "999",
+                                "title": "t",
+                                "plain_text": "body",
+                                "media_entities": None,
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+    fake_two_hop_client.tweet_result.return_value = _as_twikit_return(payload)
+    out = json.loads(await server.get_article("999", format="plain"))
+    assert out["media"] == []
+
+
 async def test_get_article_format_full_returns_content_state(
     monkeypatch, fake_two_hop_client
 ):
