@@ -164,71 +164,85 @@ async def test_get_article_preview_raises_when_no_article(monkeypatch):
 # ── get_article: two-hop reader flow (issue #10) ─────
 
 
+# twikit's gql_get / tweet_result_by_rest_id return `tuple[dict, Response]`,
+# not a bare dict (issue #12). Fixtures wrap mocked payloads accordingly so
+# tests exercise the actual transport contract.
+def _as_twikit_return(payload):
+    """Wrap a mocked dict in the (response_json, raw_response) tuple twikit returns."""
+    return (payload, MagicMock(name="raw_response"))
+
+
 def _redirect_response(tweet_id="2048697545527009367"):
     """Hop-1 response: ArticleRedirectScreenQuery resolves article → tweet."""
-    return {
-        "data": {
-            "article_result_by_rest_id": {
-                "result": {
-                    "__typename": "ArticleEntity",
-                    "metadata": {
-                        "author_results": {
-                            "result": {"core": {"screen_name": "Jaden_riku"}}
+    return _as_twikit_return(
+        {
+            "data": {
+                "article_result_by_rest_id": {
+                    "result": {
+                        "__typename": "ArticleEntity",
+                        "metadata": {
+                            "author_results": {
+                                "result": {"core": {"screen_name": "Jaden_riku"}}
+                            },
+                            "tweet_results": {"rest_id": tweet_id},
                         },
-                        "tweet_results": {"rest_id": tweet_id},
-                    },
+                    }
                 }
             }
         }
-    }
+    )
 
 
 def _redirect_response_empty():
     """Hop-1 response when the article isn't visible (deleted / private / wrong namespace)."""
-    return {"data": {"article_result_by_rest_id": {"result": {}}}}
+    return _as_twikit_return({"data": {"article_result_by_rest_id": {"result": {}}}})
 
 
 def _tweet_response_with_article(plain_text="full body 13984 chars goes here"):
     """Hop-2 response: TweetResultByRestId with the article payload nested."""
-    return {
-        "data": {
-            "tweetResult": {
-                "result": {
-                    "__typename": "Tweet",
-                    "rest_id": "2048697545527009367",
-                    "article": {
-                        "article_results": {
-                            "result": {
-                                "title": "2026年，日本国运的分水岭",
-                                "preview_text": "preview…",
-                                "plain_text": plain_text,
-                                "content_state": {"blocks": []},
-                                "cover_media": {
-                                    "media_info": {
-                                        "original_img_url": (
-                                            "https://pbs.twimg.com/media/HG13LzYbkAAI7Ro.jpg"
-                                        )
-                                    }
-                                },
-                                "media_entities": [{} for _ in range(10)],
+    return _as_twikit_return(
+        {
+            "data": {
+                "tweetResult": {
+                    "result": {
+                        "__typename": "Tweet",
+                        "rest_id": "2048697545527009367",
+                        "article": {
+                            "article_results": {
+                                "result": {
+                                    "title": "2026年，日本国运的分水岭",
+                                    "preview_text": "preview…",
+                                    "plain_text": plain_text,
+                                    "content_state": {"blocks": []},
+                                    "cover_media": {
+                                        "media_info": {
+                                            "original_img_url": (
+                                                "https://pbs.twimg.com/media/HG13LzYbkAAI7Ro.jpg"
+                                            )
+                                        }
+                                    },
+                                    "media_entities": [{} for _ in range(10)],
+                                }
                             }
-                        }
-                    },
+                        },
+                    }
                 }
             }
         }
-    }
+    )
 
 
 def _tweet_response_no_article():
     """Hop-2 response where the tweet exists but has no article payload."""
-    return {
-        "data": {
-            "tweetResult": {
-                "result": {"__typename": "Tweet", "rest_id": "2048697545527009367"}
+    return _as_twikit_return(
+        {
+            "data": {
+                "tweetResult": {
+                    "result": {"__typename": "Tweet", "rest_id": "2048697545527009367"}
+                }
             }
         }
-    }
+    )
 
 
 @pytest.fixture
@@ -349,13 +363,15 @@ async def test_get_article_raises_when_redirect_missing_tweet_id(
     monkeypatch, fake_two_hop_client
 ):
     """Hop 1 returns metadata without tweet_results — also a clean ToolError."""
-    fake_two_hop_client.gql_get.return_value = {
-        "data": {
-            "article_result_by_rest_id": {
-                "result": {"__typename": "ArticleEntity", "metadata": {}}
+    fake_two_hop_client.gql_get.return_value = _as_twikit_return(
+        {
+            "data": {
+                "article_result_by_rest_id": {
+                    "result": {"__typename": "ArticleEntity", "metadata": {}}
+                }
             }
         }
-    }
+    )
     with pytest.raises(ToolError):
         await server.get_article("2048420352397864960")
     fake_two_hop_client.tweet_result.assert_not_called()
@@ -419,11 +435,11 @@ async def test_get_article_ignores_stale_env_var(monkeypatch, fake_two_hop_clien
     assert "STALE_HASH_FROM_USER_ENV" not in args[0]
 
 
-async def test_get_article_raises_when_redirect_is_none(
+async def test_get_article_raises_when_redirect_body_is_none(
     monkeypatch, fake_two_hop_client
 ):
-    """A None redirect response (network glitch / unexpected shape) → ToolError."""
-    fake_two_hop_client.gql_get.return_value = None
+    """A None redirect body (network glitch / malformed) → ToolError, no crash."""
+    fake_two_hop_client.gql_get.return_value = _as_twikit_return(None)
     with pytest.raises(ToolError):
         await server.get_article("2048420352397864960")
     fake_two_hop_client.tweet_result.assert_not_called()
@@ -433,17 +449,40 @@ async def test_get_article_raises_when_redirect_missing_data_key(
     monkeypatch, fake_two_hop_client
 ):
     """Redirect response without a `data` key → ToolError, no traceback."""
-    fake_two_hop_client.gql_get.return_value = {"errors": [{"message": "rate limit"}]}
+    fake_two_hop_client.gql_get.return_value = _as_twikit_return(
+        {"errors": [{"message": "rate limit"}]}
+    )
     with pytest.raises(ToolError):
         await server.get_article("2048420352397864960")
     fake_two_hop_client.tweet_result.assert_not_called()
 
 
-async def test_get_article_raises_when_hop2_is_none(monkeypatch, fake_two_hop_client):
-    """A None tweet response (twikit transient failure) → ToolError, not crash."""
-    fake_two_hop_client.tweet_result.return_value = None
+async def test_get_article_raises_when_hop2_body_is_none(
+    monkeypatch, fake_two_hop_client
+):
+    """A None tweet body (twikit transient failure) → ToolError, not crash."""
+    fake_two_hop_client.tweet_result.return_value = _as_twikit_return(None)
     with pytest.raises(ToolError):
         await server.get_article("2048420352397864960")
+
+
+async def test_get_article_unpacks_tuple_returned_by_twikit(
+    monkeypatch, fake_two_hop_client
+):
+    """Issue #12 regression: gql_get / tweet_result_by_rest_id return
+    `tuple[dict, Response]`, not a dict.
+
+    The fix in 0.1.10 unpacks both with `body, _ = await ...`. If a
+    future refactor removes the unpack, the production code would call
+    `.get()` on a tuple and crash with the exact bug from issue #12:
+    `'tuple' object has no attribute 'get'`. This test pins the contract.
+    """
+    # Both fixtures already return tuples (per the issue).
+    out = await server.get_article("2048420352397864960")
+    payload = json.loads(out)
+    # The article body must have flowed through both unpacks correctly.
+    assert payload["title"] == "2026年，日本国运的分水岭"
+    assert payload["plain_text"] == "full body 13984 chars goes here"
 
 
 async def test_get_article_preserves_full_article_payload(

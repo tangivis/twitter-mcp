@@ -282,10 +282,11 @@ async def get_article(article_id: str) -> str:
     client = await _get_client()
 
     # ── Hop 1: article rest_id → tweet rest_id ──────────────────────────
+    # twikit's transport returns (response_json, raw_response) — see issue #12.
     redirect_url = (
         f"{_GRAPHQL_BASE}/{_ARTICLE_REDIRECT_QUERY_ID}/{_ARTICLE_REDIRECT_OP_NAME}"
     )
-    redirect = await client.gql.gql_get(
+    redirect, _ = await client.gql.gql_get(
         redirect_url,
         {"articleEntityId": rest_id},
         {},
@@ -306,7 +307,7 @@ async def get_article(article_id: str) -> str:
         )
 
     # ── Hop 2: tweet → article body ─────────────────────────────────────
-    tweet_resp = await client.gql.tweet_result_by_rest_id(tweet_id)
+    tweet_resp, _ = await client.gql.tweet_result_by_rest_id(tweet_id)
     article = (
         (tweet_resp or {})
         .get("data", {})

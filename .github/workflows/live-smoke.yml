@@ -1,0 +1,95 @@
+name: Live integration smoke test
+
+# Verifies get_article actually pulls a real X Article body.
+# Uses a burner X account's cookies stored as repo secrets:
+#   TWITTER_CT0
+#   TWITTER_AUTH_TOKEN
+#
+# Never run against forks — secrets aren't exposed there anyway, and the
+# `if: github.repository == 'tangivis/twitter-mcp'` guard makes that explicit.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Mondays 12:00 UTC — weekly canary.
+    - cron: "0 12 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - "twitter_mcp/**"
+      - ".github/workflows/live-smoke.yml"
+
+# Cancel an in-flight run if a new push lands; only one live-smoke per ref.
+concurrency:
+  group: live-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  smoke:
+    name: get_article live fetch
+    if: github.repository == 'tangivis/twitter-mcp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Mask cookies in all subsequent logs
+        env:
+          CT0: ${{ secrets.TWITTER_CT0 }}
+          AUTH: ${{ secrets.TWITTER_AUTH_TOKEN }}
+        run: |
+          # ::add-mask:: tells the runner to redact this string from any
+          # later log line. Safety net in case anything echoes a header
+          # or the cookies file.
+          echo "::add-mask::$CT0"
+          echo "::add-mask::$AUTH"
+
+      - name: Write cookies file
+        env:
+          CT0: ${{ secrets.TWITTER_CT0 }}
+          AUTH: ${{ secrets.TWITTER_AUTH_TOKEN }}
+        run: |
+          if [ -z "$CT0" ] || [ -z "$AUTH" ]; then
+            echo "::error::TWITTER_CT0 / TWITTER_AUTH_TOKEN secrets are not set."
+            exit 1
+          fi
+          mkdir -p "$HOME/.config/twitter-mcp"
+          # Use jq -n so the values never appear on a shell command line.
+          jq -n --arg c "$CT0" --arg a "$AUTH" \
+            '{ct0:$c, auth_token:$a}' \
+            > "$HOME/.config/twitter-mcp/cookies.json"
+          chmod 600 "$HOME/.config/twitter-mcp/cookies.json"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Smoke get_article against a known public article
+        # Jaden_riku's "2026年，日本国运的分水岭" — verified at the HTTP layer
+        # in issue #10. If the body comes back populated, the two-hop flow
+        # plus the issue #12 tuple unpack are both working.
+        run: |
+          uv run python - <<'PY'
+          import asyncio, json
+          from twitter_mcp.server import get_article
+
+          ARTICLE_ID = "2048420352397864960"
+          out = json.loads(asyncio.run(get_article(ARTICLE_ID)))
+
+          title = out.get("title") or ""
+          body  = out.get("plain_text") or ""
+          media = out.get("media_entities") or []
+
+          print(f"title  = {title!r}")
+          print(f"body   = {len(body)} chars")
+          print(f"media  = {len(media)} entries")
+
+          assert title,             "no title in article payload"
+          assert len(body) > 1000,  f"plain_text suspiciously short: {len(body)} chars"
+          PY
