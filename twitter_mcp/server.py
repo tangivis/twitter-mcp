@@ -29,25 +29,23 @@ _ARTICLE_URL_RE = re.compile(r"/i/article/(\d+)")
 _SYNDICATION_URL = "https://cdn.syndication.twimg.com/tweet-result"
 _GRAPHQL_BASE = "https://x.com/i/api/graphql"
 
-# Article GraphQL endpoint (issue #7).
-# `TwitterArticleByRestId` was renamed; the new op is `ArticleEntityResultByRestId`
-# served from the `bundle.TwitterArticles.*.js` chunk on abs.twimg.com.
+# Article reader (issue #10) — two-hop flow.
+#
+# `ArticleEntityResultByRestId` (the op 0.1.8 used) is X's *editor* op:
+# it only returns content for articles you authored. The public reader has
+# no dedicated GraphQL operation; instead, the X web client takes two hops:
+#
+#   1. ArticleRedirectScreenQuery resolves the article rest_id to the
+#      underlying tweet rest_id (the article body lives on a tweet).
+#   2. TweetResultByRestId fetches that tweet with the article fieldToggles
+#      enabled, exposing the body at
+#      `.article.article_results.result.plain_text`.
+#
 # Refresh the queryId the same way every other twikit Endpoint constant is
-# refreshed when X rotates a hash (manual capture from the public bundle).
-_ARTICLE_QUERY_ID = "8-OHhj8-KCAHUP8XjPaAYQ"
-_ARTICLE_OP_NAME = "ArticleEntityResultByRestId"
-_ARTICLE_FEATURES = {
-    "profile_label_improvements_pcf_label_in_post_enabled": True,
-    "responsive_web_profile_redirect_enabled": True,
-    "rweb_tipjar_consumption_enabled": True,
-    "verified_phone_label_enabled": True,
-    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": True,
-    "responsive_web_graphql_timeline_navigation_enabled": True,
-}
-_ARTICLE_FIELD_TOGGLES = {
-    "withPayments": False,
-    "withAuxiliaryUserLabels": False,
-}
+# refreshed when X rotates a hash (curl `bundle.Articles.*.js` from
+# `abs.twimg.com/responsive-web/client-web/`, no auth required).
+_ARTICLE_REDIRECT_QUERY_ID = "zrSRXJmE1vj37AUmkh2oGg"
+_ARTICLE_REDIRECT_OP_NAME = "ArticleRedirectScreenQuery"
 
 
 async def _get_client() -> Client:
@@ -263,27 +261,67 @@ async def get_article_preview(tweet_id: str) -> str:
 
 @mcp.tool()
 async def get_article(article_id: str) -> str:
-    """Fetch the full body of an X Article (long-form post) via GraphQL.
+    """Fetch the full body of an X Article (long-form post) by rest_id or URL.
 
-    Calls the persisted GraphQL operation `ArticleEntityResultByRestId` with
-    a hardcoded queryId (refresh it from the public `bundle.TwitterArticles.*.js`
-    chunk if X rotates the hash). Requires authentication via cookies — same as
-    every other authenticated tool here.
+    Two-hop reader flow (issue #10):
+
+      1. `ArticleRedirectScreenQuery` resolves the article rest_id to the
+         underlying tweet rest_id.
+      2. `TweetResultByRestId` (twikit's existing helper) fetches the tweet
+         with article fieldToggles enabled. The body lives at
+         `tweet.article.article_results.result` (title, plain_text,
+         content_state, cover_media, media_entities, …).
+
+    Requires authentication via cookies — same as every other authenticated
+    tool here. No env-var setup.
 
     Args:
         article_id: Article rest_id (numeric string) or full /i/article/<id> URL.
     """
     rest_id = _parse_article_url_or_id(article_id) or article_id
-    variables = {"articleId": rest_id}
-    url = f"{_GRAPHQL_BASE}/{_ARTICLE_QUERY_ID}/{_ARTICLE_OP_NAME}"
     client = await _get_client()
-    result = await client.gql.gql_get(
-        url,
-        variables,
-        _ARTICLE_FEATURES,
-        extra_params={"fieldToggles": _ARTICLE_FIELD_TOGGLES},
+
+    # ── Hop 1: article rest_id → tweet rest_id ──────────────────────────
+    redirect_url = (
+        f"{_GRAPHQL_BASE}/{_ARTICLE_REDIRECT_QUERY_ID}/{_ARTICLE_REDIRECT_OP_NAME}"
     )
-    return json.dumps(result)
+    redirect = await client.gql.gql_get(
+        redirect_url,
+        {"articleEntityId": rest_id},
+        {},
+    )
+    tweet_id = (
+        (redirect or {})
+        .get("data", {})
+        .get("article_result_by_rest_id", {})
+        .get("result", {})
+        .get("metadata", {})
+        .get("tweet_results", {})
+        .get("rest_id")
+    )
+    if not tweet_id:
+        raise ToolError(
+            f"Article {rest_id} not found "
+            f"(deleted, private, or not visible to this account)."
+        )
+
+    # ── Hop 2: tweet → article body ─────────────────────────────────────
+    tweet_resp = await client.gql.tweet_result_by_rest_id(tweet_id)
+    article = (
+        (tweet_resp or {})
+        .get("data", {})
+        .get("tweetResult", {})
+        .get("result", {})
+        .get("article", {})
+        .get("article_results", {})
+        .get("result")
+    )
+    if not article:
+        raise ToolError(
+            f"Tweet {tweet_id} did not return an article payload "
+            f"(article may be unavailable)."
+        )
+    return json.dumps(article)
 
 
 def _get_version() -> str:
