@@ -1,10 +1,10 @@
-"""Tests for X Article support (issue #4).
+"""Tests for X Article support (issues #4, #7).
 
 Covers:
 - _parse_article_url_or_id: URL/ID parsing for article links
 - get_tweet article-aware error path + None-guard
 - get_article_preview: syndication endpoint, no auth
-- get_article: GraphQL endpoint, requires TWITTER_ARTICLE_QUERY_ID env var
+- get_article: GraphQL endpoint via ArticleEntityResultByRestId (no env var)
 """
 
 import json
@@ -172,51 +172,103 @@ def fake_client_with_gql(monkeypatch):
     return client
 
 
-async def test_get_article_requires_query_id_env(monkeypatch, fake_client_with_gql):
+async def test_get_article_does_not_require_env_var(monkeypatch, fake_client_with_gql):
+    """Issue #7: TWITTER_ARTICLE_QUERY_ID env var is no longer needed.
+
+    The queryId for ArticleEntityResultByRestId is hardcoded, like every
+    other queryId in the vendored twikit Endpoint class. Setting / unsetting
+    the env var has no effect.
+    """
     monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
-    with pytest.raises(ToolError) as exc:
-        await server.get_article("2046813551021760512")
-    msg = str(exc.value)
-    assert "TWITTER_ARTICLE_QUERY_ID" in msg
-    fake_client_with_gql.gql.gql_get.assert_not_called()
-
-
-async def test_get_article_calls_graphql_with_correct_args(
-    monkeypatch, fake_client_with_gql
-):
-    monkeypatch.setenv("TWITTER_ARTICLE_QUERY_ID", "abc123hash")
     out = await server.get_article("2046813551021760512")
-    # function returns JSON string of the gql response
     assert json.loads(out) == {"data": "ok"}
     fake_client_with_gql.gql.gql_get.assert_awaited_once()
-    args, kwargs = fake_client_with_gql.gql.gql_get.call_args
+
+
+async def test_get_article_uses_renamed_op_and_hardcoded_query_id(
+    monkeypatch, fake_client_with_gql
+):
+    """Issue #7: TwitterArticleByRestId was renamed to ArticleEntityResultByRestId.
+
+    The queryId 8-OHhj8-KCAHUP8XjPaAYQ is captured from the public
+    bundle.TwitterArticles.*.js chunk and hardcoded.
+    """
+    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
+    await server.get_article("2046813551021760512")
+    args, _ = fake_client_with_gql.gql.gql_get.call_args
     url = args[0]
-    variables = args[1]
-    features = args[2] if len(args) > 2 else kwargs.get("features", {})
-    assert url.endswith("/abc123hash/TwitterArticleByRestId")
-    assert url.startswith("https://x.com/i/api/graphql/")
-    assert variables == {
-        "twitterArticleId": "2046813551021760512",
-        "withArticleRichContentState": True,
-        "withArticlePlainText": True,
-    }
-    # Article-related feature flags are present and enabled
-    assert (
-        features.get("responsive_web_twitter_article_tweet_consumption_enabled") is True
+    assert url == (
+        "https://x.com/i/api/graphql/8-OHhj8-KCAHUP8XjPaAYQ/ArticleEntityResultByRestId"
     )
-    assert features.get("articles_preview_enabled") is True
+    # The dead old op name must NOT appear anywhere in the URL.
+    assert "TwitterArticleByRestId" not in url
+
+
+async def test_get_article_uses_articleId_variable(monkeypatch, fake_client_with_gql):
+    """Issue #7: variable name follows twikit's `<thing>Id` convention.
+
+    `ArticleEntityResultByRestId` → `articleId` (cf. `TweetResultByRestId` → `tweetId`).
+    The old `twitterArticleId` is gone.
+    """
+    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
+    await server.get_article("2046813551021760512")
+    args, _ = fake_client_with_gql.gql.gql_get.call_args
+    variables = args[1]
+    assert variables == {"articleId": "2046813551021760512"}
+    assert "twitterArticleId" not in variables
+
+
+async def test_get_article_passes_new_features(monkeypatch, fake_client_with_gql):
+    """Issue #7: feature switches for ArticleEntityResultByRestId are different.
+
+    Old `responsive_web_twitter_article_tweet_consumption_enabled` and
+    `articles_preview_enabled` are gone; the new op needs the listed
+    profile/timeline-navigation flags.
+    """
+    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
+    await server.get_article("2046813551021760512")
+    args, kwargs = fake_client_with_gql.gql.gql_get.call_args
+    features = args[2] if len(args) > 2 else kwargs.get("features", {})
+    expected = {
+        "profile_label_improvements_pcf_label_in_post_enabled",
+        "responsive_web_profile_redirect_enabled",
+        "rweb_tipjar_consumption_enabled",
+        "verified_phone_label_enabled",
+        "responsive_web_graphql_skip_user_profile_image_extensions_enabled",
+        "responsive_web_graphql_timeline_navigation_enabled",
+    }
+    assert expected.issubset(features.keys())
+    for k in expected:
+        assert features[k] is True
+    # No leftover stale flags
+    assert "responsive_web_twitter_article_tweet_consumption_enabled" not in features
+    assert "articles_preview_enabled" not in features
+
+
+async def test_get_article_passes_field_toggles_via_extra_params(
+    monkeypatch, fake_client_with_gql
+):
+    """Issue #7: fieldToggles {withPayments, withAuxiliaryUserLabels} ride extra_params."""
+    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
+    await server.get_article("2046813551021760512")
+    _, kwargs = fake_client_with_gql.gql.gql_get.call_args
+    extra = kwargs.get("extra_params") or {}
+    assert extra.get("fieldToggles") == {
+        "withPayments": False,
+        "withAuxiliaryUserLabels": False,
+    }
 
 
 async def test_get_article_accepts_url(monkeypatch, fake_client_with_gql):
-    monkeypatch.setenv("TWITTER_ARTICLE_QUERY_ID", "abc123hash")
+    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
     await server.get_article("https://x.com/i/article/2046813551021760512")
     args, _ = fake_client_with_gql.gql.gql_get.call_args
-    assert args[1]["twitterArticleId"] == "2046813551021760512"
+    assert args[1]["articleId"] == "2046813551021760512"
 
 
-async def test_get_article_rejects_non_article_input(monkeypatch, fake_client_with_gql):
-    monkeypatch.setenv("TWITTER_ARTICLE_QUERY_ID", "abc123hash")
-    # Bare numeric ID is allowed (caller may pass either a URL or an id)
+async def test_get_article_accepts_bare_numeric_id(monkeypatch, fake_client_with_gql):
+    """Caller may pass either a /i/article/<id> URL or the bare rest_id."""
+    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
     await server.get_article("2046813551021760512")
     fake_client_with_gql.gql.gql_get.assert_awaited_once()
 

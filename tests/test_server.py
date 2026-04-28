@@ -219,3 +219,45 @@ def test_server_name():
     from twitter_mcp.server import mcp
 
     assert mcp.name == "twitter"
+
+
+# ── --version flag ────────────────────────────────────
+
+
+def _expected_version() -> str:
+    """Read version straight from pyproject.toml so tests can't drift."""
+    import re
+    from pathlib import Path
+
+    pyproject = Path(__file__).parent.parent / "pyproject.toml"
+    text = pyproject.read_text()
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    assert m, "version not found in pyproject.toml"
+    return m.group(1)
+
+
+def test_version_flag_long_form():
+    """`python -m twitter_mcp.server --version` prints version and exits 0."""
+    result = subprocess.run(
+        [sys.executable, "-m", "twitter_mcp.server", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    out = result.stdout + result.stderr
+    assert _expected_version() in out
+    assert "twikit-mcp" in out
+
+
+def test_version_flag_short_form():
+    """`-v` is an alias for `--version`."""
+    result = subprocess.run(
+        [sys.executable, "-m", "twitter_mcp.server", "-v"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    out = result.stdout + result.stderr
+    assert _expected_version() in out
