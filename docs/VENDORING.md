@@ -43,6 +43,7 @@ PyPI 上的 twikit 2.3.3 有两个已知 bug：
 | 0.1.3 | `_vendor/twikit/user.py` | `User.__init__` 容忍 `legacy.entities.description.urls` 和 `legacy.withheld_in_countries` 缺失 |
 | 0.1.4 | `_vendor/twikit/user.py` | `User.__init__` 全面防御化，所有 `legacy.*` 字段改 `.get()` 带默认值 |
 | 0.1.5 | `_vendor/twikit/tweet.py` | `Tweet` 属性全面防御化：`text`/`created_at`/`lang`/`favorite_count`/`retweet_count`/`reply_count`/`favorited`/`is_quote_status` 以及 `entities.*` 子树（hashtags/urls/media）都走 `.get()`。构造时 `_data["legacy"]` 也改为可选。|
+| 0.1.9 | `_vendor/twikit/client/gql.py` | `GQLClient.tweet_result_by_rest_id` 把 `fieldToggles.withArticlePlainText` 从 `False` 翻成 `True`。这是 issue #10 修复 `get_article` 的关键一步：上游默认抑制 article 正文，翻成 `True` 后 `.article.article_results.result.plain_text` 才会真的填充。改动在源文件里加了 `# twitter-mcp patch (issue #10)` 注释,下次 vendor 刷新时不要漏掉。|
 
 ### 为什么要防御化 `User.__init__`
 
@@ -78,6 +79,16 @@ PyPI 上的 twikit 2.3.3 有两个已知 bug：
 - `tests/test_cookies.py` — `_get_client` 的错误路径（文件缺失、JSON 损坏、缺 `ct0`/`auth_token` 键）
 
 现在 `twitter_mcp/server.py` 达到 **100% 覆盖**，CI 启用 `--cov-fail-under=95` 作为底线。
+
+### 0.1.9：为什么要翻 `withArticlePlainText`
+
+**问题:** issue #10 揭示 `get_article` 在 0.1.8 完全不工作 — 调的是 X 的**编辑器** op `ArticleEntityResultByRestId`,对你没创作过的 article 永远返回 `result: {}`。Reader 实际是双跳流程:`ArticleRedirectScreenQuery` 把 article rest_id 解析成 tweet rest_id,然后 `TweetResultByRestId` 取那条 tweet 的 article 正文。
+
+而双跳流程的第二跳要拿到正文,必须把 `fieldToggles.withArticlePlainText` 设成 `True`。上游 twikit 默认是 `False`,所以正文 (`tweet.article.article_results.result.plain_text`) 被抑制,只剩 metadata。
+
+**改动:** 唯一的改动是 `_vendor/twikit/client/gql.py::tweet_result_by_rest_id` 里的一行 — `'withArticlePlainText': False` → `True`。改动旁边带 `# twitter-mcp patch (issue #10)` 注释,下次同步上游时不要漏掉。
+
+**回归测试:** `tests/test_articles.py::test_vendor_tweet_result_passes_article_plain_text_true` 通过 `inspect.getsource()` 读源码,断言 `False` 形式不存在、`True` 形式存在 — 即便有人在重做 vendor 的时候不小心覆盖回去也会被 CI 立刻揪出来。
 
 ---
 
