@@ -657,6 +657,37 @@ async def test_get_article_plain_format_unicode_not_escaped(
     assert "\\u" not in out  # no Unicode escapes
 
 
+async def test_get_article_format_plain_smaller_than_full(
+    monkeypatch, fake_two_hop_client
+):
+    """Concrete payoff check: plain output must be meaningfully smaller than full.
+
+    Exact ratio depends on how heavy content_state is in the fixture, but
+    plain should always be < full or the trim would be pointless.
+    """
+    plain = await server.get_article("2048420352397864960", format="plain")
+    full = await server.get_article("2048420352397864960", format="full")
+    assert len(plain) < len(full)
+
+
+async def test_get_article_format_preview_smallest_of_three(
+    monkeypatch, fake_two_hop_client
+):
+    """preview < plain < full — guaranteed by the field set, pinned here."""
+    preview = await server.get_article("2048420352397864960", format="preview")
+    plain = await server.get_article("2048420352397864960", format="plain")
+    full = await server.get_article("2048420352397864960", format="full")
+    assert len(preview) < len(plain) < len(full)
+
+
+@pytest.mark.parametrize("bad", ["", "PLAIN", "raw", "json", "rich", "summary"])
+async def test_get_article_invalid_format_values(monkeypatch, fake_two_hop_client, bad):
+    """Common typos and wrong values all produce the same clean ToolError."""
+    with pytest.raises(ToolError) as exc:
+        await server.get_article("2048420352397864960", format=bad)
+    assert "format" in str(exc.value)
+
+
 async def test_get_article_format_plain_handles_missing_optional_fields(
     monkeypatch, fake_two_hop_client
 ):
