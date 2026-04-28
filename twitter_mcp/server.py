@@ -1,8 +1,11 @@
 """Twitter MCP Server - twikit-based, no API key needed."""
 
+import argparse
 import json
 import os
 import re
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 import httpx
@@ -10,7 +13,6 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from twitter_mcp._vendor.twikit import Client
-from twitter_mcp._vendor.twikit.constants import TWEET_RESULT_BY_REST_ID_FEATURES
 
 mcp = FastMCP("twitter")
 
@@ -26,6 +28,26 @@ COOKIES_PATH = Path(
 _ARTICLE_URL_RE = re.compile(r"/i/article/(\d+)")
 _SYNDICATION_URL = "https://cdn.syndication.twimg.com/tweet-result"
 _GRAPHQL_BASE = "https://x.com/i/api/graphql"
+
+# Article GraphQL endpoint (issue #7).
+# `TwitterArticleByRestId` was renamed; the new op is `ArticleEntityResultByRestId`
+# served from the `bundle.TwitterArticles.*.js` chunk on abs.twimg.com.
+# Refresh the queryId the same way every other twikit Endpoint constant is
+# refreshed when X rotates a hash (manual capture from the public bundle).
+_ARTICLE_QUERY_ID = "8-OHhj8-KCAHUP8XjPaAYQ"
+_ARTICLE_OP_NAME = "ArticleEntityResultByRestId"
+_ARTICLE_FEATURES = {
+    "profile_label_improvements_pcf_label_in_post_enabled": True,
+    "responsive_web_profile_redirect_enabled": True,
+    "rweb_tipjar_consumption_enabled": True,
+    "verified_phone_label_enabled": True,
+    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": True,
+    "responsive_web_graphql_timeline_navigation_enabled": True,
+}
+_ARTICLE_FIELD_TOGGLES = {
+    "withPayments": False,
+    "withAuxiliaryUserLabels": False,
+}
 
 
 async def _get_client() -> Client:
@@ -243,35 +265,47 @@ async def get_article_preview(tweet_id: str) -> str:
 async def get_article(article_id: str) -> str:
     """Fetch the full body of an X Article (long-form post) via GraphQL.
 
-    Requires the env var `TWITTER_ARTICLE_QUERY_ID` to be set to the current
-    `TwitterArticleByRestId` queryId hash captured from a logged-in browser
-    session (DevTools → Network → filter `/i/api/graphql/` while opening
-    `https://x.com/i/article/<id>`). X rotates these hashes periodically.
+    Calls the persisted GraphQL operation `ArticleEntityResultByRestId` with
+    a hardcoded queryId (refresh it from the public `bundle.TwitterArticles.*.js`
+    chunk if X rotates the hash). Requires authentication via cookies — same as
+    every other authenticated tool here.
 
     Args:
         article_id: Article rest_id (numeric string) or full /i/article/<id> URL.
     """
-    query_id = os.environ.get("TWITTER_ARTICLE_QUERY_ID")
-    if not query_id:
-        raise ToolError(
-            "TWITTER_ARTICLE_QUERY_ID env var is not set. Capture the current "
-            "`TwitterArticleByRestId` queryId from a logged-in browser session "
-            "(DevTools → Network → filter `/i/api/graphql/`) and export it."
-        )
-
     rest_id = _parse_article_url_or_id(article_id) or article_id
-    variables = {
-        "twitterArticleId": rest_id,
-        "withArticleRichContentState": True,
-        "withArticlePlainText": True,
-    }
-    url = f"{_GRAPHQL_BASE}/{query_id}/TwitterArticleByRestId"
+    variables = {"articleId": rest_id}
+    url = f"{_GRAPHQL_BASE}/{_ARTICLE_QUERY_ID}/{_ARTICLE_OP_NAME}"
     client = await _get_client()
-    result = await client.gql.gql_get(url, variables, TWEET_RESULT_BY_REST_ID_FEATURES)
+    result = await client.gql.gql_get(
+        url,
+        variables,
+        _ARTICLE_FEATURES,
+        extra_params={"fieldToggles": _ARTICLE_FIELD_TOGGLES},
+    )
     return json.dumps(result)
 
 
+def _get_version() -> str:
+    """Read the installed package version, falling back to 'unknown'."""
+    try:
+        return _pkg_version("twikit-mcp")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def main():
+    parser = argparse.ArgumentParser(
+        prog="twikit-mcp",
+        description="Twitter/X MCP server — twikit-based, no API key needed.",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"twikit-mcp {_get_version()}",
+    )
+    parser.parse_args()
     mcp.run(transport="stdio")
 
 
