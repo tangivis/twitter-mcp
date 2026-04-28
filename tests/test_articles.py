@@ -210,10 +210,14 @@ def _tweet_response_with_article(plain_text="full body 13984 chars goes here"):
                         "article": {
                             "article_results": {
                                 "result": {
+                                    "rest_id": "2048420352397864960",
                                     "title": "2026年，日本国运的分水岭",
                                     "preview_text": "preview…",
                                     "plain_text": plain_text,
-                                    "content_state": {"blocks": []},
+                                    "content_state": {
+                                        "blocks": [{"text": "rich"}] * 50,
+                                        "entityMap": {},
+                                    },
                                     "cover_media": {
                                         "media_info": {
                                             "original_img_url": (
@@ -221,7 +225,14 @@ def _tweet_response_with_article(plain_text="full body 13984 chars goes here"):
                                             )
                                         }
                                     },
-                                    "media_entities": [{} for _ in range(10)],
+                                    "media_entities": [
+                                        {
+                                            "media_url_https": f"https://pbs.twimg.com/media/M{i}.jpg"
+                                        }
+                                        for i in range(10)
+                                    ],
+                                    "lifecycle_state": {"state": "PUBLISHED"},
+                                    "metadata": {"author_results": {"result": {}}},
                                 }
                             }
                         },
@@ -269,15 +280,16 @@ def fake_two_hop_client(monkeypatch):
 
 
 async def test_get_article_returns_article_payload(monkeypatch, fake_two_hop_client):
-    """Happy path: returns the inner article_results.result JSON-encoded."""
+    """Happy path (default plain format): trimmed envelope with body + media URLs."""
     out = await server.get_article("2048420352397864960")
     payload = json.loads(out)
     assert payload["title"] == "2026年，日本国运的分水岭"
     assert payload["plain_text"] == "full body 13984 chars goes here"
-    assert len(payload["media_entities"]) == 10
-    assert payload["cover_media"]["media_info"]["original_img_url"].startswith(
-        "https://pbs.twimg.com/"
-    )
+    # plain format flattens media to a URL list
+    assert payload["media"] == [
+        f"https://pbs.twimg.com/media/M{i}.jpg" for i in range(10)
+    ]
+    assert payload["cover_image"].startswith("https://pbs.twimg.com/")
 
 
 async def test_get_article_hop1_uses_redirect_op_and_hardcoded_query_id(
@@ -485,15 +497,15 @@ async def test_get_article_unpacks_tuple_returned_by_twikit(
     assert payload["plain_text"] == "full body 13984 chars goes here"
 
 
-async def test_get_article_preserves_full_article_payload(
+async def test_get_article_format_full_preserves_raw_payload(
     monkeypatch, fake_two_hop_client
 ):
-    """Tool output preserves every field of `article_results.result` verbatim.
+    """`format="full"` returns the raw GraphQL article_results.result verbatim.
 
-    Important for downstream callers that want plain_text, content_state
-    (rich blocks for layout), cover_media URL, media_entities, etc.
+    Important for downstream callers that want content_state (rich blocks
+    for layout), the nested cover_media object, full media_entities, etc.
     """
-    out = await server.get_article("2048420352397864960")
+    out = await server.get_article("2048420352397864960", format="full")
     payload = json.loads(out)
     # All fields the issue's verification curl pulled out:
     assert "title" in payload
@@ -502,6 +514,181 @@ async def test_get_article_preserves_full_article_payload(
     assert "content_state" in payload
     assert "cover_media" in payload
     assert "media_entities" in payload
+    assert "metadata" in payload
+
+
+# ── format=preview|plain|full (issue #14) ────────────
+
+
+async def test_get_article_default_format_is_plain(monkeypatch, fake_two_hop_client):
+    """Calling get_article without `format=` returns the trimmed plain shape."""
+    out = await server.get_article("2048420352397864960")
+    payload = json.loads(out)
+    # plain shape — no rich content_state
+    assert "content_state" not in payload
+    assert "media_entities" not in payload  # flattened to .media
+    # but body is present
+    assert payload["plain_text"]
+
+
+async def test_get_article_format_preview_returns_minimal_envelope(
+    monkeypatch, fake_two_hop_client
+):
+    """`format="preview"` returns rest_id / title / preview_text / cover_image only.
+
+    Stays under ~1KB and matches what get_article_preview returns via the
+    syndication endpoint, but works for cookie-authed callers without a
+    second code path.
+    """
+    out = await server.get_article("2048420352397864960", format="preview")
+    payload = json.loads(out)
+    assert set(payload.keys()) == {"rest_id", "title", "preview_text", "cover_image"}
+    assert payload["title"] == "2026年，日本国运的分水岭"
+    assert payload["rest_id"] == "2048420352397864960"
+    # never the body or rich content
+    assert "plain_text" not in payload
+    assert "content_state" not in payload
+    assert "media" not in payload
+
+
+async def test_get_article_format_plain_includes_body_and_media_urls(
+    monkeypatch, fake_two_hop_client
+):
+    """`format="plain"` is the LLM-friendly default: body + media URLs, no rich tree."""
+    out = await server.get_article("2048420352397864960", format="plain")
+    payload = json.loads(out)
+    assert payload["title"] == "2026年，日本国运的分水岭"
+    assert payload["plain_text"] == "full body 13984 chars goes here"
+    assert payload["preview_text"] == "preview…"
+    assert payload["cover_image"].startswith("https://pbs.twimg.com/")
+    # media_entities flattened to a flat URL list
+    assert payload["media"] == [
+        f"https://pbs.twimg.com/media/M{i}.jpg" for i in range(10)
+    ]
+    # lifecycle_state preserved (small, useful)
+    assert payload["lifecycle_state"] == {"state": "PUBLISHED"}
+    # but no rich content_state
+    assert "content_state" not in payload
+    # and no nested cover_media object — flattened to cover_image
+    assert "cover_media" not in payload
+
+
+async def test_get_article_format_plain_falls_back_to_media_url_when_https_absent(
+    monkeypatch, fake_two_hop_client
+):
+    """media_entities entries use media_url_https when present, fall back to media_url."""
+    # First entry has only media_url, second has both, third is empty.
+    payload = {
+        "data": {
+            "tweetResult": {
+                "result": {
+                    "__typename": "Tweet",
+                    "rest_id": "999",
+                    "article": {
+                        "article_results": {
+                            "result": {
+                                "rest_id": "999",
+                                "title": "t",
+                                "preview_text": "p",
+                                "plain_text": "body",
+                                "media_entities": [
+                                    {"media_url": "http://legacy.example/a.jpg"},
+                                    {
+                                        "media_url_https": "https://new.example/b.jpg",
+                                        "media_url": "http://old.example/b.jpg",
+                                    },
+                                    {},  # nothing usable
+                                ],
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+    fake_two_hop_client.tweet_result.return_value = _as_twikit_return(payload)
+    out = json.loads(await server.get_article("999", format="plain"))
+    assert out["media"] == [
+        "http://legacy.example/a.jpg",
+        "https://new.example/b.jpg",
+        None,
+    ]
+
+
+async def test_get_article_format_full_returns_content_state(
+    monkeypatch, fake_two_hop_client
+):
+    """`format="full"` keeps the heavy content_state block tree."""
+    out = await server.get_article("2048420352397864960", format="full")
+    payload = json.loads(out)
+    assert payload["content_state"] == {
+        "blocks": [{"text": "rich"}] * 50,
+        "entityMap": {},
+    }
+
+
+async def test_get_article_invalid_format_raises_tool_error(
+    monkeypatch, fake_two_hop_client
+):
+    """Unknown format value → ToolError before any network call."""
+    with pytest.raises(ToolError) as exc:
+        await server.get_article("2048420352397864960", format="markdown")
+    msg = str(exc.value)
+    assert "format" in msg
+    assert "preview" in msg and "plain" in msg and "full" in msg
+    # Must not have started the two-hop fetch.
+    fake_two_hop_client.gql_get.assert_not_called()
+    fake_two_hop_client.tweet_result.assert_not_called()
+
+
+async def test_get_article_plain_format_unicode_not_escaped(
+    monkeypatch, fake_two_hop_client
+):
+    """JSON output keeps Chinese characters literal (ensure_ascii=False).
+
+    A 9000-char Chinese article would expand ~6× under the default \\uXXXX
+    escape, blowing through MCP's per-tool cap. ensure_ascii=False keeps it
+    UTF-8 so the trimming actually pays off.
+    """
+    out = await server.get_article("2048420352397864960", format="plain")
+    # The literal Chinese title appears in the JSON string,
+    # not the escape sequence.
+    assert "2026年，日本国运的分水岭" in out
+    assert "\\u" not in out  # no Unicode escapes
+
+
+async def test_get_article_format_plain_handles_missing_optional_fields(
+    monkeypatch, fake_two_hop_client
+):
+    """If the article lacks cover_media / media_entities / lifecycle_state,
+    plain format still returns sane defaults instead of crashing."""
+    minimal = {
+        "data": {
+            "tweetResult": {
+                "result": {
+                    "__typename": "Tweet",
+                    "rest_id": "1",
+                    "article": {
+                        "article_results": {
+                            "result": {
+                                "rest_id": "1",
+                                "title": "t",
+                                "plain_text": "body",
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+    fake_two_hop_client.tweet_result.return_value = _as_twikit_return(minimal)
+    out = json.loads(await server.get_article("1"))
+    assert out["title"] == "t"
+    assert out["plain_text"] == "body"
+    assert out["preview_text"] == ""
+    assert out["cover_image"] is None
+    assert out["media"] == []
+    assert out["lifecycle_state"] is None
 
 
 # ── vendor patch: withArticlePlainText flipped to True (issue #10) ────
