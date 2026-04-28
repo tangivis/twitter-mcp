@@ -350,16 +350,22 @@ async def get_article(article_id: str, format: str = "plain") -> str:
             "cover_image": cover,
         }
     else:  # "plain"
+        # Article media URLs live at media_entities[*].media_info.original_img_url
+        # — NOT at the flat media_url_https / media_url that tweet schema uses
+        # (issue #16). Drop entries where the URL can't be extracted so callers
+        # don't see a list of nulls.
+        media = []
+        for m in article.get("media_entities") or []:
+            url = ((m or {}).get("media_info") or {}).get("original_img_url")
+            if url:
+                media.append(url)
         out = {
             "rest_id": article.get("rest_id"),
             "title": article.get("title"),
             "preview_text": article.get("preview_text", ""),
             "plain_text": article.get("plain_text", ""),
             "cover_image": cover,
-            "media": [
-                m.get("media_url_https") or m.get("media_url")
-                for m in article.get("media_entities", [])
-            ],
+            "media": media,
             "lifecycle_state": article.get("lifecycle_state"),
         }
     return json.dumps(out, ensure_ascii=False)
