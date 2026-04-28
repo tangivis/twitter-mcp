@@ -363,13 +363,15 @@ async def test_get_article_raises_when_redirect_missing_tweet_id(
     monkeypatch, fake_two_hop_client
 ):
     """Hop 1 returns metadata without tweet_results — also a clean ToolError."""
-    fake_two_hop_client.gql_get.return_value = {
-        "data": {
-            "article_result_by_rest_id": {
-                "result": {"__typename": "ArticleEntity", "metadata": {}}
+    fake_two_hop_client.gql_get.return_value = _as_twikit_return(
+        {
+            "data": {
+                "article_result_by_rest_id": {
+                    "result": {"__typename": "ArticleEntity", "metadata": {}}
+                }
             }
         }
-    }
+    )
     with pytest.raises(ToolError):
         await server.get_article("2048420352397864960")
     fake_two_hop_client.tweet_result.assert_not_called()
