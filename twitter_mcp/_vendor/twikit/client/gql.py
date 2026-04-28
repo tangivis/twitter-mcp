@@ -714,10 +714,13 @@ class GQLClient:
             "includePromotedContent": False,
             "withVoice": False,
         }
+        # twitter-mcp patch (issue #10): withArticlePlainText flipped to True
+        # so the article body actually populates at
+        # .article.article_results.result.plain_text. Upstream ships False.
         params = {
             "fieldToggles": {
                 "withArticleRichContentState": True,
-                "withArticlePlainText": False,
+                "withArticlePlainText": True,
                 "withGrokAnalyze": False,
             }
         }

@@ -1,10 +1,11 @@
-"""Tests for X Article support (issues #4, #7).
+"""Tests for X Article support (issues #4, #7, #10).
 
 Covers:
 - _parse_article_url_or_id: URL/ID parsing for article links
 - get_tweet article-aware error path + None-guard
 - get_article_preview: syndication endpoint, no auth
-- get_article: GraphQL endpoint via ArticleEntityResultByRestId (no env var)
+- get_article: two-hop reader flow (issue #10) — ArticleRedirectScreenQuery
+  resolves article_id → tweet_id, then TweetResultByRestId returns the body.
 """
 
 import json
@@ -160,117 +161,335 @@ async def test_get_article_preview_raises_when_no_article(monkeypatch):
     assert "article" in str(exc.value).lower()
 
 
-# ── get_article ──────────────────────────────────────
+# ── get_article: two-hop reader flow (issue #10) ─────
+
+
+def _redirect_response(tweet_id="2048697545527009367"):
+    """Hop-1 response: ArticleRedirectScreenQuery resolves article → tweet."""
+    return {
+        "data": {
+            "article_result_by_rest_id": {
+                "result": {
+                    "__typename": "ArticleEntity",
+                    "metadata": {
+                        "author_results": {
+                            "result": {"core": {"screen_name": "Jaden_riku"}}
+                        },
+                        "tweet_results": {"rest_id": tweet_id},
+                    },
+                }
+            }
+        }
+    }
+
+
+def _redirect_response_empty():
+    """Hop-1 response when the article isn't visible (deleted / private / wrong namespace)."""
+    return {"data": {"article_result_by_rest_id": {"result": {}}}}
+
+
+def _tweet_response_with_article(plain_text="full body 13984 chars goes here"):
+    """Hop-2 response: TweetResultByRestId with the article payload nested."""
+    return {
+        "data": {
+            "tweetResult": {
+                "result": {
+                    "__typename": "Tweet",
+                    "rest_id": "2048697545527009367",
+                    "article": {
+                        "article_results": {
+                            "result": {
+                                "title": "2026年，日本国运的分水岭",
+                                "preview_text": "preview…",
+                                "plain_text": plain_text,
+                                "content_state": {"blocks": []},
+                                "cover_media": {
+                                    "media_info": {
+                                        "original_img_url": (
+                                            "https://pbs.twimg.com/media/HG13LzYbkAAI7Ro.jpg"
+                                        )
+                                    }
+                                },
+                                "media_entities": [{} for _ in range(10)],
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+
+
+def _tweet_response_no_article():
+    """Hop-2 response where the tweet exists but has no article payload."""
+    return {
+        "data": {
+            "tweetResult": {
+                "result": {"__typename": "Tweet", "rest_id": "2048697545527009367"}
+            }
+        }
+    }
 
 
 @pytest.fixture
-def fake_client_with_gql(monkeypatch):
-    """A fake twikit client whose .gql.gql_get is awaitable."""
+def fake_two_hop_client(monkeypatch):
+    """A fake twikit client mocking both hops of the article reader.
+
+    Returns a SimpleNamespace exposing:
+      - .client       : the AsyncMock client itself
+      - .gql_get      : Hop 1 mock (ArticleRedirectScreenQuery)
+      - .tweet_result : Hop 2 mock (TweetResultByRestId)
+    By default both return successful responses.
+    """
     client = AsyncMock()
-    client.gql = SimpleNamespace(gql_get=AsyncMock(return_value={"data": "ok"}))
+    client.gql = SimpleNamespace(
+        gql_get=AsyncMock(return_value=_redirect_response()),
+        tweet_result_by_rest_id=AsyncMock(return_value=_tweet_response_with_article()),
+    )
     monkeypatch.setattr(server, "_get_client", AsyncMock(return_value=client))
-    return client
+    return SimpleNamespace(
+        client=client,
+        gql_get=client.gql.gql_get,
+        tweet_result=client.gql.tweet_result_by_rest_id,
+    )
 
 
-async def test_get_article_does_not_require_env_var(monkeypatch, fake_client_with_gql):
-    """Issue #7: TWITTER_ARTICLE_QUERY_ID env var is no longer needed.
+async def test_get_article_returns_article_payload(monkeypatch, fake_two_hop_client):
+    """Happy path: returns the inner article_results.result JSON-encoded."""
+    out = await server.get_article("2048420352397864960")
+    payload = json.loads(out)
+    assert payload["title"] == "2026年，日本国运的分水岭"
+    assert payload["plain_text"] == "full body 13984 chars goes here"
+    assert len(payload["media_entities"]) == 10
+    assert payload["cover_media"]["media_info"]["original_img_url"].startswith(
+        "https://pbs.twimg.com/"
+    )
 
-    The queryId for ArticleEntityResultByRestId is hardcoded, like every
-    other queryId in the vendored twikit Endpoint class. Setting / unsetting
-    the env var has no effect.
-    """
-    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
-    out = await server.get_article("2046813551021760512")
-    assert json.loads(out) == {"data": "ok"}
-    fake_client_with_gql.gql.gql_get.assert_awaited_once()
 
-
-async def test_get_article_uses_renamed_op_and_hardcoded_query_id(
-    monkeypatch, fake_client_with_gql
+async def test_get_article_hop1_uses_redirect_op_and_hardcoded_query_id(
+    monkeypatch, fake_two_hop_client
 ):
-    """Issue #7: TwitterArticleByRestId was renamed to ArticleEntityResultByRestId.
+    """Hop 1 must call ArticleRedirectScreenQuery with the captured queryId.
 
-    The queryId 8-OHhj8-KCAHUP8XjPaAYQ is captured from the public
-    bundle.TwitterArticles.*.js chunk and hardcoded.
+    The dead `ArticleEntityResultByRestId` (the editor op from issue #7) must
+    NOT appear in the request URL — that's the bug 0.1.8 had.
     """
-    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
-    await server.get_article("2046813551021760512")
-    args, _ = fake_client_with_gql.gql.gql_get.call_args
+    await server.get_article("2048420352397864960")
+    args, _ = fake_two_hop_client.gql_get.call_args
     url = args[0]
     assert url == (
-        "https://x.com/i/api/graphql/8-OHhj8-KCAHUP8XjPaAYQ/ArticleEntityResultByRestId"
+        "https://x.com/i/api/graphql/zrSRXJmE1vj37AUmkh2oGg/ArticleRedirectScreenQuery"
     )
-    # The dead old op name must NOT appear anywhere in the URL.
-    assert "TwitterArticleByRestId" not in url
+    assert "ArticleEntityResultByRestId" not in url
 
 
-async def test_get_article_uses_articleId_variable(monkeypatch, fake_client_with_gql):
-    """Issue #7: variable name follows twikit's `<thing>Id` convention.
-
-    `ArticleEntityResultByRestId` → `articleId` (cf. `TweetResultByRestId` → `tweetId`).
-    The old `twitterArticleId` is gone.
-    """
-    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
-    await server.get_article("2046813551021760512")
-    args, _ = fake_client_with_gql.gql.gql_get.call_args
-    variables = args[1]
-    assert variables == {"articleId": "2046813551021760512"}
-    assert "twitterArticleId" not in variables
-
-
-async def test_get_article_passes_new_features(monkeypatch, fake_client_with_gql):
-    """Issue #7: feature switches for ArticleEntityResultByRestId are different.
-
-    Old `responsive_web_twitter_article_tweet_consumption_enabled` and
-    `articles_preview_enabled` are gone; the new op needs the listed
-    profile/timeline-navigation flags.
-    """
-    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
-    await server.get_article("2046813551021760512")
-    args, kwargs = fake_client_with_gql.gql.gql_get.call_args
-    features = args[2] if len(args) > 2 else kwargs.get("features", {})
-    expected = {
-        "profile_label_improvements_pcf_label_in_post_enabled",
-        "responsive_web_profile_redirect_enabled",
-        "rweb_tipjar_consumption_enabled",
-        "verified_phone_label_enabled",
-        "responsive_web_graphql_skip_user_profile_image_extensions_enabled",
-        "responsive_web_graphql_timeline_navigation_enabled",
-    }
-    assert expected.issubset(features.keys())
-    for k in expected:
-        assert features[k] is True
-    # No leftover stale flags
-    assert "responsive_web_twitter_article_tweet_consumption_enabled" not in features
-    assert "articles_preview_enabled" not in features
-
-
-async def test_get_article_passes_field_toggles_via_extra_params(
-    monkeypatch, fake_client_with_gql
+async def test_get_article_hop1_uses_articleEntityId_variable(
+    monkeypatch, fake_two_hop_client
 ):
-    """Issue #7: fieldToggles {withPayments, withAuxiliaryUserLabels} ride extra_params."""
+    """Hop 1's variable is `articleEntityId` (per the issue's curl trace)."""
+    await server.get_article("2048420352397864960")
+    args, kwargs = fake_two_hop_client.gql_get.call_args
+    # variables is the 2nd positional or `variables=` kwarg
+    variables = args[1] if len(args) > 1 else kwargs.get("variables", {})
+    assert variables == {"articleEntityId": "2048420352397864960"}
+
+
+async def test_get_article_hop1_passes_empty_features(monkeypatch, fake_two_hop_client):
+    """ArticleRedirectScreenQuery is called with `features={}` — confirmed live."""
+    await server.get_article("2048420352397864960")
+    args, kwargs = fake_two_hop_client.gql_get.call_args
+    features = args[2] if len(args) > 2 else kwargs.get("features", {})
+    assert features == {}
+
+
+async def test_get_article_hop2_calls_tweet_result_by_rest_id(
+    monkeypatch, fake_two_hop_client
+):
+    """Hop 2 reuses twikit's existing `tweet_result_by_rest_id` helper."""
+    await server.get_article("2048420352397864960")
+    fake_two_hop_client.tweet_result.assert_awaited_once_with("2048697545527009367")
+
+
+async def test_get_article_accepts_url(monkeypatch, fake_two_hop_client):
+    """A full /i/article/<id> URL is accepted, normalized to the rest_id."""
+    await server.get_article("https://x.com/i/article/2048420352397864960")
+    args, kwargs = fake_two_hop_client.gql_get.call_args
+    variables = args[1] if len(args) > 1 else kwargs.get("variables", {})
+    assert variables["articleEntityId"] == "2048420352397864960"
+
+
+async def test_get_article_accepts_bare_numeric_id(monkeypatch, fake_two_hop_client):
+    """Bare rest_id is also accepted (caller may pass either form)."""
+    await server.get_article("2048420352397864960")
+    fake_two_hop_client.gql_get.assert_awaited_once()
+
+
+async def test_get_article_no_env_var_required(monkeypatch, fake_two_hop_client):
+    """Issue #7→#10: TWITTER_ARTICLE_QUERY_ID is gone, never read."""
     monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
-    await server.get_article("2046813551021760512")
-    _, kwargs = fake_client_with_gql.gql.gql_get.call_args
-    extra = kwargs.get("extra_params") or {}
-    assert extra.get("fieldToggles") == {
-        "withPayments": False,
-        "withAuxiliaryUserLabels": False,
+    out = await server.get_article("2048420352397864960")
+    assert json.loads(out)["title"] == "2026年，日本国运的分水岭"
+
+
+async def test_get_article_raises_when_redirect_empty(monkeypatch, fake_two_hop_client):
+    """If hop 1 returns `result: {}` (deleted/private/wrong-id), raise a clean error.
+
+    Don't fall through to hop 2 with a None tweet_id.
+    """
+    fake_two_hop_client.gql_get.return_value = _redirect_response_empty()
+    with pytest.raises(ToolError) as exc:
+        await server.get_article("9999999999999999")
+    msg = str(exc.value).lower()
+    assert "9999999999999999" in str(exc.value)
+    assert "not found" in msg or "not visible" in msg or "private" in msg
+    fake_two_hop_client.tweet_result.assert_not_called()
+
+
+async def test_get_article_raises_when_redirect_missing_tweet_id(
+    monkeypatch, fake_two_hop_client
+):
+    """Hop 1 returns metadata without tweet_results — also a clean ToolError."""
+    fake_two_hop_client.gql_get.return_value = {
+        "data": {
+            "article_result_by_rest_id": {
+                "result": {"__typename": "ArticleEntity", "metadata": {}}
+            }
+        }
     }
+    with pytest.raises(ToolError):
+        await server.get_article("2048420352397864960")
+    fake_two_hop_client.tweet_result.assert_not_called()
 
 
-async def test_get_article_accepts_url(monkeypatch, fake_client_with_gql):
-    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
-    await server.get_article("https://x.com/i/article/2046813551021760512")
-    args, _ = fake_client_with_gql.gql.gql_get.call_args
-    assert args[1]["articleId"] == "2046813551021760512"
+async def test_get_article_raises_when_hop2_has_no_article(
+    monkeypatch, fake_two_hop_client
+):
+    """Hop 2 returns a tweet without the .article subtree — clean ToolError."""
+    fake_two_hop_client.tweet_result.return_value = _tweet_response_no_article()
+    with pytest.raises(ToolError) as exc:
+        await server.get_article("2048420352397864960")
+    msg = str(exc.value).lower()
+    assert "article" in msg
 
 
-async def test_get_article_accepts_bare_numeric_id(monkeypatch, fake_client_with_gql):
-    """Caller may pass either a /i/article/<id> URL or the bare rest_id."""
-    monkeypatch.delenv("TWITTER_ARTICLE_QUERY_ID", raising=False)
-    await server.get_article("2046813551021760512")
-    fake_client_with_gql.gql.gql_get.assert_awaited_once()
+# ── extra coverage: ordering, alt URL forms, malformed responses ────
+
+
+async def test_get_article_hop1_runs_before_hop2(monkeypatch, fake_two_hop_client):
+    """Hop 2 must not be called before hop 1 completes (would race on tweet_id)."""
+    call_order = []
+
+    async def hop1(*a, **kw):
+        call_order.append("hop1")
+        return _redirect_response()
+
+    async def hop2(*a, **kw):
+        call_order.append("hop2")
+        return _tweet_response_with_article()
+
+    fake_two_hop_client.client.gql.gql_get = AsyncMock(side_effect=hop1)
+    fake_two_hop_client.client.gql.tweet_result_by_rest_id = AsyncMock(side_effect=hop2)
+
+    await server.get_article("2048420352397864960")
+    assert call_order == ["hop1", "hop2"]
+
+
+async def test_get_article_hop2_receives_resolved_tweet_id(
+    monkeypatch, fake_two_hop_client
+):
+    """The tweet_id passed to hop 2 must come from hop 1's response, verbatim."""
+    fake_two_hop_client.gql_get.return_value = _redirect_response(tweet_id="9988776655")
+    await server.get_article("2048420352397864960")
+    fake_two_hop_client.tweet_result.assert_awaited_once_with("9988776655")
+
+
+async def test_get_article_accepts_twitter_com_url(monkeypatch, fake_two_hop_client):
+    """`twitter.com` URLs (legacy) are accepted alongside `x.com`."""
+    await server.get_article("https://twitter.com/i/article/2048420352397864960")
+    args, kwargs = fake_two_hop_client.gql_get.call_args
+    variables = args[1] if len(args) > 1 else kwargs.get("variables", {})
+    assert variables["articleEntityId"] == "2048420352397864960"
+
+
+async def test_get_article_ignores_stale_env_var(monkeypatch, fake_two_hop_client):
+    """Even if a stale TWITTER_ARTICLE_QUERY_ID is set, the new flow ignores it."""
+    monkeypatch.setenv("TWITTER_ARTICLE_QUERY_ID", "STALE_HASH_FROM_USER_ENV")
+    await server.get_article("2048420352397864960")
+    args, _ = fake_two_hop_client.gql_get.call_args
+    assert "STALE_HASH_FROM_USER_ENV" not in args[0]
+
+
+async def test_get_article_raises_when_redirect_is_none(
+    monkeypatch, fake_two_hop_client
+):
+    """A None redirect response (network glitch / unexpected shape) → ToolError."""
+    fake_two_hop_client.gql_get.return_value = None
+    with pytest.raises(ToolError):
+        await server.get_article("2048420352397864960")
+    fake_two_hop_client.tweet_result.assert_not_called()
+
+
+async def test_get_article_raises_when_redirect_missing_data_key(
+    monkeypatch, fake_two_hop_client
+):
+    """Redirect response without a `data` key → ToolError, no traceback."""
+    fake_two_hop_client.gql_get.return_value = {"errors": [{"message": "rate limit"}]}
+    with pytest.raises(ToolError):
+        await server.get_article("2048420352397864960")
+    fake_two_hop_client.tweet_result.assert_not_called()
+
+
+async def test_get_article_raises_when_hop2_is_none(monkeypatch, fake_two_hop_client):
+    """A None tweet response (twikit transient failure) → ToolError, not crash."""
+    fake_two_hop_client.tweet_result.return_value = None
+    with pytest.raises(ToolError):
+        await server.get_article("2048420352397864960")
+
+
+async def test_get_article_preserves_full_article_payload(
+    monkeypatch, fake_two_hop_client
+):
+    """Tool output preserves every field of `article_results.result` verbatim.
+
+    Important for downstream callers that want plain_text, content_state
+    (rich blocks for layout), cover_media URL, media_entities, etc.
+    """
+    out = await server.get_article("2048420352397864960")
+    payload = json.loads(out)
+    # All fields the issue's verification curl pulled out:
+    assert "title" in payload
+    assert "preview_text" in payload
+    assert "plain_text" in payload
+    assert "content_state" in payload
+    assert "cover_media" in payload
+    assert "media_entities" in payload
+
+
+# ── vendor patch: withArticlePlainText flipped to True (issue #10) ────
+
+
+def test_vendor_tweet_result_passes_article_plain_text_true():
+    """The vendored twikit `tweet_result_by_rest_id` must request plain_text.
+
+    Issue #10: with `withArticlePlainText: False` the tweet response carries
+    only metadata; flipping it to True is what makes the article body
+    (`.article.article_results.result.plain_text`) actually populated. This
+    is the smallest possible vendor patch.
+    """
+    import inspect
+
+    from twitter_mcp._vendor.twikit.client.gql import GQLClient
+
+    src = inspect.getsource(GQLClient.tweet_result_by_rest_id)
+    # The toggle must be present and set to True.
+    assert "withArticlePlainText" in src
+    # Disallow the False form anywhere in this method.
+    assert "'withArticlePlainText': False" not in src
+    assert '"withArticlePlainText": False' not in src
+    # And confirm the True form is what we ship.
+    assert (
+        "'withArticlePlainText': True" in src or '"withArticlePlainText": True' in src
+    )
 
 
 # ── tool registration ────────────────────────────────
