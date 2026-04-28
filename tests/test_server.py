@@ -261,3 +261,24 @@ def test_version_flag_short_form():
     assert result.returncode == 0
     out = result.stdout + result.stderr
     assert _expected_version() in out
+
+
+def test_get_version_returns_installed_version():
+    """_get_version() reads the metadata of the installed package."""
+    from twitter_mcp.server import _get_version
+
+    assert _get_version() == _expected_version()
+
+
+def test_get_version_falls_back_to_unknown(monkeypatch):
+    """If the package isn't installed (e.g. raw checkout, no `uv sync`),
+    _get_version() returns 'unknown' instead of raising."""
+    from importlib.metadata import PackageNotFoundError
+
+    import twitter_mcp.server as srv
+
+    def _raise(_name):
+        raise PackageNotFoundError("twikit-mcp")
+
+    monkeypatch.setattr(srv, "_pkg_version", _raise)
+    assert srv._get_version() == "unknown"

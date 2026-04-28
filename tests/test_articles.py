@@ -372,6 +372,99 @@ async def test_get_article_raises_when_hop2_has_no_article(
     assert "article" in msg
 
 
+# ── extra coverage: ordering, alt URL forms, malformed responses ────
+
+
+async def test_get_article_hop1_runs_before_hop2(monkeypatch, fake_two_hop_client):
+    """Hop 2 must not be called before hop 1 completes (would race on tweet_id)."""
+    call_order = []
+
+    async def hop1(*a, **kw):
+        call_order.append("hop1")
+        return _redirect_response()
+
+    async def hop2(*a, **kw):
+        call_order.append("hop2")
+        return _tweet_response_with_article()
+
+    fake_two_hop_client.client.gql.gql_get = AsyncMock(side_effect=hop1)
+    fake_two_hop_client.client.gql.tweet_result_by_rest_id = AsyncMock(side_effect=hop2)
+
+    await server.get_article("2048420352397864960")
+    assert call_order == ["hop1", "hop2"]
+
+
+async def test_get_article_hop2_receives_resolved_tweet_id(
+    monkeypatch, fake_two_hop_client
+):
+    """The tweet_id passed to hop 2 must come from hop 1's response, verbatim."""
+    fake_two_hop_client.gql_get.return_value = _redirect_response(tweet_id="9988776655")
+    await server.get_article("2048420352397864960")
+    fake_two_hop_client.tweet_result.assert_awaited_once_with("9988776655")
+
+
+async def test_get_article_accepts_twitter_com_url(monkeypatch, fake_two_hop_client):
+    """`twitter.com` URLs (legacy) are accepted alongside `x.com`."""
+    await server.get_article("https://twitter.com/i/article/2048420352397864960")
+    args, kwargs = fake_two_hop_client.gql_get.call_args
+    variables = args[1] if len(args) > 1 else kwargs.get("variables", {})
+    assert variables["articleEntityId"] == "2048420352397864960"
+
+
+async def test_get_article_ignores_stale_env_var(monkeypatch, fake_two_hop_client):
+    """Even if a stale TWITTER_ARTICLE_QUERY_ID is set, the new flow ignores it."""
+    monkeypatch.setenv("TWITTER_ARTICLE_QUERY_ID", "STALE_HASH_FROM_USER_ENV")
+    await server.get_article("2048420352397864960")
+    args, _ = fake_two_hop_client.gql_get.call_args
+    assert "STALE_HASH_FROM_USER_ENV" not in args[0]
+
+
+async def test_get_article_raises_when_redirect_is_none(
+    monkeypatch, fake_two_hop_client
+):
+    """A None redirect response (network glitch / unexpected shape) → ToolError."""
+    fake_two_hop_client.gql_get.return_value = None
+    with pytest.raises(ToolError):
+        await server.get_article("2048420352397864960")
+    fake_two_hop_client.tweet_result.assert_not_called()
+
+
+async def test_get_article_raises_when_redirect_missing_data_key(
+    monkeypatch, fake_two_hop_client
+):
+    """Redirect response without a `data` key → ToolError, no traceback."""
+    fake_two_hop_client.gql_get.return_value = {"errors": [{"message": "rate limit"}]}
+    with pytest.raises(ToolError):
+        await server.get_article("2048420352397864960")
+    fake_two_hop_client.tweet_result.assert_not_called()
+
+
+async def test_get_article_raises_when_hop2_is_none(monkeypatch, fake_two_hop_client):
+    """A None tweet response (twikit transient failure) → ToolError, not crash."""
+    fake_two_hop_client.tweet_result.return_value = None
+    with pytest.raises(ToolError):
+        await server.get_article("2048420352397864960")
+
+
+async def test_get_article_preserves_full_article_payload(
+    monkeypatch, fake_two_hop_client
+):
+    """Tool output preserves every field of `article_results.result` verbatim.
+
+    Important for downstream callers that want plain_text, content_state
+    (rich blocks for layout), cover_media URL, media_entities, etc.
+    """
+    out = await server.get_article("2048420352397864960")
+    payload = json.loads(out)
+    # All fields the issue's verification curl pulled out:
+    assert "title" in payload
+    assert "preview_text" in payload
+    assert "plain_text" in payload
+    assert "content_state" in payload
+    assert "cover_media" in payload
+    assert "media_entities" in payload
+
+
 # ── vendor patch: withArticlePlainText flipped to True (issue #10) ────
 
 
