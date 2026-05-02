@@ -226,6 +226,42 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
 
 
 @mcp.tool()
+async def follow_user(screen_name: str) -> str:
+    """Follow a user by screen name.
+
+    Note: X aggressively rate-limits follow / unfollow — avoid bulk usage
+    or your account may be temporarily restricted.
+
+    Args:
+        screen_name: Twitter username (without @).
+    """
+    client = await _get_client()
+    user = await client.get_user_by_screen_name(screen_name)
+    await client.follow_user(user.id)
+    return json.dumps(
+        {"user_id": user.id, "screen_name": screen_name, "status": "followed"}
+    )
+
+
+@mcp.tool()
+async def unfollow_user(screen_name: str) -> str:
+    """Unfollow a user by screen name.
+
+    Note: X aggressively rate-limits follow / unfollow — avoid bulk usage
+    or your account may be temporarily restricted.
+
+    Args:
+        screen_name: Twitter username (without @).
+    """
+    client = await _get_client()
+    user = await client.get_user_by_screen_name(screen_name)
+    await client.unfollow_user(user.id)
+    return json.dumps(
+        {"user_id": user.id, "screen_name": screen_name, "status": "unfollowed"}
+    )
+
+
+@mcp.tool()
 async def get_article_preview(tweet_id: str) -> str:
     """Get title/preview/cover of an X Article embedded in a tweet.
 
