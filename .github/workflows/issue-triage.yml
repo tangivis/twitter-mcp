@@ -1,0 +1,60 @@
+name: Claude Issue Triage
+
+# Auto-labels new issues based on existing repo labels. Inline-prompt
+# version of anthropics/claude-code-action/examples/issue-triage.yml —
+# the official example uses a `/label-issue` slash command requiring
+# `.claude/commands/label-issue.md` + a custom script. We skip that
+# and just inline the instructions; upgrade to a slash command later
+# if the prompt grows.
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  triage-issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code for Issue Triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # NOTE: with the default (allowed_non_write_users not set),
+          # only issues opened by users with write permission trigger
+          # this workflow. For a single-maintainer repo that's fine.
+          # If you start getting issues from outside contributors and
+          # want them auto-triaged too, add:
+          #   allowed_non_write_users: "*"
+          # but be aware that's the ⚠️ RISKY input — combined with the
+          # strict --allowedTools below it's bounded, but think before
+          # flipping it on.
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE: ${{ github.event.issue.number }}
+
+            Triage this newly-opened issue. Steps:
+
+            1. Read the issue body and title with `gh issue view ${{ github.event.issue.number }}`.
+            2. List existing repo labels with `gh label list`.
+            3. Apply the 1–3 most relevant existing labels using
+               `gh issue edit ${{ github.event.issue.number }} --add-label "<name>"`.
+            4. Do NOT create new labels. If no existing label fits, leave
+               it unlabeled.
+            5. Do NOT post a triage comment unless the issue is missing
+               critical info (no repro steps for a bug, no version, etc.)
+               in which case post one short comment asking for it.
+
+            Keep it terse — labels first, words last.
+          claude_args: |
+            --allowedTools "Bash(gh label list:*),Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*)"
