@@ -25,7 +25,7 @@ def test_import_client_helper():
 
 
 def test_tools_registered():
-    """All 9 tools are registered in the MCP server."""
+    """All 11 tools are registered in the MCP server."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
@@ -39,16 +39,18 @@ def test_tools_registered():
         "get_user_tweets",
         "get_article_preview",
         "get_article",
+        "follow_user",
+        "unfollow_user",
     }
     assert set(tools.keys()) == expected
 
 
 def test_tool_count():
-    """Exactly 9 tools are registered."""
+    """Exactly 11 tools are registered."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 9
+    assert len(tools) == 11
 
 
 # ── Tool Schema Tests ─────────────────────────────────
@@ -111,6 +113,26 @@ def test_get_tweet_has_tweet_id():
     tool = mcp._tool_manager._tools["get_tweet"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
+
+
+def test_follow_user_has_screen_name():
+    """follow_user requires 'screen_name' (matches get_user_tweets convention)."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["follow_user"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+
+
+def test_unfollow_user_has_screen_name():
+    """unfollow_user requires 'screen_name'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["unfollow_user"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
 
 
 def test_get_article_format_param_in_schema():

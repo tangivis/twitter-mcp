@@ -224,3 +224,65 @@ async def test_get_user_tweets_empty(fake_client):
     fake_client.get_user_by_screen_name = AsyncMock(return_value=_fake_user())
     fake_client.get_user_tweets = AsyncMock(return_value=[])
     assert json.loads(await server.get_user_tweets("alice")) == []
+
+
+# ── follow_user / unfollow_user (issue #18) ──────────
+
+
+async def test_follow_user_resolves_screen_name_then_calls_follow(fake_client):
+    """follow_user takes a screen_name (matches get_user_tweets convention),
+    resolves to a numeric user_id, then calls twikit's follow_user(user_id)."""
+    user = _fake_user(user_id="u-42", screen_name="ClaudeDevs")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.follow_user = AsyncMock()
+
+    out = json.loads(await server.follow_user("ClaudeDevs"))
+
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("ClaudeDevs")
+    fake_client.follow_user.assert_awaited_once_with("u-42")
+    assert out == {
+        "user_id": "u-42",
+        "screen_name": "ClaudeDevs",
+        "status": "followed",
+    }
+
+
+async def test_unfollow_user_resolves_screen_name_then_calls_unfollow(fake_client):
+    """Same shape as follow_user, mirrored verb."""
+    user = _fake_user(user_id="u-99", screen_name="ClaudeDevs")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.unfollow_user = AsyncMock()
+
+    out = json.loads(await server.unfollow_user("ClaudeDevs"))
+
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("ClaudeDevs")
+    fake_client.unfollow_user.assert_awaited_once_with("u-99")
+    assert out == {
+        "user_id": "u-99",
+        "screen_name": "ClaudeDevs",
+        "status": "unfollowed",
+    }
+
+
+async def test_follow_user_does_not_call_follow_if_resolve_fails(monkeypatch):
+    """If get_user_by_screen_name raises, follow_user must propagate (no
+    silent swallow) and must not have invoked follow_user with a bad id."""
+    client = AsyncMock()
+    client.get_user_by_screen_name = AsyncMock(side_effect=RuntimeError("no such user"))
+    client.follow_user = AsyncMock()
+    monkeypatch.setattr(server, "_get_client", AsyncMock(return_value=client))
+
+    with pytest.raises(RuntimeError):
+        await server.follow_user("ghost")
+    client.follow_user.assert_not_called()
+
+
+async def test_unfollow_user_does_not_call_unfollow_if_resolve_fails(monkeypatch):
+    client = AsyncMock()
+    client.get_user_by_screen_name = AsyncMock(side_effect=RuntimeError("no such user"))
+    client.unfollow_user = AsyncMock()
+    monkeypatch.setattr(server, "_get_client", AsyncMock(return_value=client))
+
+    with pytest.raises(RuntimeError):
+        await server.unfollow_user("ghost")
+    client.unfollow_user.assert_not_called()
