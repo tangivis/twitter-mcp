@@ -225,6 +225,168 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
     return json.dumps(result)
 
 
+# ENHANCEMENT 1 & 2: Enhanced get_user_info with user_id parameter and more fields
+@mcp.tool()
+async def get_user_info(
+    screen_name: str | None = None, 
+    user_id: str | None = None
+) -> str:
+    """Get a user's profile metadata by screen name or user ID.
+    
+    Args:
+        screen_name: Twitter username (without @). Either this or user_id required.
+        user_id: Twitter numeric user ID. Either this or screen_name required.
+    """
+    client = await _get_client()
+    
+    try:
+        if user_id:
+            u = await client.get_user_by_id(user_id)
+        elif screen_name:
+            u = await client.get_user_by_screen_name(screen_name)
+        else:
+            raise ToolError("Provide either screen_name or user_id")
+    except Exception as e:
+        if "rate limit" in str(e).lower() or "429" in str(e):
+            raise ToolError(f"Rate limit exceeded. Please wait before making more requests. Original error: {e}")
+        elif "not found" in str(e).lower() or "404" in str(e):
+            raise ToolError(f"User not found: {screen_name or user_id}. Please check the username or ID.")
+        raise ToolError(f"Failed to fetch user info: {e}")
+    
+    return json.dumps({
+        "id": u.id,
+        "screen_name": u.screen_name,
+        "name": u.name,
+        "description": u.description,
+        "created_at": str(u.created_at),
+        "followers_count": u.followers_count,
+        "following_count": u.following_count,
+        "tweets_count": u.statuses_count,
+        "verified": u.verified,
+        "is_blue_verified": getattr(u, 'is_blue_verified', False),
+        "profile_image_url": getattr(u, 'profile_image_url_https', None),
+        "location": u.location,
+        "url": u.url,
+        "protected": getattr(u, 'protected', False),
+    })
+
+
+# ENHANCEMENT 3: Get user followers
+@mcp.tool()
+async def get_user_followers(
+    screen_name: str | None = None,
+    user_id: str | None = None,
+    count: int = 20
+) -> str:
+    """Get a user's followers list.
+    
+    Note: X aggressively rate-limits follower requests — use sparingly.
+    
+    Args:
+        screen_name: Twitter username (without @). Either this or user_id required.
+        user_id: Twitter numeric user ID. Either this or screen_name required.
+        count: Number of followers to fetch (default 20, max 100).
+    """
+    client = await _get_client()
+    
+    try:
+        if user_id:
+            uid = user_id
+        elif screen_name:
+            user = await client.get_user_by_screen_name(screen_name)
+            uid = user.id
+        else:
+            raise ToolError("Provide either screen_name or user_id")
+        
+        # Enforce reasonable limit
+        fetch_count = min(count, 100)
+        followers = await client.get_user_followers(uid, count=fetch_count)
+        
+    except Exception as e:
+        if "rate limit" in str(e).lower() or "429" in str(e):
+            raise ToolError(f"Rate limit exceeded. Please wait before making more follower requests. Original error: {e}")
+        elif "not found" in str(e).lower() or "404" in str(e):
+            raise ToolError(f"User not found: {screen_name or user_id}. Please check the username or ID.")
+        raise ToolError(f"Failed to fetch followers: {e}")
+    
+    result = []
+    for u in followers[:fetch_count]:
+        result.append({
+            "id": u.id,
+            "screen_name": u.screen_name,
+            "name": u.name,
+            "description": u.description[:100] if u.description else "",
+            "followers_count": u.followers_count,
+            "verified": u.verified,
+            "is_blue_verified": getattr(u, 'is_blue_verified', False),
+        })
+    
+    return json.dumps({
+        "user_id": uid,
+        "screen_name": screen_name,
+        "followers_returned": len(result),
+        "followers": result
+    })
+
+
+# ENHANCEMENT 4: Get user following
+@mcp.tool()
+async def get_user_following(
+    screen_name: str | None = None,
+    user_id: str | None = None,
+    count: int = 20
+) -> str:
+    """Get users that a user follows (following list).
+    
+    Note: X aggressively rate-limits following requests — use sparingly.
+    
+    Args:
+        screen_name: Twitter username (without @). Either this or user_id required.
+        user_id: Twitter numeric user ID. Either this or screen_name required.
+        count: Number of following to fetch (default 20, max 100).
+    """
+    client = await _get_client()
+    
+    try:
+        if user_id:
+            uid = user_id
+        elif screen_name:
+            user = await client.get_user_by_screen_name(screen_name)
+            uid = user.id
+        else:
+            raise ToolError("Provide either screen_name or user_id")
+        
+        # Enforce reasonable limit
+        fetch_count = min(count, 100)
+        following = await client.get_user_following(uid, count=fetch_count)
+        
+    except Exception as e:
+        if "rate limit" in str(e).lower() or "429" in str(e):
+            raise ToolError(f"Rate limit exceeded. Please wait before making more following requests. Original error: {e}")
+        elif "not found" in str(e).lower() or "404" in str(e):
+            raise ToolError(f"User not found: {screen_name or user_id}. Please check the username or ID.")
+        raise ToolError(f"Failed to fetch following list: {e}")
+    
+    result = []
+    for u in following[:fetch_count]:
+        result.append({
+            "id": u.id,
+            "screen_name": u.screen_name,
+            "name": u.name,
+            "description": u.description[:100] if u.description else "",
+            "followers_count": u.followers_count,
+            "verified": u.verified,
+            "is_blue_verified": getattr(u, 'is_blue_verified', False),
+        })
+    
+    return json.dumps({
+        "user_id": uid,
+        "screen_name": screen_name,
+        "following_returned": len(result),
+        "following": result
+    })
+
+
 @mcp.tool()
 async def follow_user(screen_name: str) -> str:
     """Follow a user by screen name.
