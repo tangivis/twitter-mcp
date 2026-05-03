@@ -583,3 +583,50 @@ async def test_get_user_following_raises_on_count_over_100(fake_client):
 
     with pytest.raises(ToolError):
         await server.get_user_following(user_id="u-1", count=200)
+
+
+async def test_get_user_followers_raises_clean_on_rate_limit(fake_client):
+    """TooManyRequests during followers fetch → ToolError, not raw twikit error."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_user_followers = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_followers(user_id="u-1")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_user_followers_raises_clean_on_not_found(fake_client):
+    """NotFound during followers fetch → ToolError naming the missing user."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_followers = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_followers(user_id="ghost")
+    assert "ghost" in str(exc.value)
+
+
+async def test_get_user_following_raises_clean_on_rate_limit(fake_client):
+    """Same TooManyRequests pattern for get_user_following."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_user_following = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError):
+        await server.get_user_following(user_id="u-1")
+
+
+async def test_get_user_following_raises_clean_on_not_found(fake_client):
+    """Same NotFound pattern for get_user_following."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_following = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_following(user_id="ghost")
+    assert "ghost" in str(exc.value)

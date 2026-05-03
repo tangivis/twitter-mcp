@@ -13,6 +13,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from twitter_mcp._vendor.twikit import Client
+from twitter_mcp._vendor.twikit.errors import NotFound, TooManyRequests
 
 mcp = FastMCP("twitter")
 
@@ -225,15 +226,64 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
     return json.dumps(result)
 
 
+_FOLLOWERS_MAX_COUNT = 100
+
+
+def _require_exactly_one(
+    screen_name: str | None, user_id: str | None, *, op: str
+) -> None:
+    """Enforce exactly-one-of-(screen_name, user_id). PR #24 review pattern."""
+    if not (screen_name or user_id):
+        raise ToolError(f"{op} requires either `screen_name` or `user_id`.")
+    if screen_name and user_id:
+        raise ToolError(
+            f"{op} accepts `screen_name` OR `user_id`, not both — got both."
+        )
+
+
+def _user_to_dict(u) -> dict:
+    """Compact user dict used in followers / following list outputs.
+
+    Truncates description to 200 chars (matches get_user_tweets / get_timeline
+    pattern) so a 100-entry list doesn't blow MAX_MCP_OUTPUT_TOKENS.
+    """
+    return {
+        "id": u.id,
+        "screen_name": u.screen_name,
+        "name": u.name,
+        "description": (u.description or "")[:200],
+        "followers_count": u.followers_count,
+        "verified": u.verified,
+        "is_blue_verified": u.is_blue_verified,
+    }
+
+
 @mcp.tool()
-async def get_user_info(screen_name: str) -> str:
-    """Get a user's profile metadata by screen name.
+async def get_user_info(
+    screen_name: str | None = None, user_id: str | None = None
+) -> str:
+    """Get a user's profile metadata by screen name OR numeric user ID.
+
+    Caller must provide exactly one of `screen_name` / `user_id`.
 
     Args:
         screen_name: Twitter username (without @).
+        user_id: Twitter numeric user ID.
     """
+    _require_exactly_one(screen_name, user_id, op="get_user_info")
     client = await _get_client()
-    u = await client.get_user_by_screen_name(screen_name)
+    try:
+        if user_id:
+            u = await client.get_user_by_id(user_id)
+        else:
+            u = await client.get_user_by_screen_name(screen_name)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(
+            f"User not found: {screen_name or user_id}. Check the spelling / id."
+        )
+
     return json.dumps(
         {
             "id": u.id,
@@ -250,8 +300,108 @@ async def get_user_info(screen_name: str) -> str:
             # Expose both so callers can pick. (PR #23 review feedback.)
             "verified": u.verified,
             "is_blue_verified": u.is_blue_verified,
+            "profile_image_url": u.profile_image_url_https,
+            "protected": u.protected,
             "location": u.location,
             "url": u.url,
+        }
+    )
+
+
+async def _resolve_user_id(client, screen_name: str | None, user_id: str | None) -> str:
+    """Return numeric user_id, resolving from screen_name if needed."""
+    if user_id:
+        return user_id
+    user = await client.get_user_by_screen_name(screen_name)
+    return user.id
+
+
+@mcp.tool()
+async def get_user_followers(
+    screen_name: str | None = None,
+    user_id: str | None = None,
+    count: int = 20,
+    cursor: str | None = None,
+) -> str:
+    """Get a user's followers list.
+
+    Note: X aggressively rate-limits follower / following requests — use
+    sparingly, paginate via `cursor`, don't loop without backoff.
+
+    Caller must provide exactly one of `screen_name` / `user_id`.
+
+    Args:
+        screen_name: Twitter username (without @).
+        user_id: Twitter numeric user ID.
+        count: Number of followers to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    _require_exactly_one(screen_name, user_id, op="get_user_followers")
+    if count > _FOLLOWERS_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_FOLLOWERS_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+
+    client = await _get_client()
+    try:
+        uid = await _resolve_user_id(client, screen_name, user_id)
+        result = await client.get_user_followers(uid, count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"User not found: {screen_name or user_id}.")
+
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
+        }
+    )
+
+
+@mcp.tool()
+async def get_user_following(
+    screen_name: str | None = None,
+    user_id: str | None = None,
+    count: int = 20,
+    cursor: str | None = None,
+) -> str:
+    """Get accounts that a user follows (their following list).
+
+    Note: X aggressively rate-limits follower / following requests — use
+    sparingly, paginate via `cursor`, don't loop without backoff.
+
+    Caller must provide exactly one of `screen_name` / `user_id`.
+
+    Args:
+        screen_name: Twitter username (without @).
+        user_id: Twitter numeric user ID.
+        count: Number to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    _require_exactly_one(screen_name, user_id, op="get_user_following")
+    if count > _FOLLOWERS_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_FOLLOWERS_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+
+    client = await _get_client()
+    try:
+        uid = await _resolve_user_id(client, screen_name, user_id)
+        result = await client.get_user_following(uid, count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"User not found: {screen_name or user_id}.")
+
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
         }
     )
 
