@@ -1,4 +1,4 @@
-"""Behavior tests for the 12 MCP tools.
+"""Behavior tests for the 14 MCP tools.
 
 Uses mocks to exercise each tool's body without network or real cookies.
 Covers: args passed through to twikit, output JSON shape, text truncation,
@@ -630,3 +630,48 @@ async def test_get_user_following_raises_clean_on_not_found(fake_client):
     with pytest.raises(ToolError) as exc:
         await server.get_user_following(user_id="ghost")
     assert "ghost" in str(exc.value)
+
+
+# ── PR #25 Claude review followups ────────────────────
+
+
+async def test_get_user_followers_raises_clean_on_not_found_during_resolve(fake_client):
+    """If screen_name resolution itself raises NotFound, that path is also
+    caught — not just the followers-fetch path."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=NotFound("no user"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_followers(screen_name="ghost")
+    assert "ghost" in str(exc.value)
+
+
+async def test_get_user_following_raises_clean_on_not_found_during_resolve(fake_client):
+    """Same NotFound-during-resolve path on get_user_following."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=NotFound("no user"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_following(screen_name="ghost")
+    assert "ghost" in str(exc.value)
+
+
+async def test_get_user_followers_raises_on_count_below_1(fake_client):
+    """count=0 / -1 must raise — don't silently forward to twikit."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_user_followers(user_id="u-1", count=0)
+    with pytest.raises(ToolError):
+        await server.get_user_followers(user_id="u-1", count=-5)
+
+
+async def test_get_user_following_raises_on_count_below_1(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_user_following(user_id="u-1", count=0)

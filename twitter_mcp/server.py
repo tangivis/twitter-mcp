@@ -232,7 +232,12 @@ _FOLLOWERS_MAX_COUNT = 100
 def _require_exactly_one(
     screen_name: str | None, user_id: str | None, *, op: str
 ) -> None:
-    """Enforce exactly-one-of-(screen_name, user_id). PR #24 review pattern."""
+    """Enforce exactly-one-of-(screen_name, user_id) input contract.
+
+    Both args optional in the signature so an LLM caller can use whichever
+    handle it has, but giving neither (or both) is a tool-level error,
+    not a silent fall-through to twikit.
+    """
     if not (screen_name or user_id):
         raise ToolError(f"{op} requires either `screen_name` or `user_id`.")
     if screen_name and user_id:
@@ -308,7 +313,9 @@ async def get_user_info(
     )
 
 
-async def _resolve_user_id(client, screen_name: str | None, user_id: str | None) -> str:
+async def _resolve_user_id(
+    client: Client, screen_name: str | None, user_id: str | None
+) -> str:
     """Return numeric user_id, resolving from screen_name if needed."""
     if user_id:
         return user_id
@@ -337,6 +344,8 @@ async def get_user_followers(
         cursor: Pagination cursor from a previous response's `next_cursor`.
     """
     _require_exactly_one(screen_name, user_id, op="get_user_followers")
+    if count < 1:
+        raise ToolError("count must be >= 1.")
     if count > _FOLLOWERS_MAX_COUNT:
         raise ToolError(
             f"count exceeds the {_FOLLOWERS_MAX_COUNT} cap; paginate via `cursor` instead."
@@ -382,6 +391,8 @@ async def get_user_following(
         cursor: Pagination cursor from a previous response's `next_cursor`.
     """
     _require_exactly_one(screen_name, user_id, op="get_user_following")
+    if count < 1:
+        raise ToolError("count must be >= 1.")
     if count > _FOLLOWERS_MAX_COUNT:
         raise ToolError(
             f"count exceeds the {_FOLLOWERS_MAX_COUNT} cap; paginate via `cursor` instead."
