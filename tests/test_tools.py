@@ -301,6 +301,7 @@ def _fake_user_full(
     following_count=42,
     statuses_count=99,
     verified=True,
+    is_blue_verified=True,
     location="The Cloud",
     url="https://claude.com",
 ):
@@ -314,6 +315,7 @@ def _fake_user_full(
         following_count=following_count,
         statuses_count=statuses_count,
         verified=verified,
+        is_blue_verified=is_blue_verified,
         location=location,
         url=url,
     )
@@ -333,6 +335,7 @@ async def test_get_user_info_returns_full_metadata_shape(fake_client):
         "following_count": 42,
         "tweets_count": 99,
         "verified": True,
+        "is_blue_verified": True,
         "location": "The Cloud",
         "url": "https://claude.com",
     }
@@ -365,3 +368,31 @@ async def test_get_user_info_uses_statuses_count_for_tweets_count(fake_client):
     assert out["tweets_count"] == 12345
     # And the upstream key name does NOT leak into the output.
     assert "statuses_count" not in out
+
+
+async def test_get_user_info_exposes_both_verified_fields(fake_client):
+    """PR #23 review: u.verified is the legacy gold/grey badge (almost
+    always False on modern X); u.is_blue_verified is the X Premium blue
+    badge that most users actually have. Expose BOTH so callers don't
+    silently get misleading false negatives.
+    """
+    fake_client.get_user_by_screen_name = AsyncMock(
+        return_value=_fake_user_full(verified=False, is_blue_verified=True)
+    )
+    out = json.loads(await server.get_user_info("modern_user"))
+    assert out["verified"] is False
+    assert out["is_blue_verified"] is True
+
+
+async def test_get_user_info_handles_none_optional_fields(fake_client):
+    """PR #23 review gap: description / location / url can be None (twikit's
+    User defaults missing legacy.* fields to None). Output must round-trip
+    them as JSON null, not the string "None".
+    """
+    fake_client.get_user_by_screen_name = AsyncMock(
+        return_value=_fake_user_full(description=None, location=None, url=None)
+    )
+    out = json.loads(await server.get_user_info("sparse_user"))
+    assert out["description"] is None
+    assert out["location"] is None
+    assert out["url"] is None
