@@ -226,6 +226,37 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
 
 
 @mcp.tool()
+async def get_user_info(screen_name: str) -> str:
+    """Get a user's profile metadata by screen name.
+
+    Args:
+        screen_name: Twitter username (without @).
+    """
+    client = await _get_client()
+    u = await client.get_user_by_screen_name(screen_name)
+    return json.dumps(
+        {
+            "id": u.id,
+            "screen_name": u.screen_name,
+            "name": u.name,
+            "description": u.description,
+            "created_at": str(u.created_at),
+            "followers_count": u.followers_count,
+            "following_count": u.following_count,
+            "tweets_count": u.statuses_count,
+            # `verified` is the legacy gold/grey badge (almost always False
+            # on modern X — pre-2023 verification batch). `is_blue_verified`
+            # is the X Premium blue check most accounts actually have today.
+            # Expose both so callers can pick. (PR #23 review feedback.)
+            "verified": u.verified,
+            "is_blue_verified": u.is_blue_verified,
+            "location": u.location,
+            "url": u.url,
+        }
+    )
+
+
+@mcp.tool()
 async def follow_user(screen_name: str) -> str:
     """Follow a user by screen name.
 

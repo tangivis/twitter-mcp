@@ -1,4 +1,4 @@
-"""Behavior tests for the 7 MCP tools.
+"""Behavior tests for the 12 MCP tools.
 
 Uses mocks to exercise each tool's body without network or real cookies.
 Covers: args passed through to twikit, output JSON shape, text truncation,
@@ -286,3 +286,113 @@ async def test_unfollow_user_does_not_call_unfollow_if_resolve_fails(monkeypatch
     with pytest.raises(RuntimeError):
         await server.unfollow_user("ghost")
     client.unfollow_user.assert_not_called()
+
+
+# ── get_user_info (issue #22) ────────────────────────
+
+
+def _fake_user_full(
+    user_id="2024518793679294464",
+    screen_name="ClaudeDevs",
+    name="Claude Devs",
+    description="bio text",
+    created_at="Mon Jan 01 00:00:00 +0000 2026",
+    followers_count=1234,
+    following_count=42,
+    statuses_count=99,
+    verified=True,
+    is_blue_verified=True,
+    location="The Cloud",
+    url="https://claude.com",
+):
+    return SimpleNamespace(
+        id=user_id,
+        screen_name=screen_name,
+        name=name,
+        description=description,
+        created_at=created_at,
+        followers_count=followers_count,
+        following_count=following_count,
+        statuses_count=statuses_count,
+        verified=verified,
+        is_blue_verified=is_blue_verified,
+        location=location,
+        url=url,
+    )
+
+
+async def test_get_user_info_returns_full_metadata_shape(fake_client):
+    """Happy path: returns the documented JSON shape, no missing keys."""
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=_fake_user_full())
+    out = json.loads(await server.get_user_info("ClaudeDevs"))
+    assert out == {
+        "id": "2024518793679294464",
+        "screen_name": "ClaudeDevs",
+        "name": "Claude Devs",
+        "description": "bio text",
+        "created_at": "Mon Jan 01 00:00:00 +0000 2026",
+        "followers_count": 1234,
+        "following_count": 42,
+        "tweets_count": 99,
+        "verified": True,
+        "is_blue_verified": True,
+        "location": "The Cloud",
+        "url": "https://claude.com",
+    }
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("ClaudeDevs")
+
+
+async def test_get_user_info_passes_screen_name_through(fake_client):
+    """The screen_name arg is forwarded verbatim to twikit's resolver."""
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=_fake_user_full())
+    await server.get_user_info("elonmusk")
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("elonmusk")
+
+
+async def test_get_user_info_propagates_resolve_failure(monkeypatch):
+    """If twikit raises (unknown user / network), the tool propagates — no swallow."""
+    client = AsyncMock()
+    client.get_user_by_screen_name = AsyncMock(side_effect=RuntimeError("no such user"))
+    monkeypatch.setattr(server, "_get_client", AsyncMock(return_value=client))
+
+    with pytest.raises(RuntimeError):
+        await server.get_user_info("ghost")
+
+
+async def test_get_user_info_uses_statuses_count_for_tweets_count(fake_client):
+    """twikit's User.statuses_count maps to our `tweets_count` key (issue #22 spec)."""
+    fake_client.get_user_by_screen_name = AsyncMock(
+        return_value=_fake_user_full(statuses_count=12345)
+    )
+    out = json.loads(await server.get_user_info("anyone"))
+    assert out["tweets_count"] == 12345
+    # And the upstream key name does NOT leak into the output.
+    assert "statuses_count" not in out
+
+
+async def test_get_user_info_exposes_both_verified_fields(fake_client):
+    """PR #23 review: u.verified is the legacy gold/grey badge (almost
+    always False on modern X); u.is_blue_verified is the X Premium blue
+    badge that most users actually have. Expose BOTH so callers don't
+    silently get misleading false negatives.
+    """
+    fake_client.get_user_by_screen_name = AsyncMock(
+        return_value=_fake_user_full(verified=False, is_blue_verified=True)
+    )
+    out = json.loads(await server.get_user_info("modern_user"))
+    assert out["verified"] is False
+    assert out["is_blue_verified"] is True
+
+
+async def test_get_user_info_handles_none_optional_fields(fake_client):
+    """PR #23 review gap: description / location / url can be None (twikit's
+    User defaults missing legacy.* fields to None). Output must round-trip
+    them as JSON null, not the string "None".
+    """
+    fake_client.get_user_by_screen_name = AsyncMock(
+        return_value=_fake_user_full(description=None, location=None, url=None)
+    )
+    out = json.loads(await server.get_user_info("sparse_user"))
+    assert out["description"] is None
+    assert out["location"] is None
+    assert out["url"] is None
