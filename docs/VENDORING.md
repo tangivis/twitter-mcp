@@ -75,7 +75,7 @@ PyPI 上的 twikit 2.3.3 有两个已知 bug：
 
 发现 `User` / `Tweet` 这类字段稳定性问题后，补了一整层 mock-based 行为测试：
 
-- `tests/test_tools.py` — 12 个 MCP 工具的行为测试（args 传参、JSON 输出形状、text 截断、URL 解析）
+- `tests/test_tools.py` — 14 个 MCP 工具的行为测试（args 传参、JSON 输出形状、text 截断、URL 解析）
 - `tests/test_cookies.py` — `_get_client` 的错误路径（文件缺失、JSON 损坏、缺 `ct0`/`auth_token` 键）
 
 现在 `twitter_mcp/server.py` 达到 **100% 覆盖**，CI 启用 `--cov-fail-under=95` 作为底线。
@@ -215,7 +215,7 @@ tests/test_vendor_patches.py
 ```
 tests/test_server.py（更新现有测试）
 ├── test_import_server                   — server 仍能 import
-├── test_tools_registered                — 12 个工具仍在
+├── test_tools_registered                — 14 个工具仍在
 └── test_client_uses_vendor              — _get_client 使用的是 _vendor.twikit.Client
 ```
 
