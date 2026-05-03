@@ -25,7 +25,7 @@ def test_import_client_helper():
 
 
 def test_tools_registered():
-    """All 12 tools are registered in the MCP server."""
+    """All 14 tools are registered in the MCP server."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
@@ -38,6 +38,8 @@ def test_tools_registered():
         "retweet",
         "get_user_tweets",
         "get_user_info",
+        "get_user_followers",
+        "get_user_following",
         "get_article_preview",
         "get_article",
         "follow_user",
@@ -47,11 +49,11 @@ def test_tools_registered():
 
 
 def test_tool_count():
-    """Exactly 12 tools are registered."""
+    """Exactly 14 tools are registered."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 12
+    assert len(tools) == 14
 
 
 # ── Tool Schema Tests ─────────────────────────────────
@@ -136,14 +138,44 @@ def test_unfollow_user_has_screen_name():
     assert "screen_name" in schema.get("required", [])
 
 
-def test_get_user_info_has_screen_name():
-    """get_user_info requires 'screen_name' (matches get_user_tweets convention)."""
+def test_get_user_info_accepts_either_screen_name_or_user_id():
+    """get_user_info(screen_name | user_id) — both optional, validated at runtime.
+
+    PR #24 review: gain user_id lookup. Both args become Optional with
+    runtime validation (exactly one required) so an LLM caller can use
+    whichever it has in hand. Schema-wise neither is required; the body
+    raises ToolError if neither is provided (or both).
+    """
     from twitter_mcp.server import mcp
 
     tool = mcp._tool_manager._tools["get_user_info"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
-    assert "screen_name" in schema.get("required", [])
+    assert "user_id" in schema["properties"]
+    # Neither is required — runtime check enforces "exactly one".
+    required = set(schema.get("required", []))
+    assert "screen_name" not in required
+    assert "user_id" not in required
+
+
+def test_get_user_followers_schema_has_count_and_either_user_id_or_screen_name():
+    """get_user_followers takes optional screen_name / user_id / count / cursor."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_user_followers"]
+    schema = tool.parameters
+    assert {"screen_name", "user_id", "count", "cursor"}.issubset(schema["properties"])
+    required = set(schema.get("required", []))
+    assert not required & {"screen_name", "user_id", "count", "cursor"}
+
+
+def test_get_user_following_schema_mirrors_followers():
+    """get_user_following has the same schema shape as get_user_followers."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_user_following"]
+    schema = tool.parameters
+    assert {"screen_name", "user_id", "count", "cursor"}.issubset(schema["properties"])
 
 
 def test_get_article_format_param_in_schema():

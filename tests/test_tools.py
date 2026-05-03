@@ -304,6 +304,8 @@ def _fake_user_full(
     is_blue_verified=True,
     location="The Cloud",
     url="https://claude.com",
+    profile_image_url_https="https://pbs.twimg.com/avatar/x.jpg",
+    protected=False,
 ):
     return SimpleNamespace(
         id=user_id,
@@ -318,6 +320,8 @@ def _fake_user_full(
         is_blue_verified=is_blue_verified,
         location=location,
         url=url,
+        profile_image_url_https=profile_image_url_https,
+        protected=protected,
     )
 
 
@@ -336,6 +340,8 @@ async def test_get_user_info_returns_full_metadata_shape(fake_client):
         "tweets_count": 99,
         "verified": True,
         "is_blue_verified": True,
+        "profile_image_url": "https://pbs.twimg.com/avatar/x.jpg",
+        "protected": False,
         "location": "The Cloud",
         "url": "https://claude.com",
     }
@@ -396,3 +402,184 @@ async def test_get_user_info_handles_none_optional_fields(fake_client):
     assert out["description"] is None
     assert out["location"] is None
     assert out["url"] is None
+
+
+# ── get_user_info: user_id overload + typed exception handling (PR #24 review) ─
+
+
+async def test_get_user_info_accepts_user_id_kwarg(fake_client):
+    """`user_id=` resolves via twikit's get_user_by_id, NOT screen_name path."""
+    fake_client.get_user_by_id = AsyncMock(return_value=_fake_user_full())
+    fake_client.get_user_by_screen_name = AsyncMock()  # must NOT be called
+    out = json.loads(await server.get_user_info(user_id="2024518793679294464"))
+    assert out["id"] == "2024518793679294464"
+    fake_client.get_user_by_id.assert_awaited_once_with("2024518793679294464")
+    fake_client.get_user_by_screen_name.assert_not_called()
+
+
+async def test_get_user_info_raises_when_neither_provided(fake_client):
+    """Strict contract: caller must give exactly one of screen_name / user_id."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_info()
+    msg = str(exc.value)
+    assert "screen_name" in msg and "user_id" in msg
+
+
+async def test_get_user_info_raises_when_both_provided(fake_client):
+    """Both at once is also a contract violation — pick one."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_info(screen_name="alice", user_id="42")
+    msg = str(exc.value)
+    assert "screen_name" in msg and "user_id" in msg
+
+
+async def test_get_user_info_raises_clean_error_on_too_many_requests(fake_client):
+    """twikit's TooManyRequests → ToolError with a friendly rate-limit message."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_user_by_screen_name = AsyncMock(
+        side_effect=TooManyRequests("rate limited")
+    )
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_info("alice")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_user_info_raises_clean_error_on_not_found(fake_client):
+    """twikit's NotFound → ToolError with a 'user not found' message."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_by_id = AsyncMock(side_effect=NotFound("no user"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_info(user_id="9999999999999")
+    assert "not found" in str(exc.value).lower()
+    # The id we asked about appears in the message so callers know what failed.
+    assert "9999999999999" in str(exc.value)
+
+
+# ── get_user_followers / get_user_following ──────────
+
+
+class _FakeResult(list):
+    """Stand-in for twikit's Result[User] — list-like + .next_cursor attr."""
+
+    def __init__(self, users, next_cursor=None):
+        super().__init__(users)
+        self.next_cursor = next_cursor
+
+
+def _fake_followers_result(users=None, next_cursor="cursor-page-2"):
+    if users is None:
+        users = [
+            _fake_user_full(
+                user_id=f"u-{i}",
+                screen_name=f"follower_{i}",
+                name=f"Follower {i}",
+                description="b" * 250,  # long bio to verify truncation
+            )
+            for i in range(3)
+        ]
+    return _FakeResult(users, next_cursor=next_cursor)
+
+
+async def test_get_user_followers_resolves_screen_name_then_fetches(fake_client):
+    """screen_name → get_user_by_screen_name → get_user_followers(user.id)."""
+    fake_client.get_user_by_screen_name = AsyncMock(
+        return_value=_fake_user_full(user_id="u-42", screen_name="alice")
+    )
+    fake_client.get_user_followers = AsyncMock(return_value=_fake_followers_result())
+    out = json.loads(await server.get_user_followers(screen_name="alice", count=5))
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("alice")
+    fake_client.get_user_followers.assert_awaited_once_with(
+        "u-42", count=5, cursor=None
+    )
+    assert "users" in out
+    assert len(out["users"]) == 3
+    assert out["next_cursor"] == "cursor-page-2"
+
+
+async def test_get_user_followers_uses_user_id_directly_no_resolve(fake_client):
+    """When user_id is given, skip the screen_name resolution roundtrip."""
+    fake_client.get_user_by_screen_name = AsyncMock()  # must NOT be called
+    fake_client.get_user_followers = AsyncMock(return_value=_fake_followers_result())
+    await server.get_user_followers(user_id="u-99", count=10)
+    fake_client.get_user_by_screen_name.assert_not_called()
+    fake_client.get_user_followers.assert_awaited_once_with(
+        "u-99", count=10, cursor=None
+    )
+
+
+async def test_get_user_followers_truncates_bio_in_compact_user(fake_client):
+    """Bio in the followers list is truncated (long lists otherwise blow the
+    MCP_OUTPUT cap). Match get_user_tweets/get_timeline truncation pattern."""
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=_fake_user_full())
+    long_bio_user = _fake_user_full(description="X" * 500)
+    fake_client.get_user_followers = AsyncMock(
+        return_value=_fake_followers_result(users=[long_bio_user])
+    )
+    out = json.loads(await server.get_user_followers(screen_name="alice"))
+    assert len(out["users"][0]["description"]) <= 200  # truncated
+
+
+async def test_get_user_followers_passes_cursor_through(fake_client):
+    """Caller can paginate via cursor — pass through verbatim."""
+    fake_client.get_user_followers = AsyncMock(return_value=_fake_followers_result())
+    await server.get_user_followers(user_id="u-1", count=20, cursor="abc-cursor")
+    fake_client.get_user_followers.assert_awaited_once_with(
+        "u-1", count=20, cursor="abc-cursor"
+    )
+
+
+async def test_get_user_followers_raises_on_count_over_100(fake_client):
+    """Don't silently clamp — raise so callers know about the cap."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_user_followers(user_id="u-1", count=500)
+    assert "100" in str(exc.value)
+
+
+async def test_get_user_followers_raises_when_neither_provided(fake_client):
+    """Same exactly-one contract as get_user_info."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_user_followers()
+
+
+async def test_get_user_following_mirrors_followers_shape(fake_client):
+    """Symmetrical to get_user_followers, just calls get_user_following."""
+    fake_client.get_user_following = AsyncMock(return_value=_fake_followers_result())
+    out = json.loads(await server.get_user_following(user_id="u-42", count=5))
+    fake_client.get_user_following.assert_awaited_once_with(
+        "u-42", count=5, cursor=None
+    )
+    assert "users" in out
+    assert "next_cursor" in out
+
+
+async def test_get_user_following_resolves_screen_name(fake_client):
+    fake_client.get_user_by_screen_name = AsyncMock(
+        return_value=_fake_user_full(user_id="u-7", screen_name="alice")
+    )
+    fake_client.get_user_following = AsyncMock(return_value=_fake_followers_result())
+    await server.get_user_following(screen_name="alice", count=15)
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("alice")
+    fake_client.get_user_following.assert_awaited_once_with(
+        "u-7", count=15, cursor=None
+    )
+
+
+async def test_get_user_following_raises_on_count_over_100(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_user_following(user_id="u-1", count=200)
