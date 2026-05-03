@@ -25,7 +25,7 @@ def test_import_client_helper():
 
 
 def test_tools_registered():
-    """All 11 tools are registered in the MCP server."""
+    """All 12 tools are registered in the MCP server."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
@@ -37,6 +37,7 @@ def test_tools_registered():
         "like_tweet",
         "retweet",
         "get_user_tweets",
+        "get_user_info",
         "get_article_preview",
         "get_article",
         "follow_user",
@@ -46,11 +47,11 @@ def test_tools_registered():
 
 
 def test_tool_count():
-    """Exactly 11 tools are registered."""
+    """Exactly 12 tools are registered."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 11
+    assert len(tools) == 12
 
 
 # ── Tool Schema Tests ─────────────────────────────────
@@ -130,6 +131,16 @@ def test_unfollow_user_has_screen_name():
     from twitter_mcp.server import mcp
 
     tool = mcp._tool_manager._tools["unfollow_user"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+
+
+def test_get_user_info_has_screen_name():
+    """get_user_info requires 'screen_name' (matches get_user_tweets convention)."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_user_info"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "screen_name" in schema.get("required", [])
