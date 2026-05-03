@@ -244,7 +244,12 @@ async def get_user_info(screen_name: str) -> str:
             "followers_count": u.followers_count,
             "following_count": u.following_count,
             "tweets_count": u.statuses_count,
+            # `verified` is the legacy gold/grey badge (almost always False
+            # on modern X — pre-2023 verification batch). `is_blue_verified`
+            # is the X Premium blue check most accounts actually have today.
+            # Expose both so callers can pick. (PR #23 review feedback.)
             "verified": u.verified,
+            "is_blue_verified": u.is_blue_verified,
             "location": u.location,
             "url": u.url,
         }
