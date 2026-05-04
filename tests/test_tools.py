@@ -1,4 +1,4 @@
-"""Behavior tests for the 33 MCP tools.
+"""Behavior tests for the 42 MCP tools.
 
 Uses mocks to exercise each tool's body without network or real cookies.
 Covers: args passed through to twikit, output JSON shape, text truncation,
@@ -1621,3 +1621,543 @@ async def test_send_dm_to_group_raises_clean_on_not_found(fake_client):
     with pytest.raises(ToolError) as exc:
         await server.send_dm_to_group("g-missing", "hi")
     assert "g-missing" in str(exc.value)
+
+
+# ── Tier 2B: Twitter Lists CRUD ───────────────────────────────────────────────
+
+
+def _fake_list(
+    list_id="lst-1",
+    name="My List",
+    description="A test list",
+    member_count=5,
+    subscriber_count=3,
+    mode="Public",
+    created_at=1234567890,
+):
+    return SimpleNamespace(
+        id=list_id,
+        name=name,
+        description=description,
+        member_count=member_count,
+        subscriber_count=subscriber_count,
+        mode=mode,
+        created_at=created_at,
+    )
+
+
+class _FakeListResult(list):
+    """Stand-in for twikit's Result[List] — list-like + .next_cursor attr."""
+
+    def __init__(self, lists, next_cursor=None):
+        super().__init__(lists)
+        self.next_cursor = next_cursor
+
+
+# ── get_list ──────────────────────────────────────────
+
+
+async def test_get_list_returns_list_dict(fake_client):
+    fake_client.get_list = AsyncMock(return_value=_fake_list("lst-1", "My List"))
+    out = json.loads(await server.get_list("lst-1"))
+    fake_client.get_list.assert_awaited_once_with("lst-1")
+    assert out["id"] == "lst-1"
+    assert out["name"] == "My List"
+    assert "description" in out
+    assert "member_count" in out
+    assert "subscriber_count" in out
+    assert "is_private" in out
+    assert "created_at" in out
+
+
+async def test_get_list_is_private_for_private_mode(fake_client):
+    fake_client.get_list = AsyncMock(return_value=_fake_list(mode="Private"))
+    out = json.loads(await server.get_list("lst-1"))
+    assert out["is_private"] is True
+
+
+async def test_get_list_is_public_for_public_mode(fake_client):
+    fake_client.get_list = AsyncMock(return_value=_fake_list(mode="Public"))
+    out = json.loads(await server.get_list("lst-1"))
+    assert out["is_private"] is False
+
+
+async def test_get_list_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_list = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_list("lst-ghost")
+    assert "lst-ghost" in str(exc.value)
+
+
+async def test_get_list_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_list = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_list("lst-1")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── get_lists ─────────────────────────────────────────
+
+
+async def test_get_lists_returns_list_of_dicts(fake_client):
+    fake_client.get_lists = AsyncMock(
+        return_value=_FakeListResult(
+            [_fake_list("l1"), _fake_list("l2")], next_cursor="nc-1"
+        )
+    )
+    out = json.loads(await server.get_lists(count=10))
+    fake_client.get_lists.assert_awaited_once_with(count=10, cursor=None)
+    assert out["count"] == 2
+    assert out["next_cursor"] == "nc-1"
+    assert out["lists"][0]["id"] == "l1"
+
+
+async def test_get_lists_passes_cursor(fake_client):
+    fake_client.get_lists = AsyncMock(return_value=_FakeListResult([]))
+    await server.get_lists(count=5, cursor="abc")
+    fake_client.get_lists.assert_awaited_once_with(count=5, cursor="abc")
+
+
+async def test_get_lists_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_lists(count=101)
+    assert "100" in str(exc.value)
+
+
+async def test_get_lists_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_lists(count=0)
+
+
+async def test_get_lists_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_lists = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_lists()
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_lists_description_truncated_to_200(fake_client):
+    long_desc = "d" * 500
+    fake_client.get_lists = AsyncMock(
+        return_value=_FakeListResult([_fake_list(description=long_desc)])
+    )
+    out = json.loads(await server.get_lists())
+    assert len(out["lists"][0]["description"]) == 200
+
+
+# ── get_list_tweets ───────────────────────────────────
+
+
+async def test_get_list_tweets_returns_compact_tweet_list(fake_client):
+    fake_client.get_list_tweets = AsyncMock(
+        return_value=_FakeTweetResult(
+            [_fake_tweet(tid="t1"), _fake_tweet(tid="t2")], next_cursor="nc-lt"
+        )
+    )
+    out = json.loads(await server.get_list_tweets("lst-1", count=5))
+    fake_client.get_list_tweets.assert_awaited_once_with("lst-1", count=5, cursor=None)
+    assert out["count"] == 2
+    assert out["next_cursor"] == "nc-lt"
+    assert out["tweets"][0]["id"] == "t1"
+    assert "author" in out["tweets"][0]
+    assert "text" in out["tweets"][0]
+    assert "likes" in out["tweets"][0]
+    assert "retweets" in out["tweets"][0]
+
+
+async def test_get_list_tweets_truncates_text_to_200(fake_client):
+    long_text = "z" * 500
+    fake_client.get_list_tweets = AsyncMock(
+        return_value=_FakeTweetResult([_fake_tweet(text=long_text)])
+    )
+    out = json.loads(await server.get_list_tweets("lst-1"))
+    assert len(out["tweets"][0]["text"]) == 200
+
+
+async def test_get_list_tweets_passes_cursor(fake_client):
+    fake_client.get_list_tweets = AsyncMock(return_value=_FakeTweetResult([]))
+    await server.get_list_tweets("lst-1", count=10, cursor="pg2")
+    fake_client.get_list_tweets.assert_awaited_once_with(
+        "lst-1", count=10, cursor="pg2"
+    )
+
+
+async def test_get_list_tweets_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_tweets("lst-1", count=200)
+    assert "100" in str(exc.value)
+
+
+async def test_get_list_tweets_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_list_tweets("lst-1", count=0)
+
+
+async def test_get_list_tweets_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_list_tweets = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_tweets("lst-1")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_list_tweets_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_list_tweets = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_tweets("lst-ghost")
+    assert "lst-ghost" in str(exc.value)
+
+
+# ── get_list_members ──────────────────────────────────
+
+
+async def test_get_list_members_returns_user_list(fake_client):
+    fake_client.get_list_members = AsyncMock(
+        return_value=_fake_followers_result(next_cursor="nc-m")
+    )
+    out = json.loads(await server.get_list_members("lst-1", count=5))
+    fake_client.get_list_members.assert_awaited_once_with("lst-1", count=5, cursor=None)
+    assert "users" in out
+    assert out["next_cursor"] == "nc-m"
+    assert out["count"] == len(out["users"])
+
+
+async def test_get_list_members_passes_cursor(fake_client):
+    fake_client.get_list_members = AsyncMock(return_value=_fake_followers_result())
+    await server.get_list_members("lst-1", count=10, cursor="cur2")
+    fake_client.get_list_members.assert_awaited_once_with(
+        "lst-1", count=10, cursor="cur2"
+    )
+
+
+async def test_get_list_members_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_members("lst-1", count=200)
+    assert "100" in str(exc.value)
+
+
+async def test_get_list_members_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_list_members("lst-1", count=0)
+
+
+async def test_get_list_members_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_list_members = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_members("lst-1")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_list_members_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_list_members = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_members("lst-ghost")
+    assert "lst-ghost" in str(exc.value)
+
+
+# ── get_list_subscribers ──────────────────────────────
+
+
+async def test_get_list_subscribers_returns_user_list(fake_client):
+    fake_client.get_list_subscribers = AsyncMock(
+        return_value=_fake_followers_result(next_cursor="nc-s")
+    )
+    out = json.loads(await server.get_list_subscribers("lst-1", count=5))
+    fake_client.get_list_subscribers.assert_awaited_once_with(
+        "lst-1", count=5, cursor=None
+    )
+    assert "users" in out
+    assert out["next_cursor"] == "nc-s"
+    assert out["count"] == len(out["users"])
+
+
+async def test_get_list_subscribers_passes_cursor(fake_client):
+    fake_client.get_list_subscribers = AsyncMock(return_value=_fake_followers_result())
+    await server.get_list_subscribers("lst-1", count=10, cursor="cur3")
+    fake_client.get_list_subscribers.assert_awaited_once_with(
+        "lst-1", count=10, cursor="cur3"
+    )
+
+
+async def test_get_list_subscribers_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_subscribers("lst-1", count=200)
+    assert "100" in str(exc.value)
+
+
+async def test_get_list_subscribers_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_list_subscribers("lst-1", count=0)
+
+
+async def test_get_list_subscribers_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_list_subscribers = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_subscribers("lst-1")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_list_subscribers_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_list_subscribers = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_list_subscribers("lst-ghost")
+    assert "lst-ghost" in str(exc.value)
+
+
+# ── create_list ───────────────────────────────────────
+
+
+async def test_create_list_returns_list_dict(fake_client):
+    fake_client.create_list = AsyncMock(return_value=_fake_list("new-lst", "New List"))
+    out = json.loads(await server.create_list("New List"))
+    fake_client.create_list.assert_awaited_once_with("New List", "", False)
+    assert out["id"] == "new-lst"
+    assert out["name"] == "New List"
+
+
+async def test_create_list_passes_description_and_is_private(fake_client):
+    fake_client.create_list = AsyncMock(return_value=_fake_list(mode="Private"))
+    out = json.loads(await server.create_list("Secret", "my secret list", True))
+    fake_client.create_list.assert_awaited_once_with("Secret", "my secret list", True)
+    assert out["is_private"] is True
+
+
+async def test_create_list_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.create_list = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.create_list("My List")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── edit_list ─────────────────────────────────────────
+
+
+async def test_edit_list_returns_updated_list_dict(fake_client):
+    fake_client.edit_list = AsyncMock(return_value=_fake_list("lst-1", "New Name"))
+    out = json.loads(await server.edit_list("lst-1", name="New Name"))
+    fake_client.edit_list.assert_awaited_once_with("lst-1", "New Name", None, None)
+    assert out["name"] == "New Name"
+
+
+async def test_edit_list_raises_on_no_fields(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.edit_list("lst-1")
+    assert "at least one" in str(exc.value).lower()
+
+
+async def test_edit_list_passes_description_and_is_private(fake_client):
+    fake_client.edit_list = AsyncMock(return_value=_fake_list(mode="Private"))
+    await server.edit_list("lst-1", description="new desc", is_private=True)
+    fake_client.edit_list.assert_awaited_once_with("lst-1", None, "new desc", True)
+
+
+async def test_edit_list_allows_empty_string_description(fake_client):
+    """Empty string clears description — distinct from None (which means skip)."""
+    fake_client.edit_list = AsyncMock(return_value=_fake_list())
+    await server.edit_list("lst-1", description="")
+    fake_client.edit_list.assert_awaited_once_with("lst-1", None, "", None)
+
+
+async def test_edit_list_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.edit_list = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.edit_list("lst-ghost", name="new name")
+    assert "lst-ghost" in str(exc.value)
+
+
+async def test_edit_list_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.edit_list = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.edit_list("lst-1", name="new name")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── add_list_member ───────────────────────────────────
+
+
+async def test_add_list_member_by_screen_name(fake_client):
+    user = _fake_user(user_id="u-99", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.add_list_member = AsyncMock(return_value=_fake_list("lst-1"))
+    out = json.loads(await server.add_list_member("lst-1", screen_name="alice"))
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("alice")
+    fake_client.add_list_member.assert_awaited_once_with("lst-1", "u-99")
+    assert out["id"] == "lst-1"
+
+
+async def test_add_list_member_by_user_id(fake_client):
+    fake_client.add_list_member = AsyncMock(return_value=_fake_list("lst-1"))
+    out = json.loads(await server.add_list_member("lst-1", user_id="u-77"))
+    fake_client.add_list_member.assert_awaited_once_with("lst-1", "u-77")
+    assert out["id"] == "lst-1"
+
+
+async def test_add_list_member_raises_on_neither(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.add_list_member("lst-1")
+    assert "add_list_member" in str(exc.value)
+
+
+async def test_add_list_member_raises_on_both(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.add_list_member("lst-1", screen_name="alice", user_id="u-1")
+
+
+async def test_add_list_member_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.add_list_member("lst-1", screen_name="ghost")
+    assert "not found" in str(exc.value).lower()
+
+
+async def test_add_list_member_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.add_list_member("lst-1", screen_name="alice")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── remove_list_member ────────────────────────────────
+
+
+async def test_remove_list_member_by_screen_name(fake_client):
+    user = _fake_user(user_id="u-88", screen_name="bob")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.remove_list_member = AsyncMock(return_value=_fake_list("lst-1"))
+    out = json.loads(await server.remove_list_member("lst-1", screen_name="bob"))
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("bob")
+    fake_client.remove_list_member.assert_awaited_once_with("lst-1", "u-88")
+    assert out["id"] == "lst-1"
+
+
+async def test_remove_list_member_by_user_id(fake_client):
+    fake_client.remove_list_member = AsyncMock(return_value=_fake_list("lst-1"))
+    out = json.loads(await server.remove_list_member("lst-1", user_id="u-55"))
+    fake_client.remove_list_member.assert_awaited_once_with("lst-1", "u-55")
+    assert out["id"] == "lst-1"
+
+
+async def test_remove_list_member_raises_on_neither(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.remove_list_member("lst-1")
+    assert "remove_list_member" in str(exc.value)
+
+
+async def test_remove_list_member_raises_on_both(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.remove_list_member("lst-1", screen_name="alice", user_id="u-1")
+
+
+async def test_remove_list_member_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.remove_list_member("lst-1", screen_name="ghost")
+    assert "not found" in str(exc.value).lower()
+
+
+async def test_remove_list_member_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.remove_list_member("lst-1", screen_name="alice")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_create_list_raises_on_empty_name(fake_client):
+    """Claude PR #31 review: empty / whitespace-only name should raise
+    a clean ToolError before reaching twikit (matches send_dm pattern)."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.create_list("")
+    assert "empty" in str(exc.value).lower()
+    with pytest.raises(ToolError):
+        await server.create_list("   ")  # whitespace-only also empty

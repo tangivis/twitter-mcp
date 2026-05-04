@@ -1120,6 +1120,285 @@ async def delete_dm(message_id: str) -> str:
     return json.dumps({"message_id": message_id, "status": "deleted"})
 
 
+def _list_to_dict(lst) -> dict:
+    """Compact list dict used in list outputs.
+
+    Truncates description to 200 chars (matches _user_to_dict pattern).
+    `mode` is "Public" | "Private" in twikit's List model.
+    """
+    return {
+        "id": lst.id,
+        "name": lst.name,
+        "description": (lst.description or "")[:200],
+        "member_count": lst.member_count,
+        "subscriber_count": lst.subscriber_count,
+        "is_private": lst.mode == "Private",
+        "created_at": str(lst.created_at),
+    }
+
+
+@mcp.tool()
+async def get_list(list_id: str) -> str:
+    """Get a Twitter List by ID.
+
+    Args:
+        list_id: The list ID.
+    """
+    client = await _get_client()
+    try:
+        lst = await client.get_list(list_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"List {list_id} not found.")
+    return json.dumps(_list_to_dict(lst))
+
+
+@mcp.tool()
+async def get_lists(count: int = 20, cursor: str | None = None) -> str:
+    """Get the authenticated user's Twitter Lists (paginated).
+
+    Args:
+        count: Number of lists to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_lists(count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    lists = [_list_to_dict(lst) for lst in result]
+    return json.dumps(
+        {
+            "lists": lists,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(lists),
+        }
+    )
+
+
+@mcp.tool()
+async def get_list_tweets(
+    list_id: str, count: int = 20, cursor: str | None = None
+) -> str:
+    """Get tweets from a Twitter List (paginated).
+
+    Args:
+        list_id: The list ID.
+        count: Number of tweets to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_list_tweets(list_id, count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"List {list_id} not found.")
+    tweets = [
+        {
+            "id": t.id,
+            "author": t.user.screen_name,
+            "text": t.text[:200],
+            "likes": t.favorite_count,
+            "retweets": t.retweet_count,
+        }
+        for t in result
+    ]
+    return json.dumps(
+        {
+            "tweets": tweets,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(tweets),
+        }
+    )
+
+
+@mcp.tool()
+async def get_list_members(
+    list_id: str, count: int = 20, cursor: str | None = None
+) -> str:
+    """Get members of a Twitter List (paginated).
+
+    Args:
+        list_id: The list ID.
+        count: Number of members to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_list_members(list_id, count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"List {list_id} not found.")
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
+        }
+    )
+
+
+@mcp.tool()
+async def get_list_subscribers(
+    list_id: str, count: int = 20, cursor: str | None = None
+) -> str:
+    """Get subscribers of a Twitter List (paginated).
+
+    Args:
+        list_id: The list ID.
+        count: Number of subscribers to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_list_subscribers(list_id, count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"List {list_id} not found.")
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
+        }
+    )
+
+
+@mcp.tool()
+async def create_list(
+    name: str, description: str = "", is_private: bool = False
+) -> str:
+    """Create a new Twitter List.
+
+    Args:
+        name: The name for the new list (required, must not be empty).
+        description: Description for the list (default empty).
+        is_private: If True, the list is private (default False = public).
+    """
+    if not name.strip():
+        raise ToolError("name must not be empty.")
+    client = await _get_client()
+    try:
+        lst = await client.create_list(name, description, is_private)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    return json.dumps(_list_to_dict(lst))
+
+
+@mcp.tool()
+async def edit_list(
+    list_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    is_private: bool | None = None,
+) -> str:
+    """Edit a Twitter List's metadata.
+
+    At least one of `name`, `description`, or `is_private` must be provided.
+    Pass an empty string for `description` to clear it.
+
+    Args:
+        list_id: The list ID (required).
+        name: New name for the list.
+        description: New description (empty string clears it).
+        is_private: True to make private, False to make public.
+    """
+    if name is None and description is None and is_private is None:
+        raise ToolError("at least one of name/description/is_private must be provided.")
+    client = await _get_client()
+    try:
+        lst = await client.edit_list(list_id, name, description, is_private)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"List {list_id} not found.")
+    return json.dumps(_list_to_dict(lst))
+
+
+@mcp.tool()
+async def add_list_member(
+    list_id: str,
+    screen_name: str | None = None,
+    user_id: str | None = None,
+) -> str:
+    """Add a user to a Twitter List.
+
+    Caller must provide exactly one of `screen_name` / `user_id`.
+
+    Args:
+        list_id: The list ID (required).
+        screen_name: Twitter username (without @).
+        user_id: Twitter numeric user ID.
+    """
+    _require_exactly_one(screen_name, user_id, op="add_list_member")
+    client = await _get_client()
+    try:
+        uid = await _resolve_user_id(client, screen_name, user_id)
+        lst = await client.add_list_member(list_id, uid)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Not found: list {list_id} or user {screen_name or user_id}.")
+    return json.dumps(_list_to_dict(lst))
+
+
+@mcp.tool()
+async def remove_list_member(
+    list_id: str,
+    screen_name: str | None = None,
+    user_id: str | None = None,
+) -> str:
+    """Remove a user from a Twitter List.
+
+    Caller must provide exactly one of `screen_name` / `user_id`.
+
+    Args:
+        list_id: The list ID (required).
+        screen_name: Twitter username (without @).
+        user_id: Twitter numeric user ID.
+    """
+    _require_exactly_one(screen_name, user_id, op="remove_list_member")
+    client = await _get_client()
+    try:
+        uid = await _resolve_user_id(client, screen_name, user_id)
+        lst = await client.remove_list_member(list_id, uid)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Not found: list {list_id} or user {screen_name or user_id}.")
+    return json.dumps(_list_to_dict(lst))
+
+
 def _get_version() -> str:
     """Read the installed package version, falling back to 'unknown'."""
     try:

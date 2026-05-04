@@ -123,11 +123,11 @@ def test_server_imports_from_vendor():
 
 
 def test_server_still_works():
-    """Server still loads and registers all 33 tools after vendoring."""
+    """Server still loads and registers all 42 tools after vendoring."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 33
+    assert len(tools) == 42
     expected = {
         "send_tweet",
         "get_tweet",
@@ -163,6 +163,16 @@ def test_server_still_works():
         "send_dm_to_group",
         "get_dm_history",
         "delete_dm",
+        # new in v0.1.18
+        "get_list",
+        "get_lists",
+        "get_list_tweets",
+        "get_list_members",
+        "get_list_subscribers",
+        "create_list",
+        "edit_list",
+        "add_list_member",
+        "remove_list_member",
     }
     assert set(tools.keys()) == expected
 
