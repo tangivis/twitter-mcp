@@ -82,7 +82,7 @@ tests/test_server.py
 │   └── test_import_client_helper    — _get_client 函数存在
 ├── 工具注册测试
 │   ├── test_tools_registered        — 42 个工具名全部正确
-│   └── test_tool_count              — 工具数量恰好 33 个
+│   └── test_tool_count              — 工具数量恰好 42 个
 ├── 工具 Schema 测试
 │   ├── test_send_tweet_has_text_param        — text 是必填参数
 │   ├── test_send_tweet_has_optional_reply_to — reply_to 是可选参数

@@ -2149,3 +2149,15 @@ async def test_remove_list_member_raises_clean_on_rate_limit(fake_client):
     with pytest.raises(ToolError) as exc:
         await server.remove_list_member("lst-1", screen_name="alice")
     assert "rate limit" in str(exc.value).lower()
+
+
+async def test_create_list_raises_on_empty_name(fake_client):
+    """Claude PR #31 review: empty / whitespace-only name should raise
+    a clean ToolError before reaching twikit (matches send_dm pattern)."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.create_list("")
+    assert "empty" in str(exc.value).lower()
+    with pytest.raises(ToolError):
+        await server.create_list("   ")  # whitespace-only also empty

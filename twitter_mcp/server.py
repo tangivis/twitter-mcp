@@ -1301,10 +1301,12 @@ async def create_list(
     """Create a new Twitter List.
 
     Args:
-        name: The name for the new list (required).
+        name: The name for the new list (required, must not be empty).
         description: Description for the list (default empty).
         is_private: If True, the list is private (default False = public).
     """
+    if not name.strip():
+        raise ToolError("name must not be empty.")
     client = await _get_client()
     try:
         lst = await client.create_list(name, description, is_private)
