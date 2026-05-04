@@ -1,4 +1,4 @@
-"""Behavior tests for the 14 MCP tools.
+"""Behavior tests for the 24 MCP tools.
 
 Uses mocks to exercise each tool's body without network or real cookies.
 Covers: args passed through to twikit, output JSON shape, text truncation,
@@ -790,6 +790,8 @@ async def test_delete_bookmark_calls_client_and_returns_un_bookmarked(fake_clien
 
 
 async def test_delete_bookmark_raises_clean_on_not_found(fake_client):
+    """Error message says 'bookmark not found' (not 'tweet not found') because
+    the tweet typically still exists — only the bookmark is missing."""
     from mcp.server.fastmcp.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
@@ -797,7 +799,9 @@ async def test_delete_bookmark_raises_clean_on_not_found(fake_client):
     fake_client.delete_bookmark = AsyncMock(side_effect=NotFound("gone"))
     with pytest.raises(ToolError) as exc:
         await server.delete_bookmark("999")
-    assert "not found" in str(exc.value).lower()
+    msg = str(exc.value).lower()
+    assert "bookmark" in msg
+    assert "999" in str(exc.value)
 
 
 # ── get_bookmarks ─────────────────────────────────────
@@ -1129,3 +1133,27 @@ async def test_delete_bookmark_raises_clean_on_rate_limit(fake_client):
     with pytest.raises(ToolError) as exc:
         await server.delete_bookmark("123")
     assert "rate limit" in str(exc.value).lower()
+
+
+# ── PR #27 Claude review followups ────────────────────
+
+
+async def test_get_trends_raises_on_count_too_low(fake_client):
+    """Claude PR #27 review: get_trends was missing the count<1 guard."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_trends(count=0)
+    with pytest.raises(ToolError):
+        await server.get_trends(count=-3)
+
+
+async def test_search_user_raises_on_empty_query(fake_client):
+    """Claude PR #27 review: empty / whitespace query → clean ToolError."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.search_user("")
+    assert "empty" in str(exc.value).lower()
+    with pytest.raises(ToolError):
+        await server.search_user("   ")  # whitespace-only also empty

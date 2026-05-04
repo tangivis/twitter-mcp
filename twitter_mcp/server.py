@@ -227,7 +227,6 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
 
 
 _PAGINATED_MAX_COUNT = 100
-_FOLLOWERS_MAX_COUNT = _PAGINATED_MAX_COUNT  # backwards-compat alias
 
 _VALID_TREND_CATEGORIES = frozenset(
     {"trending", "for-you", "news", "sports", "entertainment"}
@@ -351,9 +350,9 @@ async def get_user_followers(
     _require_exactly_one(screen_name, user_id, op="get_user_followers")
     if count < 1:
         raise ToolError("count must be >= 1.")
-    if count > _FOLLOWERS_MAX_COUNT:
+    if count > _PAGINATED_MAX_COUNT:
         raise ToolError(
-            f"count exceeds the {_FOLLOWERS_MAX_COUNT} cap; paginate via `cursor` instead."
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
         )
 
     client = await _get_client()
@@ -398,9 +397,9 @@ async def get_user_following(
     _require_exactly_one(screen_name, user_id, op="get_user_following")
     if count < 1:
         raise ToolError("count must be >= 1.")
-    if count > _FOLLOWERS_MAX_COUNT:
+    if count > _PAGINATED_MAX_COUNT:
         raise ToolError(
-            f"count exceeds the {_FOLLOWERS_MAX_COUNT} cap; paginate via `cursor` instead."
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
         )
 
     client = await _get_client()
@@ -543,7 +542,7 @@ async def delete_bookmark(tweet_id: str) -> str:
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
-        raise ToolError(f"Tweet {tweet_id} not found.")
+        raise ToolError(f"Bookmark for tweet {tweet_id} not found.")
     return json.dumps({"tweet_id": tweet_id, "status": "un-bookmarked"})
 
 
@@ -662,6 +661,8 @@ async def search_user(query: str, count: int = 20, cursor: str | None = None) ->
         count: Number of users to fetch (default 20, max 100).
         cursor: Pagination cursor from a previous response's `next_cursor`.
     """
+    if not query.strip():
+        raise ToolError("query must not be empty.")
     if count < 1:
         raise ToolError("count must be >= 1.")
     if count > _PAGINATED_MAX_COUNT:
@@ -696,6 +697,8 @@ async def get_trends(category: str = "trending", count: int = 20) -> str:
         raise ToolError(
             f"category must be one of {sorted(_VALID_TREND_CATEGORIES)}, got: {category!r}"
         )
+    if count < 1:
+        raise ToolError("count must be >= 1.")
     client = await _get_client()
     try:
         trends = await client.get_trends(category, count=count)
