@@ -1793,7 +1793,9 @@ async def test_get_list_tweets_truncates_text_to_200(fake_client):
 async def test_get_list_tweets_passes_cursor(fake_client):
     fake_client.get_list_tweets = AsyncMock(return_value=_FakeTweetResult([]))
     await server.get_list_tweets("lst-1", count=10, cursor="pg2")
-    fake_client.get_list_tweets.assert_awaited_once_with("lst-1", count=10, cursor="pg2")
+    fake_client.get_list_tweets.assert_awaited_once_with(
+        "lst-1", count=10, cursor="pg2"
+    )
 
 
 async def test_get_list_tweets_raises_on_count_too_high(fake_client):
@@ -1850,7 +1852,9 @@ async def test_get_list_members_returns_user_list(fake_client):
 async def test_get_list_members_passes_cursor(fake_client):
     fake_client.get_list_members = AsyncMock(return_value=_fake_followers_result())
     await server.get_list_members("lst-1", count=10, cursor="cur2")
-    fake_client.get_list_members.assert_awaited_once_with("lst-1", count=10, cursor="cur2")
+    fake_client.get_list_members.assert_awaited_once_with(
+        "lst-1", count=10, cursor="cur2"
+    )
 
 
 async def test_get_list_members_raises_on_count_too_high(fake_client):

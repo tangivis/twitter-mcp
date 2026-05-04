@@ -1120,20 +1120,20 @@ async def delete_dm(message_id: str) -> str:
     return json.dumps({"message_id": message_id, "status": "deleted"})
 
 
-def _list_to_dict(l) -> dict:
+def _list_to_dict(lst) -> dict:
     """Compact list dict used in list outputs.
 
     Truncates description to 200 chars (matches _user_to_dict pattern).
     `mode` is "Public" | "Private" in twikit's List model.
     """
     return {
-        "id": l.id,
-        "name": l.name,
-        "description": (l.description or "")[:200],
-        "member_count": l.member_count,
-        "subscriber_count": l.subscriber_count,
-        "is_private": l.mode == "Private",
-        "created_at": str(l.created_at),
+        "id": lst.id,
+        "name": lst.name,
+        "description": (lst.description or "")[:200],
+        "member_count": lst.member_count,
+        "subscriber_count": lst.subscriber_count,
+        "is_private": lst.mode == "Private",
+        "created_at": str(lst.created_at),
     }
 
 
@@ -1173,7 +1173,7 @@ async def get_lists(count: int = 20, cursor: str | None = None) -> str:
         result = await client.get_lists(count=count, cursor=cursor)
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
-    lists = [_list_to_dict(l) for l in result]
+    lists = [_list_to_dict(lst) for lst in result]
     return json.dumps(
         {
             "lists": lists,
@@ -1332,9 +1332,7 @@ async def edit_list(
         is_private: True to make private, False to make public.
     """
     if name is None and description is None and is_private is None:
-        raise ToolError(
-            "at least one of name/description/is_private must be provided."
-        )
+        raise ToolError("at least one of name/description/is_private must be provided.")
     client = await _get_client()
     try:
         lst = await client.edit_list(list_id, name, description, is_private)
@@ -1368,9 +1366,7 @@ async def add_list_member(
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
-        raise ToolError(
-            f"Not found: list {list_id} or user {screen_name or user_id}."
-        )
+        raise ToolError(f"Not found: list {list_id} or user {screen_name or user_id}.")
     return json.dumps(_list_to_dict(lst))
 
 
@@ -1397,9 +1393,7 @@ async def remove_list_member(
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
-        raise ToolError(
-            f"Not found: list {list_id} or user {screen_name or user_id}."
-        )
+        raise ToolError(f"Not found: list {list_id} or user {screen_name or user_id}.")
     return json.dumps(_list_to_dict(lst))
 
 
