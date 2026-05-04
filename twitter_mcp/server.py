@@ -1007,9 +1007,7 @@ async def get_notifications(
 
 
 @mcp.tool()
-async def send_dm(
-    screen_name: str, text: str, media_id: str | None = None
-) -> str:
+async def send_dm(screen_name: str, text: str, media_id: str | None = None) -> str:
     """Send a direct message to a user by screen name.
 
     Note: Sends a PRIVATE message. Do not bulk-call. X has aggressive anti-spam
@@ -1058,9 +1056,7 @@ async def send_dm_to_group(
 
 
 @mcp.tool()
-async def get_dm_history(
-    screen_name: str, max_id: str | None = None
-) -> str:
+async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
     """Get DM conversation history with a user.
 
     Note: Retrieves PRIVATE messages. Do not bulk-call. X has aggressive
