@@ -8,7 +8,7 @@
 
 | 测试类型 | 在 CI 中 | 覆盖内容 |
 |---------|---------|---------|
-| 导入和注册 | 可以 | server 能启动、33 个工具都注册成功 |
+| 导入和注册 | 可以 | server 能启动、42 个工具都注册成功 |
 | 工具 Schema | 可以 | 参数名、必填/可选、类型都正确 |
 | MCP 协议 | 可以 | initialize 握手响应正确 |
 | URL 解析 | 可以 | 推文 URL → ID 的提取逻辑 |
@@ -81,7 +81,7 @@ tests/test_server.py
 │   ├── test_import_server           — server 模块可导入
 │   └── test_import_client_helper    — _get_client 函数存在
 ├── 工具注册测试
-│   ├── test_tools_registered        — 33 个工具名全部正确
+│   ├── test_tools_registered        — 42 个工具名全部正确
 │   └── test_tool_count              — 工具数量恰好 33 个
 ├── 工具 Schema 测试
 │   ├── test_send_tweet_has_text_param        — text 是必填参数
