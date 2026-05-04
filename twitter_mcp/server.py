@@ -958,20 +958,21 @@ async def unmute_user(screen_name: str) -> str:
 
 @mcp.tool()
 async def get_notifications(
-    type: str = "All",
+    notification_type: str = "All",
     count: int = 40,
     cursor: str | None = None,
 ) -> str:
     """Fetch notifications (paginated).
 
     Args:
-        type: Notification type — one of "All", "Verified", "Mentions" (default "All").
+        notification_type: One of "All", "Verified", "Mentions" (default "All").
         count: Number to fetch (default 40, max 100).
         cursor: Pagination cursor from a previous response's `next_cursor`.
     """
-    if type not in _VALID_NOTIFICATION_TYPES:
+    if notification_type not in _VALID_NOTIFICATION_TYPES:
         raise ToolError(
-            f"type must be one of {sorted(_VALID_NOTIFICATION_TYPES)}, got: {type!r}"
+            f"notification_type must be one of {sorted(_VALID_NOTIFICATION_TYPES)}, "
+            f"got: {notification_type!r}"
         )
     if count < 1:
         raise ToolError("count must be >= 1.")
@@ -981,7 +982,9 @@ async def get_notifications(
         )
     client = await _get_client()
     try:
-        result = await client.get_notifications(type, count=count, cursor=cursor)
+        result = await client.get_notifications(
+            notification_type, count=count, cursor=cursor
+        )
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
 
@@ -1052,6 +1055,8 @@ async def send_dm_to_group(
         message = await client.send_dm_to_group(group_id, text, media_id)
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Group {group_id!r} not found.")
     return json.dumps({"message_id": message.id, "status": "sent"})
 
 
@@ -1065,6 +1070,8 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
     Args:
         screen_name: Twitter username (without @).
         max_id: If specified, retrieves messages older than this ID (for pagination).
+            Pass the value from a previous response's `next_cursor` here on the
+            next call to walk further back in time.
     """
     client = await _get_client()
     try:
@@ -1088,7 +1095,7 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
     return json.dumps(
         {
             "messages": messages,
-            "max_id_for_next_page": getattr(result, "next_cursor", None),
+            "next_cursor": getattr(result, "next_cursor", None),
         }
     )
 

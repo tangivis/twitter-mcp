@@ -369,16 +369,16 @@ def test_unmute_user_has_screen_name():
 
 
 def test_get_notifications_schema():
-    """get_notifications has optional type, count, and cursor."""
+    """get_notifications has optional notification_type, count, and cursor."""
     from twitter_mcp.server import mcp
 
     tool = mcp._tool_manager._tools["get_notifications"]
     schema = tool.parameters
-    assert "type" in schema["properties"]
+    assert "notification_type" in schema["properties"]
     assert "count" in schema["properties"]
     assert "cursor" in schema["properties"]
     required = set(schema.get("required", []))
-    assert "type" not in required
+    assert "notification_type" not in required
     assert "count" not in required
     assert "cursor" not in required
 

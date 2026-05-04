@@ -1257,7 +1257,7 @@ async def test_get_notifications_returns_notification_list(fake_client):
     fake_client.get_notifications = AsyncMock(
         return_value=_FakeNotificationResult([notif], next_cursor="nc-1")
     )
-    out = json.loads(await server.get_notifications(type="All", count=10))
+    out = json.loads(await server.get_notifications(notification_type="All", count=10))
     fake_client.get_notifications.assert_awaited_once_with("All", count=10, cursor=None)
     assert out["count"] == 1
     assert out["next_cursor"] == "nc-1"
@@ -1278,8 +1278,8 @@ async def test_get_notifications_raises_on_invalid_type(fake_client):
     from mcp.server.fastmcp.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
-        await server.get_notifications(type="BadType")
-    assert "type" in str(exc.value).lower()
+        await server.get_notifications(notification_type="BadType")
+    assert "notification_type" in str(exc.value).lower()
 
 
 async def test_get_notifications_raises_on_count_too_high(fake_client):
@@ -1467,14 +1467,17 @@ async def test_get_dm_history_truncates_text_to_500(fake_client):
     assert len(out["messages"][0]["text"]) == 500
 
 
-async def test_get_dm_history_returns_max_id_for_next_page(fake_client):
+async def test_get_dm_history_returns_next_cursor(fake_client):
+    """Output uses `next_cursor` consistently with all other paginated tools.
+    Caller passes this back as `max_id` on the next call to walk older messages."""
     user = _fake_user(user_id="u-1")
     fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
     fake_client.get_dm_history = AsyncMock(
         return_value=_FakeMessageResult([_fake_dm("mx99")], next_cursor="mx99")
     )
     out = json.loads(await server.get_dm_history("alice"))
-    assert out["max_id_for_next_page"] == "mx99"
+    assert out["next_cursor"] == "mx99"
+    assert "max_id_for_next_page" not in out  # old key removed
 
 
 async def test_get_dm_history_raises_clean_on_rate_limit(fake_client):
@@ -1604,3 +1607,17 @@ async def test_unmute_user_raises_clean_on_not_found(fake_client):
     with pytest.raises(ToolError) as exc:
         await server.unmute_user("ghost")
     assert "ghost" in str(exc.value)
+
+
+async def test_send_dm_to_group_raises_clean_on_not_found(fake_client):
+    """Claude PR #29 review: send_dm_to_group was missing the NotFound handler.
+    Sibling DM tools (send_dm, get_dm_history) all catch it; this one was the
+    only outlier. Now matches the pattern."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.send_dm_to_group = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.send_dm_to_group("g-missing", "hi")
+    assert "g-missing" in str(exc.value)
