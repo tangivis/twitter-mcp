@@ -675,3 +675,407 @@ async def test_get_user_following_raises_on_count_below_1(fake_client):
 
     with pytest.raises(ToolError):
         await server.get_user_following(user_id="u-1", count=0)
+
+
+# ── delete_tweet ─────────────────────────────────────
+
+
+async def test_delete_tweet_calls_client_and_returns_deleted(fake_client):
+    fake_client.delete_tweet = AsyncMock()
+    out = json.loads(await server.delete_tweet("123"))
+    assert out == {"tweet_id": "123", "status": "deleted"}
+    fake_client.delete_tweet.assert_awaited_once_with("123")
+
+
+async def test_delete_tweet_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.delete_tweet = AsyncMock(side_effect=NotFound("gone"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_tweet("999")
+    assert "not found" in str(exc.value).lower()
+
+
+async def test_delete_tweet_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.delete_tweet = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_tweet("123")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── unfavorite_tweet ──────────────────────────────────
+
+
+async def test_unfavorite_tweet_calls_client_and_returns_unliked(fake_client):
+    fake_client.unfavorite_tweet = AsyncMock()
+    out = json.loads(await server.unfavorite_tweet("555"))
+    assert out == {"tweet_id": "555", "status": "unliked"}
+    fake_client.unfavorite_tweet.assert_awaited_once_with("555")
+
+
+async def test_unfavorite_tweet_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.unfavorite_tweet = AsyncMock(side_effect=NotFound("gone"))
+    with pytest.raises(ToolError) as exc:
+        await server.unfavorite_tweet("999")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── delete_retweet ────────────────────────────────────
+
+
+async def test_delete_retweet_calls_client_and_returns_un_retweeted(fake_client):
+    fake_client.delete_retweet = AsyncMock()
+    out = json.loads(await server.delete_retweet("777"))
+    assert out == {"tweet_id": "777", "status": "un-retweeted"}
+    fake_client.delete_retweet.assert_awaited_once_with("777")
+
+
+async def test_delete_retweet_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.delete_retweet = AsyncMock(side_effect=NotFound("gone"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_retweet("888")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── bookmark_tweet ────────────────────────────────────
+
+
+async def test_bookmark_tweet_calls_client_and_returns_bookmarked(fake_client):
+    fake_client.bookmark_tweet = AsyncMock()
+    out = json.loads(await server.bookmark_tweet("100"))
+    assert out == {"tweet_id": "100", "status": "bookmarked"}
+    fake_client.bookmark_tweet.assert_awaited_once_with("100", None)
+
+
+async def test_bookmark_tweet_passes_folder_id(fake_client):
+    fake_client.bookmark_tweet = AsyncMock()
+    out = json.loads(await server.bookmark_tweet("100", folder_id="folder42"))
+    assert out["folder_id"] == "folder42"
+    fake_client.bookmark_tweet.assert_awaited_once_with("100", "folder42")
+
+
+async def test_bookmark_tweet_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.bookmark_tweet = AsyncMock(side_effect=NotFound("gone"))
+    with pytest.raises(ToolError) as exc:
+        await server.bookmark_tweet("999")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── delete_bookmark ───────────────────────────────────
+
+
+async def test_delete_bookmark_calls_client_and_returns_un_bookmarked(fake_client):
+    fake_client.delete_bookmark = AsyncMock()
+    out = json.loads(await server.delete_bookmark("200"))
+    assert out == {"tweet_id": "200", "status": "un-bookmarked"}
+    fake_client.delete_bookmark.assert_awaited_once_with("200")
+
+
+async def test_delete_bookmark_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.delete_bookmark = AsyncMock(side_effect=NotFound("gone"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_bookmark("999")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── get_bookmarks ─────────────────────────────────────
+
+
+class _FakeTweetResult(list):
+    """Stand-in for twikit's Result[Tweet] — list-like + .next_cursor attr."""
+
+    def __init__(self, tweets, next_cursor=None):
+        super().__init__(tweets)
+        self.next_cursor = next_cursor
+
+
+def _fake_bookmark_tweet(tid="bk1", text="bookmark text", screen_name="bob"):
+    return _fake_tweet(tid=tid, text=text, user=_fake_user(screen_name=screen_name))
+
+
+async def test_get_bookmarks_returns_compact_tweet_list(fake_client):
+    fake_client.get_bookmarks = AsyncMock(
+        return_value=_FakeTweetResult(
+            [_fake_bookmark_tweet("bk1"), _fake_bookmark_tweet("bk2")],
+            next_cursor="cur-2",
+        )
+    )
+    out = json.loads(await server.get_bookmarks(count=20))
+    assert out["count"] == 2
+    assert out["next_cursor"] == "cur-2"
+    assert out["tweets"][0]["id"] == "bk1"
+    assert "author" in out["tweets"][0]
+    assert "text" in out["tweets"][0]
+    assert "likes" in out["tweets"][0]
+    assert "retweets" in out["tweets"][0]
+
+
+async def test_get_bookmarks_truncates_text_to_200(fake_client):
+    long_text = "z" * 500
+    fake_client.get_bookmarks = AsyncMock(
+        return_value=_FakeTweetResult([_fake_bookmark_tweet(text=long_text)])
+    )
+    out = json.loads(await server.get_bookmarks())
+    assert len(out["tweets"][0]["text"]) == 200
+
+
+async def test_get_bookmarks_passes_count_and_cursor(fake_client):
+    fake_client.get_bookmarks = AsyncMock(return_value=_FakeTweetResult([]))
+    await server.get_bookmarks(count=10, cursor="abc")
+    fake_client.get_bookmarks.assert_awaited_once_with(count=10, cursor="abc")
+
+
+async def test_get_bookmarks_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_bookmarks(count=101)
+    assert "100" in str(exc.value)
+
+
+async def test_get_bookmarks_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_bookmarks(count=0)
+
+
+async def test_get_bookmarks_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_bookmarks = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_bookmarks()
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── get_favoriters ────────────────────────────────────
+
+
+async def test_get_favoriters_returns_user_list(fake_client):
+    fake_client.get_favoriters = AsyncMock(
+        return_value=_fake_followers_result(next_cursor="cur-f")
+    )
+    out = json.loads(await server.get_favoriters("tw-1", count=3))
+    fake_client.get_favoriters.assert_awaited_once_with("tw-1", count=3, cursor=None)
+    assert "users" in out
+    assert out["next_cursor"] == "cur-f"
+    assert out["count"] == len(out["users"])
+
+
+async def test_get_favoriters_passes_cursor(fake_client):
+    fake_client.get_favoriters = AsyncMock(return_value=_fake_followers_result())
+    await server.get_favoriters("tw-1", count=5, cursor="xyz")
+    fake_client.get_favoriters.assert_awaited_once_with("tw-1", count=5, cursor="xyz")
+
+
+async def test_get_favoriters_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_favoriters("tw-1", count=200)
+    assert "100" in str(exc.value)
+
+
+async def test_get_favoriters_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_favoriters("tw-1", count=0)
+
+
+async def test_get_favoriters_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_favoriters = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_favoriters("tw-1")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_favoriters_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_favoriters = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_favoriters("tw-ghost")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── get_retweeters ────────────────────────────────────
+
+
+async def test_get_retweeters_returns_user_list(fake_client):
+    fake_client.get_retweeters = AsyncMock(
+        return_value=_fake_followers_result(next_cursor="cur-r")
+    )
+    out = json.loads(await server.get_retweeters("tw-2", count=5))
+    fake_client.get_retweeters.assert_awaited_once_with("tw-2", count=5, cursor=None)
+    assert "users" in out
+    assert out["next_cursor"] == "cur-r"
+
+
+async def test_get_retweeters_passes_cursor(fake_client):
+    fake_client.get_retweeters = AsyncMock(return_value=_fake_followers_result())
+    await server.get_retweeters("tw-2", count=10, cursor="pgcur")
+    fake_client.get_retweeters.assert_awaited_once_with("tw-2", count=10, cursor="pgcur")
+
+
+async def test_get_retweeters_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_retweeters("tw-2", count=500)
+    assert "100" in str(exc.value)
+
+
+async def test_get_retweeters_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_retweeters("tw-2", count=-1)
+
+
+async def test_get_retweeters_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_retweeters = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_retweeters("tw-2")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_retweeters_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_retweeters = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_retweeters("tw-ghost")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── search_user ───────────────────────────────────────
+
+
+async def test_search_user_returns_user_list(fake_client):
+    fake_client.search_user = AsyncMock(
+        return_value=_fake_followers_result(next_cursor="cur-s")
+    )
+    out = json.loads(await server.search_user("alice", count=5))
+    fake_client.search_user.assert_awaited_once_with("alice", count=5, cursor=None)
+    assert "users" in out
+    assert out["next_cursor"] == "cur-s"
+    assert out["count"] == len(out["users"])
+
+
+async def test_search_user_passes_cursor(fake_client):
+    fake_client.search_user = AsyncMock(return_value=_fake_followers_result())
+    await server.search_user("bob", count=10, cursor="pg2")
+    fake_client.search_user.assert_awaited_once_with("bob", count=10, cursor="pg2")
+
+
+async def test_search_user_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.search_user("query", count=101)
+    assert "100" in str(exc.value)
+
+
+async def test_search_user_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.search_user("query", count=0)
+
+
+async def test_search_user_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.search_user = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.search_user("alice")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── get_trends ────────────────────────────────────────
+
+
+def _fake_trend(name="AI", tweets_count=50000, domain_context="Technology"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        name=name, tweets_count=tweets_count, domain_context=domain_context
+    )
+
+
+async def test_get_trends_returns_trend_list(fake_client):
+    fake_client.get_trends = AsyncMock(
+        return_value=[_fake_trend("AI"), _fake_trend("#Python")]
+    )
+    out = json.loads(await server.get_trends())
+    fake_client.get_trends.assert_awaited_once_with("trending", count=20)
+    assert out["category"] == "trending"
+    assert len(out["trends"]) == 2
+    assert out["trends"][0]["name"] == "AI"
+    assert "tweets_count" in out["trends"][0]
+    assert "domain_context" in out["trends"][0]
+
+
+async def test_get_trends_passes_category_and_count(fake_client):
+    fake_client.get_trends = AsyncMock(return_value=[])
+    await server.get_trends(category="news", count=10)
+    fake_client.get_trends.assert_awaited_once_with("news", count=10)
+
+
+async def test_get_trends_raises_on_invalid_category(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_trends(category="invalid")
+    assert "category" in str(exc.value).lower()
+
+
+async def test_get_trends_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_trends = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_trends()
+    assert "rate limit" in str(exc.value).lower()
