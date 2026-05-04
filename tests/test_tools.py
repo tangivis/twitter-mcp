@@ -1,4 +1,4 @@
-"""Behavior tests for the 24 MCP tools.
+"""Behavior tests for the 33 MCP tools.
 
 Uses mocks to exercise each tool's body without network or real cookies.
 Covers: args passed through to twikit, output JSON shape, text truncation,
@@ -1157,3 +1157,377 @@ async def test_search_user_raises_on_empty_query(fake_client):
     assert "empty" in str(exc.value).lower()
     with pytest.raises(ToolError):
         await server.search_user("   ")  # whitespace-only also empty
+
+
+# ── block_user / unblock_user / mute_user / unmute_user ──────────────────────
+
+
+async def test_block_user_resolves_screen_name_then_calls_block(fake_client):
+    user = _fake_user(user_id="u-42", screen_name="badactor")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.block_user = AsyncMock()
+    out = json.loads(await server.block_user("badactor"))
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("badactor")
+    fake_client.block_user.assert_awaited_once_with("u-42")
+    assert out == {"user_id": "u-42", "screen_name": "badactor", "status": "blocked"}
+
+
+async def test_unblock_user_returns_unblocked_status(fake_client):
+    user = _fake_user(user_id="u-42", screen_name="badactor")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.unblock_user = AsyncMock()
+    out = json.loads(await server.unblock_user("badactor"))
+    fake_client.unblock_user.assert_awaited_once_with("u-42")
+    assert out == {"user_id": "u-42", "screen_name": "badactor", "status": "unblocked"}
+
+
+async def test_mute_user_returns_muted_status(fake_client):
+    user = _fake_user(user_id="u-42", screen_name="noisy")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.mute_user = AsyncMock()
+    out = json.loads(await server.mute_user("noisy"))
+    fake_client.mute_user.assert_awaited_once_with("u-42")
+    assert out == {"user_id": "u-42", "screen_name": "noisy", "status": "muted"}
+
+
+async def test_unmute_user_returns_unmuted_status(fake_client):
+    user = _fake_user(user_id="u-42", screen_name="noisy")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.unmute_user = AsyncMock()
+    out = json.loads(await server.unmute_user("noisy"))
+    fake_client.unmute_user.assert_awaited_once_with("u-42")
+    assert out == {"user_id": "u-42", "screen_name": "noisy", "status": "unmuted"}
+
+
+async def test_block_user_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.block_user("someone")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_block_user_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.block_user("ghost")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── get_notifications ─────────────────────────────────────────────────────────
+
+
+class _FakeNotificationResult(list):
+    """Stand-in for twikit's Result[Notification]."""
+
+    def __init__(self, items, next_cursor=None):
+        super().__init__(items)
+        self.next_cursor = next_cursor
+
+
+def _fake_notification(
+    nid="n1",
+    timestamp_ms=1000,
+    message="Alice liked your tweet",
+    icon=None,
+    tweet=None,
+    from_user=None,
+):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=nid,
+        timestamp_ms=timestamp_ms,
+        message=message,
+        icon=icon or {},
+        tweet=tweet,
+        from_user=from_user,
+    )
+
+
+async def test_get_notifications_returns_notification_list(fake_client):
+    notif = _fake_notification(nid="n1", tweet=_fake_tweet(tid="tw1"))
+    fake_client.get_notifications = AsyncMock(
+        return_value=_FakeNotificationResult([notif], next_cursor="nc-1")
+    )
+    out = json.loads(await server.get_notifications(type="All", count=10))
+    fake_client.get_notifications.assert_awaited_once_with("All", count=10, cursor=None)
+    assert out["count"] == 1
+    assert out["next_cursor"] == "nc-1"
+    assert out["notifications"][0]["id"] == "n1"
+    assert out["notifications"][0]["tweet_id"] == "tw1"
+
+
+async def test_get_notifications_omits_tweet_id_when_no_tweet(fake_client):
+    notif = _fake_notification(nid="n2", tweet=None)
+    fake_client.get_notifications = AsyncMock(
+        return_value=_FakeNotificationResult([notif])
+    )
+    out = json.loads(await server.get_notifications())
+    assert "tweet_id" not in out["notifications"][0]
+
+
+async def test_get_notifications_raises_on_invalid_type(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_notifications(type="BadType")
+    assert "type" in str(exc.value).lower()
+
+
+async def test_get_notifications_raises_on_count_too_high(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_notifications(count=101)
+    assert "100" in str(exc.value)
+
+
+async def test_get_notifications_raises_on_count_too_low(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.get_notifications(count=0)
+
+
+async def test_get_notifications_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_notifications = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_notifications()
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_notifications_passes_cursor(fake_client):
+    fake_client.get_notifications = AsyncMock(
+        return_value=_FakeNotificationResult([])
+    )
+    await server.get_notifications(cursor="abc")
+    fake_client.get_notifications.assert_awaited_once_with("All", count=40, cursor="abc")
+
+
+# ── send_dm ───────────────────────────────────────────────────────────────────
+
+
+def _fake_message(mid="msg1"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(id=mid)
+
+
+async def test_send_dm_resolves_screen_name_then_sends(fake_client):
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.send_dm = AsyncMock(return_value=_fake_message("m1"))
+    out = json.loads(await server.send_dm("alice", "hello"))
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("alice")
+    fake_client.send_dm.assert_awaited_once_with("u-42", "hello", None)
+    assert out == {"message_id": "m1", "status": "sent"}
+
+
+async def test_send_dm_passes_media_id(fake_client):
+    user = _fake_user(user_id="u-1", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.send_dm = AsyncMock(return_value=_fake_message())
+    await server.send_dm("alice", "hi", media_id="mid123")
+    fake_client.send_dm.assert_awaited_once_with("u-1", "hi", "mid123")
+
+
+async def test_send_dm_raises_on_empty_text(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.send_dm("alice", "")
+    with pytest.raises(ToolError):
+        await server.send_dm("alice", "   ")
+
+
+async def test_send_dm_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.send_dm("alice", "hi")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_send_dm_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.send_dm("ghost", "hi")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── send_dm_to_group ──────────────────────────────────────────────────────────
+
+
+async def test_send_dm_to_group_sends_to_group_id(fake_client):
+    fake_client.send_dm_to_group = AsyncMock(return_value=_fake_message("gm1"))
+    out = json.loads(await server.send_dm_to_group("grp-1", "hello group"))
+    fake_client.send_dm_to_group.assert_awaited_once_with("grp-1", "hello group", None)
+    assert out == {"message_id": "gm1", "status": "sent"}
+
+
+async def test_send_dm_to_group_passes_media_id(fake_client):
+    fake_client.send_dm_to_group = AsyncMock(return_value=_fake_message())
+    await server.send_dm_to_group("grp-1", "hi", media_id="mid456")
+    fake_client.send_dm_to_group.assert_awaited_once_with("grp-1", "hi", "mid456")
+
+
+async def test_send_dm_to_group_raises_on_empty_text(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.send_dm_to_group("grp-1", "")
+
+
+async def test_send_dm_to_group_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.send_dm_to_group = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.send_dm_to_group("grp-1", "hi")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── get_dm_history ────────────────────────────────────────────────────────────
+
+
+class _FakeMessageResult(list):
+    """Stand-in for twikit's Result[Message]."""
+
+    def __init__(self, msgs, next_cursor=None):
+        super().__init__(msgs)
+        self.next_cursor = next_cursor
+
+
+def _fake_dm(
+    mid="m1",
+    text="hello",
+    sender_id="s1",
+    recipient_id="r1",
+    time="1234567890000",
+):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=mid,
+        text=text,
+        sender_id=sender_id,
+        recipient_id=recipient_id,
+        time=time,
+    )
+
+
+async def test_get_dm_history_resolves_screen_name_then_fetches(fake_client):
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(
+        return_value=_FakeMessageResult([_fake_dm("m1")], next_cursor="m1")
+    )
+    out = json.loads(await server.get_dm_history("alice"))
+    fake_client.get_user_by_screen_name.assert_awaited_once_with("alice")
+    fake_client.get_dm_history.assert_awaited_once_with("u-42", None)
+    assert len(out["messages"]) == 1
+    assert out["messages"][0]["id"] == "m1"
+
+
+async def test_get_dm_history_passes_max_id(fake_client):
+    user = _fake_user(user_id="u-1")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(return_value=_FakeMessageResult([]))
+    await server.get_dm_history("alice", max_id="mx1")
+    fake_client.get_dm_history.assert_awaited_once_with("u-1", "mx1")
+
+
+async def test_get_dm_history_truncates_text_to_500(fake_client):
+    user = _fake_user(user_id="u-1")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    long_msg = _fake_dm(text="z" * 1000)
+    fake_client.get_dm_history = AsyncMock(
+        return_value=_FakeMessageResult([long_msg])
+    )
+    out = json.loads(await server.get_dm_history("alice"))
+    assert len(out["messages"][0]["text"]) == 500
+
+
+async def test_get_dm_history_returns_max_id_for_next_page(fake_client):
+    user = _fake_user(user_id="u-1")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(
+        return_value=_FakeMessageResult([_fake_dm("mx99")], next_cursor="mx99")
+    )
+    out = json.loads(await server.get_dm_history("alice"))
+    assert out["max_id_for_next_page"] == "mx99"
+
+
+async def test_get_dm_history_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_dm_history("alice")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_get_dm_history_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.get_user_by_screen_name = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_dm_history("ghost")
+    assert "not found" in str(exc.value).lower()
+
+
+# ── delete_dm ─────────────────────────────────────────────────────────────────
+
+
+async def test_delete_dm_returns_deleted_status(fake_client):
+    fake_client.delete_dm = AsyncMock()
+    out = json.loads(await server.delete_dm("msg-999"))
+    assert out == {"message_id": "msg-999", "status": "deleted"}
+    fake_client.delete_dm.assert_awaited_once_with("msg-999")
+
+
+async def test_delete_dm_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.delete_dm = AsyncMock(side_effect=NotFound("gone"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_dm("msg-404")
+    assert "not found" in str(exc.value).lower()
+
+
+async def test_delete_dm_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.delete_dm = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_dm("msg-1")
+    assert "rate limit" in str(exc.value).lower()
