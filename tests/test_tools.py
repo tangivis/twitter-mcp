@@ -946,7 +946,9 @@ async def test_get_retweeters_returns_user_list(fake_client):
 async def test_get_retweeters_passes_cursor(fake_client):
     fake_client.get_retweeters = AsyncMock(return_value=_fake_followers_result())
     await server.get_retweeters("tw-2", count=10, cursor="pgcur")
-    fake_client.get_retweeters.assert_awaited_once_with("tw-2", count=10, cursor="pgcur")
+    fake_client.get_retweeters.assert_awaited_once_with(
+        "tw-2", count=10, cursor="pgcur"
+    )
 
 
 async def test_get_retweeters_raises_on_count_too_high(fake_client):
@@ -1078,4 +1080,52 @@ async def test_get_trends_raises_clean_on_rate_limit(fake_client):
     fake_client.get_trends = AsyncMock(side_effect=TooManyRequests("rate"))
     with pytest.raises(ToolError) as exc:
         await server.get_trends()
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── PR #26 followup: TooManyRequests coverage on action tools ─
+# (delete_tweet's rate-limit test already exists; covering the other 4)
+
+
+async def test_unfavorite_tweet_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.unfavorite_tweet = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.unfavorite_tweet("123")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_delete_retweet_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.delete_retweet = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_retweet("123")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_bookmark_tweet_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.bookmark_tweet = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.bookmark_tweet("123")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_delete_bookmark_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.delete_bookmark = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_bookmark("123")
     assert "rate limit" in str(exc.value).lower()
