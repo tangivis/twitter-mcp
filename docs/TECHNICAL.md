@@ -758,6 +758,23 @@ asyncio.run(test())
 | `like_tweet` | 点赞 | `tweet_id` | "点赞这条推" |
 | `retweet` | 转推 | `tweet_id` | "转推这个" |
 | `get_user_tweets` | 获取某用户推文 | `screen_name`, `count?` | "看看 @xxx 最近发了什么" |
+| `get_user_info` | 查用户资料 | `screen_name` 或 `user_id` | "查一下 @xxx 的资料" |
+| `get_user_followers` | 粉丝列表 | `screen_name`/`user_id`, `count?`, `cursor?` | "看看 @xxx 的粉丝" |
+| `get_user_following` | 关注列表 | `screen_name`/`user_id`, `count?`, `cursor?` | "@xxx 关注谁？" |
+| `follow_user` | 关注用户 | `screen_name` | "关注 @xxx" |
+| `unfollow_user` | 取消关注 | `screen_name` | "取关 @xxx" |
+| `delete_tweet` | 删除推文 | `tweet_id` | "删除这条推文" |
+| `unfavorite_tweet` | 取消点赞 | `tweet_id` | "取消对这条推的点赞" |
+| `delete_retweet` | 取消转推 | `tweet_id` | "取消转推这条" |
+| `bookmark_tweet` | 收藏推文 | `tweet_id`, `folder_id?` | "收藏这条推文" |
+| `delete_bookmark` | 取消收藏 | `tweet_id` | "取消收藏这条推文" |
+| `get_bookmarks` | 收藏列表 | `count?`, `cursor?` | "看看我的收藏" |
+| `get_favoriters` | 点赞用户列表 | `tweet_id`, `count?`, `cursor?` | "谁点赞了这条推？" |
+| `get_retweeters` | 转推用户列表 | `tweet_id`, `count?`, `cursor?` | "谁转推了这条？" |
+| `search_user` | 搜索用户 | `query`, `count?`, `cursor?` | "搜一下 xxx 用户" |
+| `get_trends` | 热门话题 | `category?`, `count?` | "看看热门话题" |
+| `get_article_preview` | X Article 预览 | `tweet_id` | "这篇文章讲什么 [链接]" |
+| `get_article` | X Article 正文 | `article_id`, `format?` | "把这篇文章读给我 [链接]" |
 
 ---
 
@@ -768,7 +785,7 @@ asyncio.run(test())
 ├── pyproject.toml                   ← 依赖声明和项目元数据
 ├── twitter_mcp/                     ← Python package
 │   ├── __init__.py
-│   ├── server.py                    ← MCP server 核心代码（14 个工具）
+│   ├── server.py                    ← MCP server 核心代码（24 个工具）
 │   └── _vendor/                     ← vendored 第三方库
 │       └── twikit/                  ← twikit 2.3.3 + PR#412 修复
 │           ├── client/              ← 修复 2: gql_get → gql_post
