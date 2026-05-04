@@ -25,7 +25,7 @@ def test_import_client_helper():
 
 
 def test_tools_registered():
-    """All 24 tools are registered in the MCP server."""
+    """All 33 tools are registered in the MCP server."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
@@ -55,16 +55,26 @@ def test_tools_registered():
         "get_retweeters",
         "search_user",
         "get_trends",
+        # new in v0.1.17
+        "block_user",
+        "unblock_user",
+        "mute_user",
+        "unmute_user",
+        "get_notifications",
+        "send_dm",
+        "send_dm_to_group",
+        "get_dm_history",
+        "delete_dm",
     }
     assert set(tools.keys()) == expected
 
 
 def test_tool_count():
-    """Exactly 24 tools are registered."""
+    """Exactly 33 tools are registered."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 24
+    assert len(tools) == 33
 
 
 # ── Tool Schema Tests ─────────────────────────────────
@@ -316,6 +326,124 @@ def test_get_article_format_param_in_schema():
     # Default must be "plain" so existing callers don't suddenly get the
     # 150KB+ raw payload that would blow MAX_MCP_OUTPUT_TOKENS.
     assert schema["properties"]["format"].get("default") == "plain"
+
+
+def test_block_user_has_screen_name():
+    """block_user requires 'screen_name'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["block_user"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+
+
+def test_unblock_user_has_screen_name():
+    """unblock_user requires 'screen_name'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["unblock_user"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+
+
+def test_mute_user_has_screen_name():
+    """mute_user requires 'screen_name'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["mute_user"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+
+
+def test_unmute_user_has_screen_name():
+    """unmute_user requires 'screen_name'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["unmute_user"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+
+
+def test_get_notifications_schema():
+    """get_notifications has optional notification_type, count, and cursor."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_notifications"]
+    schema = tool.parameters
+    assert "notification_type" in schema["properties"]
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+    required = set(schema.get("required", []))
+    assert "notification_type" not in required
+    assert "count" not in required
+    assert "cursor" not in required
+
+
+def test_send_dm_schema():
+    """send_dm requires screen_name and text; media_id is optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["send_dm"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "text" in schema["properties"]
+    assert "media_id" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+    assert "text" in schema.get("required", [])
+    assert "media_id" not in schema.get("required", [])
+
+
+def test_send_dm_to_group_schema():
+    """send_dm_to_group requires group_id and text; media_id is optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["send_dm_to_group"]
+    schema = tool.parameters
+    assert "group_id" in schema["properties"]
+    assert "text" in schema["properties"]
+    assert "media_id" in schema["properties"]
+    assert "group_id" in schema.get("required", [])
+    assert "text" in schema.get("required", [])
+    assert "media_id" not in schema.get("required", [])
+
+
+def test_get_dm_history_schema():
+    """get_dm_history requires screen_name; max_id is optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_dm_history"]
+    schema = tool.parameters
+    assert "screen_name" in schema["properties"]
+    assert "max_id" in schema["properties"]
+    assert "screen_name" in schema.get("required", [])
+    assert "max_id" not in schema.get("required", [])
+
+
+def test_delete_dm_schema():
+    """delete_dm requires message_id."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["delete_dm"]
+    schema = tool.parameters
+    assert "message_id" in schema["properties"]
+    assert "message_id" in schema.get("required", [])
+
+
+def test_dm_docstrings_contain_privacy_warning():
+    """DM tool docstrings must mention PRIVATE and anti-spam (issue #28 spec)."""
+    import inspect
+
+    from twitter_mcp.server import delete_dm, get_dm_history, send_dm, send_dm_to_group
+
+    for fn in [send_dm, send_dm_to_group, get_dm_history, delete_dm]:
+        doc = inspect.getdoc(fn) or ""
+        assert "PRIVATE" in doc or "private" in doc, (
+            f"{fn.__name__} missing privacy warning in docstring"
+        )
 
 
 def test_all_tools_have_descriptions():

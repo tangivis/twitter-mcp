@@ -861,6 +861,265 @@ async def get_article(article_id: str, format: str = "plain") -> str:
     return json.dumps(out, ensure_ascii=False)
 
 
+_VALID_NOTIFICATION_TYPES = frozenset({"All", "Verified", "Mentions"})
+
+
+@mcp.tool()
+async def block_user(screen_name: str) -> str:
+    """Block a user by screen name.
+
+    Note: X aggressively rate-limits / risk-scans block + mute. Avoid bulk usage
+    or your account may be temporarily restricted.
+
+    Args:
+        screen_name: Twitter username (without @).
+    """
+    client = await _get_client()
+    try:
+        user = await client.get_user_by_screen_name(screen_name)
+        await client.block_user(user.id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"User not found: {screen_name}.")
+    return json.dumps(
+        {"user_id": user.id, "screen_name": screen_name, "status": "blocked"}
+    )
+
+
+@mcp.tool()
+async def unblock_user(screen_name: str) -> str:
+    """Unblock a user by screen name.
+
+    Note: X aggressively rate-limits / risk-scans block + mute. Avoid bulk usage
+    or your account may be temporarily restricted.
+
+    Args:
+        screen_name: Twitter username (without @).
+    """
+    client = await _get_client()
+    try:
+        user = await client.get_user_by_screen_name(screen_name)
+        await client.unblock_user(user.id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"User not found: {screen_name}.")
+    return json.dumps(
+        {"user_id": user.id, "screen_name": screen_name, "status": "unblocked"}
+    )
+
+
+@mcp.tool()
+async def mute_user(screen_name: str) -> str:
+    """Mute a user by screen name.
+
+    Note: X aggressively rate-limits / risk-scans block + mute. Avoid bulk usage
+    or your account may be temporarily restricted.
+
+    Args:
+        screen_name: Twitter username (without @).
+    """
+    client = await _get_client()
+    try:
+        user = await client.get_user_by_screen_name(screen_name)
+        await client.mute_user(user.id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"User not found: {screen_name}.")
+    return json.dumps(
+        {"user_id": user.id, "screen_name": screen_name, "status": "muted"}
+    )
+
+
+@mcp.tool()
+async def unmute_user(screen_name: str) -> str:
+    """Unmute a user by screen name.
+
+    Note: X aggressively rate-limits / risk-scans block + mute. Avoid bulk usage
+    or your account may be temporarily restricted.
+
+    Args:
+        screen_name: Twitter username (without @).
+    """
+    client = await _get_client()
+    try:
+        user = await client.get_user_by_screen_name(screen_name)
+        await client.unmute_user(user.id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"User not found: {screen_name}.")
+    return json.dumps(
+        {"user_id": user.id, "screen_name": screen_name, "status": "unmuted"}
+    )
+
+
+@mcp.tool()
+async def get_notifications(
+    notification_type: str = "All",
+    count: int = 40,
+    cursor: str | None = None,
+) -> str:
+    """Fetch notifications (paginated).
+
+    Args:
+        notification_type: One of "All", "Verified", "Mentions" (default "All").
+        count: Number to fetch (default 40, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if notification_type not in _VALID_NOTIFICATION_TYPES:
+        raise ToolError(
+            f"notification_type must be one of {sorted(_VALID_NOTIFICATION_TYPES)}, "
+            f"got: {notification_type!r}"
+        )
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_notifications(
+            notification_type, count=count, cursor=cursor
+        )
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+
+    notifications = []
+    for n in result:
+        entry: dict = {
+            "id": n.id,
+            "timestamp_ms": n.timestamp_ms,
+            "icon": n.icon,
+            "message": n.message,
+        }
+        if n.tweet is not None:
+            entry["tweet_id"] = n.tweet.id
+        notifications.append(entry)
+
+    return json.dumps(
+        {
+            "notifications": notifications,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(notifications),
+        }
+    )
+
+
+@mcp.tool()
+async def send_dm(screen_name: str, text: str, media_id: str | None = None) -> str:
+    """Send a direct message to a user by screen name.
+
+    Note: Sends a PRIVATE message. Do not bulk-call. X has aggressive anti-spam
+    on DMs and may suspend the account.
+
+    Args:
+        screen_name: Twitter username (without @) to send the DM to.
+        text: Message content (required, must not be empty).
+        media_id: Optional media ID to attach.
+    """
+    if not text.strip():
+        raise ToolError("text must not be empty.")
+    client = await _get_client()
+    try:
+        user = await client.get_user_by_screen_name(screen_name)
+        message = await client.send_dm(user.id, text, media_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"User not found: {screen_name}.")
+    return json.dumps({"message_id": message.id, "status": "sent"})
+
+
+@mcp.tool()
+async def send_dm_to_group(
+    group_id: str, text: str, media_id: str | None = None
+) -> str:
+    """Send a direct message to a group conversation.
+
+    Note: Sends a PRIVATE message. Do not bulk-call. X has aggressive anti-spam
+    on DMs and may suspend the account.
+
+    Args:
+        group_id: The group conversation ID.
+        text: Message content (required, must not be empty).
+        media_id: Optional media ID to attach.
+    """
+    if not text.strip():
+        raise ToolError("text must not be empty.")
+    client = await _get_client()
+    try:
+        message = await client.send_dm_to_group(group_id, text, media_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Group {group_id!r} not found.")
+    return json.dumps({"message_id": message.id, "status": "sent"})
+
+
+@mcp.tool()
+async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
+    """Get DM conversation history with a user.
+
+    Note: Retrieves PRIVATE messages. Do not bulk-call. X has aggressive
+    anti-spam on DMs and may suspend the account.
+
+    Args:
+        screen_name: Twitter username (without @).
+        max_id: If specified, retrieves messages older than this ID (for pagination).
+            Pass the value from a previous response's `next_cursor` here on the
+            next call to walk further back in time.
+    """
+    client = await _get_client()
+    try:
+        user = await client.get_user_by_screen_name(screen_name)
+        result = await client.get_dm_history(user.id, max_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"User not found: {screen_name}.")
+
+    messages = [
+        {
+            "id": m.id,
+            "text": m.text[:500],
+            "sender_id": m.sender_id,
+            "recipient_id": m.recipient_id,
+            "time": m.time,
+        }
+        for m in result
+    ]
+    return json.dumps(
+        {
+            "messages": messages,
+            "next_cursor": getattr(result, "next_cursor", None),
+        }
+    )
+
+
+@mcp.tool()
+async def delete_dm(message_id: str) -> str:
+    """Delete a direct message by ID.
+
+    Note: Deletes a PRIVATE message. Do not bulk-call. X has aggressive
+    anti-spam on DMs and may suspend the account.
+
+    Args:
+        message_id: The message ID to delete.
+    """
+    client = await _get_client()
+    try:
+        await client.delete_dm(message_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Message {message_id} not found.")
+    return json.dumps({"message_id": message_id, "status": "deleted"})
+
+
 def _get_version() -> str:
     """Read the installed package version, falling back to 'unknown'."""
     try:
