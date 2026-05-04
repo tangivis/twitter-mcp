@@ -25,7 +25,7 @@ def test_import_client_helper():
 
 
 def test_tools_registered():
-    """All 14 tools are registered in the MCP server."""
+    """All 24 tools are registered in the MCP server."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
@@ -44,16 +44,27 @@ def test_tools_registered():
         "get_article",
         "follow_user",
         "unfollow_user",
+        # new in v0.1.16
+        "delete_tweet",
+        "unfavorite_tweet",
+        "delete_retweet",
+        "bookmark_tweet",
+        "delete_bookmark",
+        "get_bookmarks",
+        "get_favoriters",
+        "get_retweeters",
+        "search_user",
+        "get_trends",
     }
     assert set(tools.keys()) == expected
 
 
 def test_tool_count():
-    """Exactly 14 tools are registered."""
+    """Exactly 24 tools are registered."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 14
+    assert len(tools) == 24
 
 
 # ── Tool Schema Tests ─────────────────────────────────
@@ -176,6 +187,120 @@ def test_get_user_following_schema_mirrors_followers():
     tool = mcp._tool_manager._tools["get_user_following"]
     schema = tool.parameters
     assert {"screen_name", "user_id", "count", "cursor"}.issubset(schema["properties"])
+
+
+def test_delete_tweet_has_tweet_id():
+    """delete_tweet requires 'tweet_id'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["delete_tweet"]
+    schema = tool.parameters
+    assert "tweet_id" in schema["properties"]
+    assert "tweet_id" in schema.get("required", [])
+
+
+def test_unfavorite_tweet_has_tweet_id():
+    """unfavorite_tweet requires 'tweet_id'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["unfavorite_tweet"]
+    schema = tool.parameters
+    assert "tweet_id" in schema["properties"]
+    assert "tweet_id" in schema.get("required", [])
+
+
+def test_delete_retweet_has_tweet_id():
+    """delete_retweet requires 'tweet_id'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["delete_retweet"]
+    schema = tool.parameters
+    assert "tweet_id" in schema["properties"]
+    assert "tweet_id" in schema.get("required", [])
+
+
+def test_bookmark_tweet_has_tweet_id():
+    """bookmark_tweet requires 'tweet_id'; folder_id is optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["bookmark_tweet"]
+    schema = tool.parameters
+    assert "tweet_id" in schema["properties"]
+    assert "tweet_id" in schema.get("required", [])
+    assert "folder_id" in schema["properties"]
+    assert "folder_id" not in schema.get("required", [])
+
+
+def test_delete_bookmark_has_tweet_id():
+    """delete_bookmark requires 'tweet_id'."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["delete_bookmark"]
+    schema = tool.parameters
+    assert "tweet_id" in schema["properties"]
+    assert "tweet_id" in schema.get("required", [])
+
+
+def test_get_bookmarks_schema():
+    """get_bookmarks has optional count and cursor."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_bookmarks"]
+    schema = tool.parameters
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+    required = set(schema.get("required", []))
+    assert "count" not in required
+    assert "cursor" not in required
+
+
+def test_get_favoriters_schema():
+    """get_favoriters requires tweet_id; count and cursor are optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_favoriters"]
+    schema = tool.parameters
+    assert "tweet_id" in schema["properties"]
+    assert "tweet_id" in schema.get("required", [])
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+
+
+def test_get_retweeters_schema():
+    """get_retweeters requires tweet_id; count and cursor are optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_retweeters"]
+    schema = tool.parameters
+    assert "tweet_id" in schema["properties"]
+    assert "tweet_id" in schema.get("required", [])
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+
+
+def test_search_user_schema():
+    """search_user requires query; count and cursor are optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["search_user"]
+    schema = tool.parameters
+    assert "query" in schema["properties"]
+    assert "query" in schema.get("required", [])
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+
+
+def test_get_trends_schema():
+    """get_trends has optional category and count."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_trends"]
+    schema = tool.parameters
+    assert "category" in schema["properties"]
+    assert "count" in schema["properties"]
+    required = set(schema.get("required", []))
+    assert "category" not in required
+    assert "count" not in required
 
 
 def test_get_article_format_param_in_schema():

@@ -226,7 +226,11 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
     return json.dumps(result)
 
 
-_FOLLOWERS_MAX_COUNT = 100
+_PAGINATED_MAX_COUNT = 100
+
+_VALID_TREND_CATEGORIES = frozenset(
+    {"trending", "for-you", "news", "sports", "entertainment"}
+)
 
 
 def _require_exactly_one(
@@ -346,9 +350,9 @@ async def get_user_followers(
     _require_exactly_one(screen_name, user_id, op="get_user_followers")
     if count < 1:
         raise ToolError("count must be >= 1.")
-    if count > _FOLLOWERS_MAX_COUNT:
+    if count > _PAGINATED_MAX_COUNT:
         raise ToolError(
-            f"count exceeds the {_FOLLOWERS_MAX_COUNT} cap; paginate via `cursor` instead."
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
         )
 
     client = await _get_client()
@@ -393,9 +397,9 @@ async def get_user_following(
     _require_exactly_one(screen_name, user_id, op="get_user_following")
     if count < 1:
         raise ToolError("count must be >= 1.")
-    if count > _FOLLOWERS_MAX_COUNT:
+    if count > _PAGINATED_MAX_COUNT:
         raise ToolError(
-            f"count exceeds the {_FOLLOWERS_MAX_COUNT} cap; paginate via `cursor` instead."
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
         )
 
     client = await _get_client()
@@ -451,6 +455,264 @@ async def unfollow_user(screen_name: str) -> str:
     return json.dumps(
         {"user_id": user.id, "screen_name": screen_name, "status": "unfollowed"}
     )
+
+
+@mcp.tool()
+async def delete_tweet(tweet_id: str) -> str:
+    """Delete a tweet by ID.
+
+    Args:
+        tweet_id: The tweet ID to delete.
+    """
+    client = await _get_client()
+    try:
+        await client.delete_tweet(tweet_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Tweet {tweet_id} not found.")
+    return json.dumps({"tweet_id": tweet_id, "status": "deleted"})
+
+
+@mcp.tool()
+async def unfavorite_tweet(tweet_id: str) -> str:
+    """Unlike a tweet by ID.
+
+    Args:
+        tweet_id: The tweet ID to unlike.
+    """
+    client = await _get_client()
+    try:
+        await client.unfavorite_tweet(tweet_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Tweet {tweet_id} not found.")
+    return json.dumps({"tweet_id": tweet_id, "status": "unliked"})
+
+
+@mcp.tool()
+async def delete_retweet(tweet_id: str) -> str:
+    """Un-retweet a tweet by ID.
+
+    Args:
+        tweet_id: The tweet ID to un-retweet.
+    """
+    client = await _get_client()
+    try:
+        await client.delete_retweet(tweet_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Tweet {tweet_id} not found.")
+    return json.dumps({"tweet_id": tweet_id, "status": "un-retweeted"})
+
+
+@mcp.tool()
+async def bookmark_tweet(tweet_id: str, folder_id: str | None = None) -> str:
+    """Bookmark a tweet. Optionally add it to a bookmark folder.
+
+    Args:
+        tweet_id: The tweet ID to bookmark.
+        folder_id: Optional bookmark folder ID.
+    """
+    client = await _get_client()
+    try:
+        await client.bookmark_tweet(tweet_id, folder_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Tweet {tweet_id} not found.")
+    result: dict = {"tweet_id": tweet_id, "status": "bookmarked"}
+    if folder_id is not None:
+        result["folder_id"] = folder_id
+    return json.dumps(result)
+
+
+@mcp.tool()
+async def delete_bookmark(tweet_id: str) -> str:
+    """Remove a tweet from bookmarks.
+
+    Args:
+        tweet_id: The tweet ID to un-bookmark.
+    """
+    client = await _get_client()
+    try:
+        await client.delete_bookmark(tweet_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Bookmark for tweet {tweet_id} not found.")
+    return json.dumps({"tweet_id": tweet_id, "status": "un-bookmarked"})
+
+
+@mcp.tool()
+async def get_bookmarks(count: int = 20, cursor: str | None = None) -> str:
+    """Get bookmarked tweets (paginated).
+
+    Args:
+        count: Number of bookmarks to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_bookmarks(count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    tweets = [
+        {
+            "id": t.id,
+            "author": t.user.screen_name,
+            "text": t.text[:200],
+            "likes": t.favorite_count,
+            "retweets": t.retweet_count,
+        }
+        for t in result
+    ]
+    return json.dumps(
+        {
+            "tweets": tweets,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(tweets),
+        }
+    )
+
+
+@mcp.tool()
+async def get_favoriters(
+    tweet_id: str, count: int = 40, cursor: str | None = None
+) -> str:
+    """Get users who liked a tweet (paginated).
+
+    Args:
+        tweet_id: The tweet ID.
+        count: Number of users to fetch (default 40, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_favoriters(tweet_id, count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Tweet {tweet_id} not found.")
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
+        }
+    )
+
+
+@mcp.tool()
+async def get_retweeters(
+    tweet_id: str, count: int = 40, cursor: str | None = None
+) -> str:
+    """Get users who retweeted a tweet (paginated).
+
+    Args:
+        tweet_id: The tweet ID.
+        count: Number of users to fetch (default 40, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_retweeters(tweet_id, count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Tweet {tweet_id} not found.")
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
+        }
+    )
+
+
+@mcp.tool()
+async def search_user(query: str, count: int = 20, cursor: str | None = None) -> str:
+    """Search for users by query (paginated).
+
+    Args:
+        query: Search query string.
+        count: Number of users to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if not query.strip():
+        raise ToolError("query must not be empty.")
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.search_user(query, count=count, cursor=cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
+        }
+    )
+
+
+@mcp.tool()
+async def get_trends(category: str = "trending", count: int = 20) -> str:
+    """Get trending topics by category.
+
+    Args:
+        category: One of "trending", "for-you", "news", "sports", "entertainment"
+            (default "trending").
+        count: Number of trends to fetch (default 20).
+    """
+    if category not in _VALID_TREND_CATEGORIES:
+        raise ToolError(
+            f"category must be one of {sorted(_VALID_TREND_CATEGORIES)}, got: {category!r}"
+        )
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    client = await _get_client()
+    try:
+        trends = await client.get_trends(category, count=count)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    result = [
+        {
+            "name": t.name,
+            "tweets_count": t.tweets_count,
+            "domain_context": t.domain_context,
+        }
+        for t in trends
+    ]
+    return json.dumps({"trends": result, "category": category})
 
 
 @mcp.tool()
