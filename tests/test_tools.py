@@ -7,6 +7,7 @@ confirmation JSON.
 """
 
 import json
+import time as _time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -2165,8 +2166,6 @@ async def test_create_list_raises_on_empty_name(fake_client):
 
 # ── create_scheduled_tweet ────────────────────────────
 
-import time as _time
-
 
 def _fake_scheduled_tweet(
     tweet_id="sched-1",
@@ -2175,8 +2174,6 @@ def _fake_scheduled_tweet(
     state="Scheduled",
     media=None,
 ):
-    from types import SimpleNamespace
-
     return SimpleNamespace(
         id=tweet_id,
         text=text,
@@ -2287,8 +2284,6 @@ async def test_get_scheduled_tweets_truncates_text_to_200(fake_client):
 
 
 async def test_get_scheduled_tweets_includes_media_count(fake_client):
-    from types import SimpleNamespace
-
     media = [{"media_info": "img1"}, {"media_info": "img2"}]
     tweet = SimpleNamespace(
         id="s1",
@@ -2429,8 +2424,6 @@ async def test_create_poll_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_vote_returns_dict(fake_client):
-    from types import SimpleNamespace
-
     fake_client.vote = AsyncMock(return_value=SimpleNamespace())
     out = json.loads(
         await server.vote("Option A", "card://123", "tweet-99", "poll2choice")
