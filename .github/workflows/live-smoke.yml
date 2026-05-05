@@ -28,7 +28,7 @@ permissions: {}
 
 jobs:
   smoke:
-    name: get_article live fetch
+    name: 8 idempotent reads (live)
     if: github.repository == 'tangivis/twitter-mcp'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -70,26 +70,107 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Smoke get_article against a known public article
-        # Jaden_riku's "2026年，日本国运的分水岭" — verified at the HTTP layer
-        # in issue #10. If the body comes back populated, the two-hop flow
-        # plus the issue #12 tuple unpack are both working.
+      - name: Smoke 8 idempotent reads against real X
+        # Each block hits a different twikit code path. If X rotates a
+        # GraphQL queryId, changes a field, or moves an endpoint, this
+        # surfaces it within 7 days (cron) instead of when the next
+        # caller hits the dead code path. Strictly read-only — zero
+        # side effects on the burner account.
+        #
+        # Each check is wrapped so failures collect (rather than
+        # fail-fast) — one X update breaking 3 tools shows all 3 in
+        # the same run, not just the first. Whole step still exits 1
+        # if any check failed.
+        #
+        # Targets chosen for stability / public visibility:
+        #   - get_article: Jaden_riku's article (verified e2e in issue #10)
+        #   - get_tweet: Jack's stable #20
+        #   - get_user_info: elonmusk (highest-traffic public account)
+        #   - search_tweets: "AI" Top product (always has hits)
+        #   - get_timeline: cookie-identity home feed
+        #   - get_trends: globally-available trending list
+        #   - get_user_followers: vercel (stable mid-size handle)
+        #   - get_lists: own lists (cookie identity, empty OK)
         run: |
           uv run python - <<'PY'
           import asyncio, json
-          from twitter_mcp.server import get_article
+          from twitter_mcp.server import (
+              get_article,
+              get_tweet,
+              get_user_info,
+              search_tweets,
+              get_timeline,
+              get_trends,
+              get_user_followers,
+              get_lists,
+          )
 
-          ARTICLE_ID = "2048420352397864960"
-          out = json.loads(asyncio.run(get_article(ARTICLE_ID)))
+          successes = []
+          failures = []
 
-          title = out.get("title") or ""
-          body  = out.get("plain_text") or ""
-          media = out.get("media_entities") or []
+          async def check(name, coro, validate):
+              """Run one read, capture pass/fail, never bubble exceptions out."""
+              try:
+                  out = json.loads(await coro)
+                  msg = validate(out)
+                  successes.append(f"  ✓ {name}: {msg}")
+              except AssertionError as e:
+                  failures.append(f"  ✗ {name}: assertion failed — {e}")
+              except Exception as e:
+                  failures.append(f"  ✗ {name}: {type(e).__name__}: {e}")
 
-          print(f"title  = {title!r}")
-          print(f"body   = {len(body)} chars")
-          print(f"media  = {len(media)} entries")
+          def v_article(o):
+              assert o.get("title"), "no title"
+              assert len(o.get("plain_text", "")) > 1000, "body too short"
+              return f"title={o['title'][:20]!r}, body={len(o['plain_text'])}c"
 
-          assert title,             "no title in article payload"
-          assert len(body) > 1000,  f"plain_text suspiciously short: {len(body)} chars"
+          def v_tweet(o):
+              assert o.get("author") == "jack", f"unexpected author {o.get('author')!r}"
+              assert o.get("id") == "20", "id mismatch"
+              return "jack's #20 found"
+
+          def v_user_info(o):
+              assert o.get("screen_name") == "elonmusk", "screen_name mismatch"
+              assert o.get("followers_count", 0) > 1_000_000, "follower count suspicious"
+              return f"elonmusk has {o['followers_count']:,} followers"
+
+          def v_search(o):
+              assert isinstance(o, list) and len(o) > 0, "empty results for 'AI'"
+              return f"{len(o)} hits"
+
+          def v_timeline(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} tweets (empty OK for new burner)"
+
+          def v_trends(o):
+              assert isinstance(o.get("trends"), list), "missing 'trends' key"
+              assert len(o["trends"]) > 0, "empty trends list"
+              return f"{len(o['trends'])} trends"
+
+          def v_followers(o):
+              assert isinstance(o.get("users"), list), "missing 'users' key"
+              assert len(o["users"]) > 0, "empty followers"
+              return f"vercel has {len(o['users'])}+ followers"
+
+          def v_lists(o):
+              assert isinstance(o.get("lists"), list), "missing 'lists' key"
+              return f"{len(o['lists'])} lists (empty OK)"
+
+          async def main():
+              await check("get_article",        get_article("2048420352397864960"), v_article)
+              await check("get_tweet",          get_tweet("20"), v_tweet)
+              await check("get_user_info",      get_user_info(screen_name="elonmusk"), v_user_info)
+              await check("search_tweets",      search_tweets(query="AI", count=5, product="Top"), v_search)
+              await check("get_timeline",       get_timeline(count=5), v_timeline)
+              await check("get_trends",         get_trends(category="trending", count=5), v_trends)
+              await check("get_user_followers", get_user_followers(screen_name="vercel", count=5), v_followers)
+              await check("get_lists",          get_lists(count=5), v_lists)
+
+              print("\n".join(successes))
+              if failures:
+                  print("\n".join(failures))
+                  raise SystemExit(f"\n{len(failures)} of 8 checks failed against live X")
+              print(f"\nAll 8 reads passed against live X.")
+
+          asyncio.run(main())
           PY
