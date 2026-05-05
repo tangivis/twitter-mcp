@@ -1,75 +1,198 @@
-name: PR Review with Progress Tracking
+name: PR review (MiniMax M2)
 
-# Auto-runs Claude on every new / synced PR. Adapted verbatim from
-# anthropics/claude-code-action/examples/pr-review-comprehensive.yml,
-# with the auth field swapped to OAuth (Max plan) instead of API key.
+# Per-PR automated review by MiniMax M2 via OpenAI-compatible
+# api.minimaxi.com endpoint. Replaces the previous anthropics/claude-code-action
+# version (which lived in PR #21 → reverted here in this PR).
+#
+# Why MiniMax for review specifically:
+#   - review is the highest-frequency LLM call in this repo (every PR
+#     open/synchronize), and tokens add up; M2 is ~1/10th the cost of
+#     Sonnet for comparable summarisation/critique quality.
+#   - review only needs text-out (no tool use), which the OpenAI-compat
+#     endpoint covers fine.
+#
+# `@claude` mentions in `claude.yml` stay on Anthropic — those need
+# Claude Code's tool-using session to actually edit files / commit / push,
+# which M2 has no equivalent for via curl.
+#
+# Endpoint + model id pinned via PR #41's probe; see that PR's body for
+# the captured response shape if a future model upgrade changes things.
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
 
+# Cancel stale review runs when a branch is force-pushed mid-review.
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
-  review-with-tracking:
+  review:
+    name: MiniMax M2 review
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      id-token: write
+    timeout-minutes: 4
+    # Skip drafts — review is for ready-for-review PRs only.
+    if: github.event.pull_request.draft == false
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: PR Review with Progress Tracking
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      - name: Verify secret + mask
+        env:
+          K: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          if [ -z "$K" ]; then
+            echo "::error::MINIMAX_API_KEY secret not set on this repo. Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "::add-mask::$K"
 
-          # Enable progress tracking
-          track_progress: true
+      - name: Capture PR diff (capped at 80 KB)
+        id: diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          # Cap to 80 KB. M2 has plenty of context but the full prompt
+          # is diff + rubric + repo conventions; leave headroom and trim
+          # generated/lock files where the LLM has nothing useful to say.
+          gh pr diff "$PR_NUM" \
+            | grep -vE '^(diff --git|---|\+\+\+) .*\b(uv\.lock|package-lock\.json|.*\.lock)$' \
+            | head -c 80000 > pr.diff
 
-          # Your custom review instructions
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+          if [ ! -s pr.diff ]; then
+            echo "Empty diff (or only lock files); skipping review."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
 
-            Perform a comprehensive code review with the following focus areas:
+      - name: Build prompt
+        if: steps.diff.outputs.skip != 'true'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          # Persist PR body to a file separately — embedding it inline with
+          # echo / heredoc would break on backticks, $-prefixed strings, etc.
+          # `printf '%s'` prints the env var verbatim with no shell escapes.
+          printf '%s' "$PR_BODY" > pr_body.txt
 
-            1. **Code Quality**
-               - Clean code principles and best practices
-               - Proper error handling and edge cases
-               - Code readability and maintainability
+          {
+            echo "You are reviewing a pull request for the **twitter-mcp** project — a Python MCP server wrapping vendored twikit for Twitter/X access via browser cookies."
+            echo
+            echo "Repository conventions (apply when relevant):"
+            echo "- TDD pattern: red test commit → green fix commit → docs+chore commit."
+            echo "- 100% \`twitter_mcp/server.py\` coverage; CI gate \`--cov-fail-under=95\`."
+            echo "- Mock-based unit tests + post-merge live-smoke against real X (issue #37 tracks failures)."
+            echo "- Vendored twikit at \`twitter_mcp/_vendor/twikit/\`. Patches must carry \`# twitter-mcp patch (issue #N)\` and be logged in \`docs/VENDORING.md\`."
+            echo "- Typed twikit errors \`TooManyRequests\`/\`NotFound\` get translated to \`ToolError\` with clear messages."
+            echo "- Paginated tools cap count at 100 (\`_PAGINATED_MAX_COUNT\`) and use cursor."
+            echo "- Validators use \`frozenset\` literal sets (\`_VALID_TREND_CATEGORIES\`, \`_VALID_COMMUNITY_TWEET_TYPES\`)."
+            echo
+            echo "PR title: ${PR_TITLE}"
+            echo "PR author: @${PR_AUTHOR}"
+            echo
+            echo "PR body:"
+            echo "---"
+            cat pr_body.txt
+            echo
+            echo "---"
+            echo
+            echo "PR diff (truncated to 80 KB):"
+            echo '```diff'
+            cat pr.diff
+            echo '```'
+            echo
+            echo "## Output format"
+            echo "Output a concise markdown review with these sections (omit a section if empty):"
+            echo "- **Summary** (1-3 sentences: what does this PR do?)"
+            echo "- **Must-fix** (bugs, security holes, missing guards, broken tests)"
+            echo "- **Suggestions** (improvements that aren't blockers)"
+            echo "- **Nits** (style / naming / wording, no architectural impact)"
+            echo "- **Decision**: \`approve\` / \`comment\` / \`request-changes\`"
+            echo
+            echo "Cite specific lines as \`path/to/file.py:42\`. Be terse — under 600 words total. Skip generic praise. If you find no real issues, say so plainly."
+          } > prompt.txt
 
-            2. **Security**
-               - Check for potential security vulnerabilities
-               - Validate input sanitization
-               - Review authentication/authorization logic
+      - name: Call MiniMax M2
+        id: call
+        if: steps.diff.outputs.skip != 'true'
+        env:
+          K: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          payload=$(jq -nc --rawfile p prompt.txt \
+            '{model:"MiniMax-M2", messages:[{role:"user", content:$p}], max_tokens:4000, temperature:0.2}')
 
-            3. **Performance**
-               - Identify potential performance bottlenecks
-               - Review database queries for efficiency
-               - Check for memory leaks or resource issues
+          http=$(curl -sS -o response.json -w '%{http_code}' \
+            --max-time 180 \
+            https://api.minimaxi.com/v1/chat/completions \
+            -H "Authorization: Bearer $K" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+          echo "http=$http" >> "$GITHUB_OUTPUT"
+          echo "MiniMax HTTP $http"
 
-            4. **Testing**
-               - Verify adequate test coverage
-               - Review test quality and edge cases
-               - Check for missing test scenarios
+          if [ "$http" != "200" ]; then
+            echo "::warning::MiniMax returned HTTP $http; review skipped."
+            head -c 2000 response.json
+            exit 0
+          fi
 
-            5. **Documentation**
-               - Ensure code is properly documented
-               - Verify README updates for new features
-               - Check API documentation accuracy
+      - name: Extract review (strip <think> reasoning block)
+        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
+        run: |
+          content=$(jq -r '.choices[0].message.content // empty' response.json)
+          if [ -z "$content" ]; then
+            echo "::warning::Empty content from MiniMax; review skipped."
+            exit 0
+          fi
 
-            Provide detailed feedback using inline comments for specific issues.
-            Use top-level comments for general observations or praise.
+          # M2 emits visible reasoning between <think>...</think>. Strip it
+          # so the posted review is just the user-facing critique.
+          # Two-state awk: skip lines while inside a <think> block.
+          printf '%s\n' "$content" \
+            | awk 'BEGIN{skip=0} /<think>/{skip=1; next} /<\/think>/{skip=0; next} !skip' \
+            > review.md
 
-          # Tools for comprehensive PR review
-          claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+          # Defensive: if the model never closed a <think> tag (or never
+          # opened one), fall back to the raw content.
+          if [ ! -s review.md ]; then
+            printf '%s\n' "$content" > review.md
+          fi
 
-# When track_progress is enabled:
-# - Creates a tracking comment with progress checkboxes
-# - Includes all PR context (comments, attachments, images)
-# - Updates progress as the review proceeds
-# - Marks as completed when done
+      - name: Capture token usage for the run summary
+        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
+        run: |
+          usage=$(jq -c '.usage // {}' response.json)
+          {
+            echo "## MiniMax review"
+            echo
+            echo "Token usage: \`$usage\`"
+            echo
+            echo "### Posted review"
+            echo
+            cat review.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post review as PR comment
+        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "## 🤖 MiniMax M2 review"
+            echo
+            cat review.md
+            echo
+            echo "---"
+            echo "_Automated review. For deeper changes that need code edits, mention \`@claude\` to invoke a tool-using Anthropic session._"
+          } > final.md
+
+          gh pr comment "$PR_NUM" --body-file final.md
