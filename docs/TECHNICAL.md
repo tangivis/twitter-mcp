@@ -785,7 +785,7 @@ asyncio.run(test())
 ├── pyproject.toml                   ← 依赖声明和项目元数据
 ├── twitter_mcp/                     ← Python package
 │   ├── __init__.py
-│   ├── server.py                    ← MCP server 核心代码（42 个工具）
+│   ├── server.py                    ← MCP server 核心代码（47 个工具）
 │   └── _vendor/                     ← vendored 第三方库
 │       └── twikit/                  ← twikit 2.3.3 + PR#412 修复
 │           ├── client/              ← 修复 2: gql_get → gql_post
