@@ -126,8 +126,13 @@ jobs:
         env:
           K: ${{ secrets.MINIMAX_API_KEY }}
         run: |
+          # max_tokens covers BOTH the visible review AND the hidden
+          # reasoning block (M2's <think>…</think> spends 1-2 KB of tokens
+          # on a non-trivial diff). 4000 was too tight — reviews got
+          # truncated mid-Must-fix. 8000 leaves the visible portion
+          # comfortable.
           payload=$(jq -nc --rawfile p prompt.txt \
-            '{model:"MiniMax-M2", messages:[{role:"user", content:$p}], max_tokens:4000, temperature:0.2}')
+            '{model:"MiniMax-M2", messages:[{role:"user", content:$p}], max_tokens:8000, temperature:0.2}')
 
           http=$(curl -sS -o response.json -w '%{http_code}' \
             --max-time 180 \
@@ -147,26 +152,45 @@ jobs:
       - name: Extract review (strip <think> reasoning block)
         if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
         run: |
-          content=$(jq -r '.choices[0].message.content // empty' response.json)
-          if [ -z "$content" ]; then
+          # Save raw model content first — used to extract review and to
+          # dump unaltered into the step summary for debugging.
+          jq -r '.choices[0].message.content // empty' response.json > raw.md
+
+          if [ ! -s raw.md ]; then
             echo "::warning::Empty content from MiniMax; review skipped."
             exit 0
           fi
 
-          # M2 emits visible reasoning between <think>...</think>. Strip it
-          # so the posted review is just the user-facing critique.
-          # Two-state awk: skip lines while inside a <think> block.
-          printf '%s\n' "$content" \
-            | awk 'BEGIN{skip=0} /<think>/{skip=1; next} /<\/think>/{skip=0; next} !skip' \
-            > review.md
+          # M2 emits visible reasoning between <think>...</think>. Strip
+          # all such blocks (including same-line <think>...</think>, and
+          # blocks that span multiple lines). Earlier awk-based version
+          # broke on single-line blocks: matching /<think>/ first caused
+          # `next` to skip the line before /<\/think>/ on the same line
+          # could reset the state, leaking everything after.
+          #
+          # Python re.sub with DOTALL is unambiguous and handles every
+          # variant (single line, multi line, multiple blocks, no closing
+          # tag → strip from <think> to EOF).
+          python3 - <<'PY' < raw.md > review.md
+          import re, sys
+          src = sys.stdin.read()
+          # Remove all closed <think>...</think> blocks (greedy-non-greedy mix
+          # via lazy ?). DOTALL so `.` crosses newlines.
+          src = re.sub(r'<think>.*?</think>', '', src, flags=re.DOTALL)
+          # If the model opened <think> but never closed it (e.g. truncated
+          # by max_tokens mid-thought), drop everything from there to EOF.
+          src = re.sub(r'<think>.*$', '', src, flags=re.DOTALL)
+          # Trim leading/trailing whitespace from the user-facing portion.
+          sys.stdout.write(src.strip() + "\n")
+          PY
 
-          # Defensive: if the model never closed a <think> tag (or never
-          # opened one), fall back to the raw content.
+          # Defensive: never post empty.
           if [ ! -s review.md ]; then
-            printf '%s\n' "$content" > review.md
+            echo "Review file empty after strip; falling back to raw content." >&2
+            cp raw.md review.md
           fi
 
-      - name: Capture token usage for the run summary
+      - name: Capture token usage + raw model output for the run summary
         if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
         run: |
           usage=$(jq -c '.usage // {}' response.json)
@@ -175,9 +199,20 @@ jobs:
             echo
             echo "Token usage: \`$usage\`"
             echo
-            echo "### Posted review"
+            echo "### Posted review (after \`<think>\` strip)"
             echo
             cat review.md
+            echo
+            echo
+            echo "<details><summary>Raw model content (with <think> reasoning, debug only)</summary>"
+            echo
+            echo '```'
+            # Truncate raw to 16 KB to keep summary readable on a wide diff.
+            head -c 16000 raw.md
+            echo
+            echo '```'
+            echo
+            echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Post review as PR comment
