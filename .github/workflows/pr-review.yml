@@ -40,8 +40,11 @@ jobs:
     if: github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v4
+        # `gh pr diff <num>` calls the API directly — it doesn't need a
+        # local git history, so the default depth (1) suffices. Saves a
+        # few seconds per run.
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Verify secret + mask
         env:
@@ -61,9 +64,12 @@ jobs:
         run: |
           # Cap to 80 KB. M2 has plenty of context but the full prompt
           # is diff + rubric + repo conventions; leave headroom and trim
-          # generated/lock files where the LLM has nothing useful to say.
+          # generated lockfiles where the LLM has nothing useful to say.
+          # Explicit lockfile list (not `.*\.lock$`, which would also
+          # eat any unrelated `*.lock` source file the project happens
+          # to have).
           gh pr diff "$PR_NUM" \
-            | grep -vE '^(diff --git|---|\+\+\+) .*\b(uv\.lock|package-lock\.json|.*\.lock)$' \
+            | grep -vE '^(diff --git|---|\+\+\+) .*(/|^)(uv\.lock|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|Gemfile\.lock|Cargo\.lock|composer\.lock)$' \
             | head -c 80000 > pr.diff
 
           if [ ! -s pr.diff ]; then
