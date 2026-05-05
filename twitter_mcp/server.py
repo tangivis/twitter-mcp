@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import time
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -1397,6 +1398,143 @@ async def remove_list_member(
     except NotFound:
         raise ToolError(f"Not found: list {list_id} or user {screen_name or user_id}.")
     return json.dumps(_list_to_dict(lst))
+
+
+@mcp.tool()
+async def create_scheduled_tweet(
+    scheduled_at: int,
+    text: str = "",
+    media_ids: list[str] | None = None,
+) -> str:
+    """Schedule a tweet to be posted at a future Unix timestamp.
+
+    Scheduled tweets follow X's standard rate limits, no special caveats needed.
+
+    Args:
+        scheduled_at: Unix epoch seconds when the tweet should be posted (must be in the future).
+        text: Tweet text. At least one of text or media_ids must be provided.
+        media_ids: List of media IDs to attach to the scheduled tweet.
+    """
+    if scheduled_at <= int(time.time()):
+        raise ToolError("scheduled_at must be a future Unix timestamp.")
+    if not text.strip() and not media_ids:
+        raise ToolError(
+            "at least one of text or media_ids must be provided (empty tweet)."
+        )
+    client = await _get_client()
+    try:
+        tweet_id = await client.create_scheduled_tweet(scheduled_at, text, media_ids)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    return json.dumps(
+        {"scheduled_tweet_id": tweet_id, "scheduled_at": scheduled_at, "status": "scheduled"}
+    )
+
+
+@mcp.tool()
+async def get_scheduled_tweets() -> str:
+    """Return all scheduled tweets for the authenticated user.
+
+    Scheduled tweets follow X's standard rate limits, no special caveats needed.
+    """
+    client = await _get_client()
+    try:
+        tweets = await client.get_scheduled_tweets()
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    result = [
+        {
+            "id": t.id,
+            "text": t.text[:200],
+            "scheduled_at": t.execute_at,
+            "state": t.state,
+            "media_count": len(t.media),
+        }
+        for t in tweets
+    ]
+    return json.dumps({"scheduled_tweets": result, "count": len(result)})
+
+
+@mcp.tool()
+async def delete_scheduled_tweet(scheduled_tweet_id: str) -> str:
+    """Delete a scheduled tweet by its scheduled tweet ID.
+
+    Scheduled tweets follow X's standard rate limits, no special caveats needed.
+
+    Args:
+        scheduled_tweet_id: The ID of the scheduled tweet (from create_scheduled_tweet
+            or get_scheduled_tweets). This is NOT a regular tweet ID.
+    """
+    client = await _get_client()
+    try:
+        await client.delete_scheduled_tweet(scheduled_tweet_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Scheduled tweet {scheduled_tweet_id} not found.")
+    return json.dumps({"scheduled_tweet_id": scheduled_tweet_id, "status": "deleted"})
+
+
+@mcp.tool()
+async def create_poll(choices: list[str], duration_minutes: int) -> str:
+    """Create an X poll and return its card URI.
+
+    X polls have 2-4 choices and a duration in minutes.
+    Pass the returned card_uri to send_tweet's poll_uri parameter to attach the poll.
+
+    Args:
+        choices: Poll choices (2-4 entries required; each must be non-empty).
+        duration_minutes: Poll duration in minutes (must be > 0).
+    """
+    if len(choices) not in (2, 3, 4):
+        raise ToolError("choices must have 2, 3, or 4 entries (X polls allow 2-4 options).")
+    if duration_minutes <= 0:
+        raise ToolError("duration_minutes must be greater than 0.")
+    for choice in choices:
+        if not choice.strip():
+            raise ToolError("all poll choices must be non-empty.")
+    client = await _get_client()
+    try:
+        card_uri = await client.create_poll(choices, duration_minutes)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    return json.dumps({"card_uri": card_uri, "status": "created"})
+
+
+@mcp.tool()
+async def vote(
+    selected_choice: str,
+    card_uri: str,
+    tweet_id: str,
+    card_name: str,
+) -> str:
+    """Vote on an X poll.
+
+    X polls have 2-4 choices and a duration in minutes.
+    The card_uri and card_name come from the tweet's poll card metadata (obtainable via get_tweet).
+
+    Args:
+        selected_choice: The label of the choice to vote for (must be non-empty).
+        card_uri: The poll card URI (from the tweet's poll card metadata).
+        tweet_id: The ID of the tweet containing the poll.
+        card_name: The name of the poll card (from the tweet's poll card metadata).
+    """
+    if not selected_choice.strip():
+        raise ToolError("selected_choice must be non-empty.")
+    if not card_uri:
+        raise ToolError("card_uri must be non-empty.")
+    if not card_name:
+        raise ToolError("card_name must be non-empty.")
+    client = await _get_client()
+    try:
+        await client.vote(selected_choice, card_uri, tweet_id, card_name)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Tweet {tweet_id} or poll card not found.")
+    return json.dumps(
+        {"tweet_id": tweet_id, "selected_choice": selected_choice, "status": "voted"}
+    )
 
 
 def _get_version() -> str:
