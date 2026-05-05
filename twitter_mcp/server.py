@@ -1439,6 +1439,10 @@ async def create_scheduled_tweet(
 async def get_scheduled_tweets() -> str:
     """Return all scheduled tweets for the authenticated user.
 
+    Note: returns the FULL list in one call — twikit's API does not paginate
+    scheduled tweets. This is fine in practice since X caps scheduled tweets
+    per account at a small number.
+
     Scheduled tweets follow X's standard rate limits, no special caveats needed.
     """
     client = await _get_client()
@@ -1469,6 +1473,8 @@ async def delete_scheduled_tweet(scheduled_tweet_id: str) -> str:
         scheduled_tweet_id: The ID of the scheduled tweet (from create_scheduled_tweet
             or get_scheduled_tweets). This is NOT a regular tweet ID.
     """
+    if not scheduled_tweet_id:
+        raise ToolError("scheduled_tweet_id must be non-empty.")
     client = await _get_client()
     try:
         await client.delete_scheduled_tweet(scheduled_tweet_id)
@@ -1496,9 +1502,15 @@ async def create_poll(choices: list[str], duration_minutes: int) -> str:
         )
     if duration_minutes <= 0:
         raise ToolError("duration_minutes must be greater than 0.")
+    if duration_minutes > 10_080:
+        raise ToolError(
+            "duration_minutes cannot exceed 10080 (7 days — X poll maximum)."
+        )
     for choice in choices:
         if not choice.strip():
             raise ToolError("all poll choices must be non-empty.")
+        if len(choice) > 25:
+            raise ToolError(f"poll choice {choice!r} exceeds X's 25-character limit.")
     client = await _get_client()
     try:
         card_uri = await client.create_poll(choices, duration_minutes)
@@ -1531,6 +1543,8 @@ async def vote(
         raise ToolError("card_uri must be non-empty.")
     if not card_name:
         raise ToolError("card_name must be non-empty.")
+    if not tweet_id:
+        raise ToolError("tweet_id must be non-empty.")
     client = await _get_client()
     try:
         await client.vote(selected_choice, card_uri, tweet_id, card_name)

@@ -2485,3 +2485,44 @@ async def test_vote_raises_clean_on_not_found(fake_client):
     with pytest.raises(ToolError) as exc:
         await server.vote("Option A", "card://123", "tweet-ghost", "poll2choice")
     assert "not found" in str(exc.value).lower()
+
+
+# ── PR #33 Claude review followups ────────────────────
+
+
+async def test_vote_rejects_empty_tweet_id(fake_client):
+    """Claude PR #33 review: vote was missing the tweet_id non-empty guard
+    (other 3 string params already had it)."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.vote("Option A", "card://123", "", "poll2choice")
+    assert "tweet_id" in str(exc.value)
+
+
+async def test_create_poll_rejects_duration_over_max(fake_client):
+    """Claude PR #33 review: X polls cap at 7 days = 10080 minutes."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.create_poll(["A", "B"], 10_081)
+    assert "10080" in str(exc.value) or "7 days" in str(exc.value)
+
+
+async def test_create_poll_rejects_choice_over_25_chars(fake_client):
+    """Claude PR #33 review: X poll choices cap at 25 chars per choice."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.create_poll(["A" * 26, "B"], 60)
+    msg = str(exc.value)
+    assert "25" in msg
+
+
+async def test_delete_scheduled_tweet_rejects_empty_id(fake_client):
+    """Consistency with vote: empty id → clean ToolError before twikit call."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.delete_scheduled_tweet("")
+    assert "scheduled_tweet_id" in str(exc.value)
