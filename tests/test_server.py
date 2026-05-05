@@ -25,7 +25,7 @@ def test_import_client_helper():
 
 
 def test_tools_registered():
-    """All 42 tools are registered in the MCP server."""
+    """All 47 tools are registered in the MCP server."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
@@ -75,16 +75,22 @@ def test_tools_registered():
         "edit_list",
         "add_list_member",
         "remove_list_member",
+        # new in v0.1.19
+        "create_scheduled_tweet",
+        "get_scheduled_tweets",
+        "delete_scheduled_tweet",
+        "create_poll",
+        "vote",
     }
     assert set(tools.keys()) == expected
 
 
 def test_tool_count():
-    """Exactly 42 tools are registered."""
+    """Exactly 47 tools are registered."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 42
+    assert len(tools) == 47
 
 
 # ── Tool Schema Tests ─────────────────────────────────
@@ -565,6 +571,69 @@ def test_remove_list_member_schema():
     required = set(schema.get("required", []))
     assert "screen_name" not in required
     assert "user_id" not in required
+
+
+def test_create_scheduled_tweet_schema():
+    """create_scheduled_tweet requires scheduled_at; text and media_ids are optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["create_scheduled_tweet"]
+    schema = tool.parameters
+    assert "scheduled_at" in schema["properties"]
+    assert "scheduled_at" in schema.get("required", [])
+    assert "text" in schema["properties"]
+    assert "media_ids" in schema["properties"]
+    required = set(schema.get("required", []))
+    assert "text" not in required
+    assert "media_ids" not in required
+
+
+def test_get_scheduled_tweets_schema():
+    """get_scheduled_tweets takes no arguments."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_scheduled_tweets"]
+    schema = tool.parameters
+    assert schema.get("properties", {}) == {} or not schema.get("required", [])
+
+
+def test_delete_scheduled_tweet_schema():
+    """delete_scheduled_tweet requires scheduled_tweet_id."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["delete_scheduled_tweet"]
+    schema = tool.parameters
+    assert "scheduled_tweet_id" in schema["properties"]
+    assert "scheduled_tweet_id" in schema.get("required", [])
+
+
+def test_create_poll_schema():
+    """create_poll requires choices and duration_minutes."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["create_poll"]
+    schema = tool.parameters
+    assert "choices" in schema["properties"]
+    assert "duration_minutes" in schema["properties"]
+    assert "choices" in schema.get("required", [])
+    assert "duration_minutes" in schema.get("required", [])
+
+
+def test_vote_schema():
+    """vote requires selected_choice, card_uri, tweet_id, and card_name."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["vote"]
+    schema = tool.parameters
+    required = set(schema.get("required", []))
+    assert "selected_choice" in schema["properties"]
+    assert "card_uri" in schema["properties"]
+    assert "tweet_id" in schema["properties"]
+    assert "card_name" in schema["properties"]
+    assert "selected_choice" in required
+    assert "card_uri" in required
+    assert "tweet_id" in required
+    assert "card_name" in required
 
 
 def test_dm_docstrings_contain_privacy_warning():

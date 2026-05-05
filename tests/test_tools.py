@@ -1,4 +1,4 @@
-"""Behavior tests for the 42 MCP tools.
+"""Behavior tests for the 47 MCP tools.
 
 Uses mocks to exercise each tool's body without network or real cookies.
 Covers: args passed through to twikit, output JSON shape, text truncation,
@@ -2161,3 +2161,334 @@ async def test_create_list_raises_on_empty_name(fake_client):
     assert "empty" in str(exc.value).lower()
     with pytest.raises(ToolError):
         await server.create_list("   ")  # whitespace-only also empty
+
+
+# ── create_scheduled_tweet ────────────────────────────
+
+import time as _time
+
+
+def _fake_scheduled_tweet(
+    tweet_id="sched-1",
+    text="hello scheduled",
+    execute_at=9999999999,
+    state="Scheduled",
+    media=None,
+):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=tweet_id,
+        text=text,
+        execute_at=execute_at,
+        state=state,
+        media=media or [],
+    )
+
+
+async def test_create_scheduled_tweet_returns_dict(fake_client):
+    future_ts = int(_time.time()) + 3600
+    fake_client.create_scheduled_tweet = AsyncMock(return_value="sched-1")
+    out = json.loads(await server.create_scheduled_tweet(future_ts, "hello"))
+    fake_client.create_scheduled_tweet.assert_awaited_once_with(
+        future_ts, "hello", None
+    )
+    assert out["scheduled_tweet_id"] == "sched-1"
+    assert out["scheduled_at"] == future_ts
+    assert out["status"] == "scheduled"
+
+
+async def test_create_scheduled_tweet_passes_media_ids(fake_client):
+    future_ts = int(_time.time()) + 3600
+    fake_client.create_scheduled_tweet = AsyncMock(return_value="sched-2")
+    await server.create_scheduled_tweet(future_ts, "", ["m1", "m2"])
+    fake_client.create_scheduled_tweet.assert_awaited_once_with(
+        future_ts, "", ["m1", "m2"]
+    )
+
+
+async def test_create_scheduled_tweet_rejects_past_timestamp(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    past_ts = int(_time.time()) - 10
+    with pytest.raises(ToolError) as exc:
+        await server.create_scheduled_tweet(past_ts, "hello")
+    assert "future" in str(exc.value).lower()
+
+
+async def test_create_scheduled_tweet_rejects_current_timestamp(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    now_ts = int(_time.time())
+    with pytest.raises(ToolError):
+        await server.create_scheduled_tweet(now_ts, "hello")
+
+
+async def test_create_scheduled_tweet_rejects_empty_text_and_no_media(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    future_ts = int(_time.time()) + 3600
+    with pytest.raises(ToolError) as exc:
+        await server.create_scheduled_tweet(future_ts, "")
+    assert "text" in str(exc.value).lower() or "media" in str(exc.value).lower()
+
+
+async def test_create_scheduled_tweet_rejects_whitespace_text_and_no_media(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    future_ts = int(_time.time()) + 3600
+    with pytest.raises(ToolError):
+        await server.create_scheduled_tweet(future_ts, "   ")
+
+
+async def test_create_scheduled_tweet_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    future_ts = int(_time.time()) + 3600
+    fake_client.create_scheduled_tweet = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.create_scheduled_tweet(future_ts, "hello")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── get_scheduled_tweets ──────────────────────────────
+
+
+async def test_get_scheduled_tweets_returns_list(fake_client):
+    tweets = [
+        _fake_scheduled_tweet("s1", "tweet one", 9000000001),
+        _fake_scheduled_tweet("s2", "tweet two", 9000000002),
+    ]
+    fake_client.get_scheduled_tweets = AsyncMock(return_value=tweets)
+    out = json.loads(await server.get_scheduled_tweets())
+    assert out["count"] == 2
+    assert len(out["scheduled_tweets"]) == 2
+    assert out["scheduled_tweets"][0]["id"] == "s1"
+    assert out["scheduled_tweets"][0]["text"] == "tweet one"
+    assert out["scheduled_tweets"][0]["scheduled_at"] == 9000000001
+    assert "state" in out["scheduled_tweets"][0]
+
+
+async def test_get_scheduled_tweets_returns_empty_list(fake_client):
+    fake_client.get_scheduled_tweets = AsyncMock(return_value=[])
+    out = json.loads(await server.get_scheduled_tweets())
+    assert out["count"] == 0
+    assert out["scheduled_tweets"] == []
+
+
+async def test_get_scheduled_tweets_truncates_text_to_200(fake_client):
+    long_text = "x" * 300
+    tweets = [_fake_scheduled_tweet("s1", long_text)]
+    fake_client.get_scheduled_tweets = AsyncMock(return_value=tweets)
+    out = json.loads(await server.get_scheduled_tweets())
+    assert len(out["scheduled_tweets"][0]["text"]) == 200
+
+
+async def test_get_scheduled_tweets_includes_media_count(fake_client):
+    from types import SimpleNamespace
+
+    media = [{"media_info": "img1"}, {"media_info": "img2"}]
+    tweet = SimpleNamespace(
+        id="s1",
+        text="with media",
+        execute_at=9000000001,
+        state="Scheduled",
+        media=media,
+    )
+    fake_client.get_scheduled_tweets = AsyncMock(return_value=[tweet])
+    out = json.loads(await server.get_scheduled_tweets())
+    assert out["scheduled_tweets"][0]["media_count"] == 2
+
+
+async def test_get_scheduled_tweets_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.get_scheduled_tweets = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.get_scheduled_tweets()
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── delete_scheduled_tweet ────────────────────────────
+
+
+async def test_delete_scheduled_tweet_returns_dict(fake_client):
+    fake_client.delete_scheduled_tweet = AsyncMock(return_value=None)
+    out = json.loads(await server.delete_scheduled_tweet("sched-99"))
+    fake_client.delete_scheduled_tweet.assert_awaited_once_with("sched-99")
+    assert out["scheduled_tweet_id"] == "sched-99"
+    assert out["status"] == "deleted"
+
+
+async def test_delete_scheduled_tweet_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.delete_scheduled_tweet = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_scheduled_tweet("ghost-id")
+    assert "ghost-id" in str(exc.value)
+
+
+async def test_delete_scheduled_tweet_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.delete_scheduled_tweet = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.delete_scheduled_tweet("sched-1")
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── create_poll ───────────────────────────────────────
+
+
+async def test_create_poll_returns_card_uri(fake_client):
+    fake_client.create_poll = AsyncMock(return_value="card://123456")
+    out = json.loads(await server.create_poll(["Yes", "No"], 60))
+    fake_client.create_poll.assert_awaited_once_with(["Yes", "No"], 60)
+    assert out["card_uri"] == "card://123456"
+    assert out["status"] == "created"
+
+
+async def test_create_poll_accepts_two_choices(fake_client):
+    fake_client.create_poll = AsyncMock(return_value="card://111")
+    await server.create_poll(["A", "B"], 30)
+    fake_client.create_poll.assert_awaited_once_with(["A", "B"], 30)
+
+
+async def test_create_poll_accepts_four_choices(fake_client):
+    fake_client.create_poll = AsyncMock(return_value="card://222")
+    await server.create_poll(["A", "B", "C", "D"], 1440)
+    fake_client.create_poll.assert_awaited_once_with(["A", "B", "C", "D"], 1440)
+
+
+async def test_create_poll_rejects_one_choice(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.create_poll(["Only"], 60)
+    assert "2" in str(exc.value) or "choice" in str(exc.value).lower()
+
+
+async def test_create_poll_rejects_five_choices(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.create_poll(["A", "B", "C", "D", "E"], 60)
+
+
+async def test_create_poll_rejects_zero_duration(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.create_poll(["Yes", "No"], 0)
+    assert "duration" in str(exc.value).lower() or "0" in str(exc.value)
+
+
+async def test_create_poll_rejects_negative_duration(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.create_poll(["Yes", "No"], -1)
+
+
+async def test_create_poll_rejects_empty_choice(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.create_poll(["Yes", ""], 60)
+    assert "empty" in str(exc.value).lower() or "choice" in str(exc.value).lower()
+
+
+async def test_create_poll_rejects_whitespace_only_choice(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.create_poll(["Yes", "   "], 60)
+
+
+async def test_create_poll_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.create_poll = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.create_poll(["Yes", "No"], 60)
+    assert "rate limit" in str(exc.value).lower()
+
+
+# ── vote ──────────────────────────────────────────────
+
+
+async def test_vote_returns_dict(fake_client):
+    from types import SimpleNamespace
+
+    fake_client.vote = AsyncMock(return_value=SimpleNamespace())
+    out = json.loads(
+        await server.vote("Option A", "card://123", "tweet-99", "poll2choice")
+    )
+    fake_client.vote.assert_awaited_once_with(
+        "Option A", "card://123", "tweet-99", "poll2choice"
+    )
+    assert out["tweet_id"] == "tweet-99"
+    assert out["selected_choice"] == "Option A"
+    assert out["status"] == "voted"
+
+
+async def test_vote_rejects_empty_selected_choice(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError) as exc:
+        await server.vote("", "card://123", "tweet-1", "poll2choice")
+    assert "choice" in str(exc.value).lower() or "empty" in str(exc.value).lower()
+
+
+async def test_vote_rejects_whitespace_selected_choice(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.vote("   ", "card://123", "tweet-1", "poll2choice")
+
+
+async def test_vote_rejects_empty_card_uri(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.vote("Option A", "", "tweet-1", "poll2choice")
+
+
+async def test_vote_rejects_empty_card_name(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError):
+        await server.vote("Option A", "card://123", "tweet-1", "")
+
+
+async def test_vote_raises_clean_on_rate_limit(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    fake_client.vote = AsyncMock(side_effect=TooManyRequests("rate"))
+    with pytest.raises(ToolError) as exc:
+        await server.vote("Option A", "card://123", "tweet-1", "poll2choice")
+    assert "rate limit" in str(exc.value).lower()
+
+
+async def test_vote_raises_clean_on_not_found(fake_client):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    fake_client.vote = AsyncMock(side_effect=NotFound("nope"))
+    with pytest.raises(ToolError) as exc:
+        await server.vote("Option A", "card://123", "tweet-ghost", "poll2choice")
+    assert "not found" in str(exc.value).lower()
