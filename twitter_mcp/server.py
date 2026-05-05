@@ -1427,7 +1427,11 @@ async def create_scheduled_tweet(
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     return json.dumps(
-        {"scheduled_tweet_id": tweet_id, "scheduled_at": scheduled_at, "status": "scheduled"}
+        {
+            "scheduled_tweet_id": tweet_id,
+            "scheduled_at": scheduled_at,
+            "status": "scheduled",
+        }
     )
 
 
@@ -1487,7 +1491,9 @@ async def create_poll(choices: list[str], duration_minutes: int) -> str:
         duration_minutes: Poll duration in minutes (must be > 0).
     """
     if len(choices) not in (2, 3, 4):
-        raise ToolError("choices must have 2, 3, or 4 entries (X polls allow 2-4 options).")
+        raise ToolError(
+            "choices must have 2, 3, or 4 entries (X polls allow 2-4 options)."
+        )
     if duration_minutes <= 0:
         raise ToolError("duration_minutes must be greater than 0.")
     for choice in choices:
