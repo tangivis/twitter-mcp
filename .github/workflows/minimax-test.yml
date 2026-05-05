@@ -1,0 +1,144 @@
+name: MiniMax probe (manual)
+
+# Sole purpose: pin down the right MiniMax endpoint + model id from inside
+# GitHub Actions, since the local sandbox blocks outbound HTTPS to
+# api.minimaxi.com when carrying high-entropy secrets. Once we know the
+# correct shape, the actual review workflow gets built on top.
+#
+# Manual trigger only — does NOT run on push / PR / schedule.
+# Usage: Actions tab → "MiniMax probe (manual)" → Run workflow → optionally
+#        override the inputs (defaults try OpenAI-compatible /v1/chat/completions
+#        with model="MiniMax-M2"). The full response body is mirrored to:
+#          1. the workflow run's job summary, AND
+#          2. a comment on the PR this workflow is committed to
+#             (so the response is readable via mcp__github__pull_request_read).
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model id to probe (try MiniMax-M2 first; if it errors, use the id your dashboard shows e.g. abab7-chat-pro)"
+        default: "MiniMax-M2"
+        type: string
+      prompt:
+        description: "Test prompt sent to the model"
+        default: "reply with the single word: pong"
+        type: string
+      endpoint_path:
+        description: "Path under https://api.minimaxi.com (try /v1/chat/completions; if 404, try /v1/text/chatcompletion_v2)"
+        default: "/v1/chat/completions"
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  probe:
+    name: Call MiniMax + post response
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Verify secret is set + mask in logs
+        env:
+          K: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          if [ -z "$K" ]; then
+            echo "::error::MINIMAX_API_KEY secret is not set on this repo. Add it in Settings → Secrets and variables → Actions, then re-run this workflow."
+            exit 1
+          fi
+          # Belt-and-braces — the runner already auto-masks secrets, but make
+          # sure no curl trace / error path can echo the raw key.
+          echo "::add-mask::$K"
+
+      - name: Call MiniMax endpoint
+        id: call
+        env:
+          K: ${{ secrets.MINIMAX_API_KEY }}
+          M: ${{ inputs.model }}
+          P: ${{ inputs.prompt }}
+          EP: ${{ inputs.endpoint_path }}
+        run: |
+          # Build payload via jq so quoting / unicode / newlines in the prompt
+          # are safe (no shell interpolation of $P contents).
+          payload=$(jq -nc --arg m "$M" --arg p "$P" \
+            '{model:$m, messages:[{role:"user", content:$p}], max_tokens:50}')
+
+          # -o response.json (don't print body), -w "%{http_code}" returns just status.
+          # Curl never echoes the request headers (we don't pass -v / --trace).
+          http=$(curl -sS -o response.json -w '%{http_code}' \
+            "https://api.minimaxi.com${EP}" \
+            -H "Authorization: Bearer $K" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+
+          echo "http_status=$http" >> "$GITHUB_OUTPUT"
+          echo "Got HTTP $http"
+
+          # Truncate response to 4 KB before any further handling — protects
+          # against pathological huge bodies and keeps the comment compact.
+          head -c 4000 response.json > response.trunc.json
+
+      - name: Render summary + write comment payload
+        env:
+          M: ${{ inputs.model }}
+          EP: ${{ inputs.endpoint_path }}
+          HTTP: ${{ steps.call.outputs.http_status }}
+        run: |
+          {
+            echo "## MiniMax probe"
+            echo
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| endpoint | \`https://api.minimaxi.com${EP}\` |"
+            echo "| model | \`${M}\` |"
+            echo "| HTTP | \`${HTTP}\` |"
+            echo
+            echo "### Response (first 4 KB)"
+            echo
+            echo '```json'
+            cat response.trunc.json
+            echo
+            echo '```'
+            echo
+            if [ "${HTTP}" = "200" ]; then
+              echo "✅ Endpoint + model id work. Next: port to \`pr-review.yml\`."
+            else
+              echo "❌ Non-200. Look at the response body above:"
+              echo "- 401/403 → key wrong / not enabled for this model"
+              echo "- 404 → wrong endpoint path; try \`/v1/text/chatcompletion_v2\`"
+              echo "- 400 → wrong model id; the response usually lists valid ones"
+            fi
+          } > summary.md
+
+          # Mirror to step summary so the run page shows it without expanding.
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post response as PR comment (so MCP can read)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          # Find the open PR for this branch (the one this commit lives on).
+          pr=$(curl -sS \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$REPO/pulls?head=${REPO%%/*}:$BRANCH&state=open" \
+                | jq -r '.[0].number // empty')
+
+          if [ -z "$pr" ]; then
+            echo "No open PR for branch '$BRANCH'; skipping PR comment."
+            exit 0
+          fi
+
+          payload=$(jq -nc --rawfile body summary.md '{body: $body}')
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "https://api.github.com/repos/$REPO/issues/$pr/comments" \
+            -w "\nHTTP %{http_code}\n" -o /dev/null
+          echo "Posted summary to PR #$pr"
