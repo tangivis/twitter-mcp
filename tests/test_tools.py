@@ -2563,19 +2563,24 @@ def _fake_community_member(
     user_id="m-1",
     screen_name="member1",
     name="Member One",
-    description="member bio",
-    followers_count=10,
+    community_role="Member",
     verified=False,
     is_blue_verified=True,
+    protected=False,
+    following=False,
+    followed_by=False,
 ):
+    """Mirror twikit.community.CommunityMember — NOT a User (no description / followers_count)."""
     return SimpleNamespace(
         id=user_id,
         screen_name=screen_name,
         name=name,
-        description=description,
-        followers_count=followers_count,
+        community_role=community_role,
         verified=verified,
         is_blue_verified=is_blue_verified,
+        protected=protected,
+        following=following,
+        followed_by=followed_by,
     )
 
 
@@ -2659,9 +2664,7 @@ async def test_search_community_returns_community_list(fake_client):
 
 
 async def test_search_community_passes_cursor(fake_client):
-    fake_client.search_community = AsyncMock(
-        return_value=_FakeCommunityResult([])
-    )
+    fake_client.search_community = AsyncMock(return_value=_FakeCommunityResult([]))
     await server.search_community("python", cursor="abc")
     fake_client.search_community.assert_awaited_once_with("python", "abc")
 
@@ -2702,7 +2705,9 @@ async def test_get_community_tweets_returns_compact_tweet_list(fake_client):
         )
     )
     out = json.loads(await server.get_community_tweets("comm-1", "Latest", count=10))
-    fake_client.get_community_tweets.assert_awaited_once_with("comm-1", "Latest", 10, None)
+    fake_client.get_community_tweets.assert_awaited_once_with(
+        "comm-1", "Latest", 10, None
+    )
     assert out["count"] == 2
     assert out["next_cursor"] == "ct-nc"
     assert out["tweets"][0]["id"] == "t1"
@@ -2824,7 +2829,9 @@ async def test_get_communities_timeline_raises_clean_on_rate_limit(fake_client):
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
-    fake_client.get_communities_timeline = AsyncMock(side_effect=TooManyRequests("rate"))
+    fake_client.get_communities_timeline = AsyncMock(
+        side_effect=TooManyRequests("rate")
+    )
     with pytest.raises(ToolError) as exc:
         await server.get_communities_timeline()
     assert "rate limit" in str(exc.value).lower()
@@ -2833,15 +2840,19 @@ async def test_get_communities_timeline_raises_clean_on_rate_limit(fake_client):
 # ── get_community_members ─────────────────────────────
 
 
-async def test_get_community_members_returns_user_list(fake_client):
+async def test_get_community_members_returns_member_list(fake_client):
     fake_client.get_community_members = AsyncMock(
         return_value=_fake_community_members_result(next_cursor="cm-nc")
     )
     out = json.loads(await server.get_community_members("comm-1", count=5))
     fake_client.get_community_members.assert_awaited_once_with("comm-1", 5, None)
-    assert "users" in out
+    assert "members" in out
     assert out["next_cursor"] == "cm-nc"
-    assert out["count"] == len(out["users"])
+    assert out["count"] == len(out["members"])
+    # Sanity-check the projected shape — community_role is the discriminator
+    # that proves we surfaced CommunityMember fields, not User fields.
+    assert "community_role" in out["members"][0]
+    assert "description" not in out["members"][0]
 
 
 async def test_get_community_members_passes_cursor(fake_client):
@@ -2900,15 +2911,17 @@ async def test_get_community_members_raises_clean_on_rate_limit(fake_client):
 # ── get_community_moderators ──────────────────────────
 
 
-async def test_get_community_moderators_returns_user_list(fake_client):
+async def test_get_community_moderators_returns_moderator_list(fake_client):
     fake_client.get_community_moderators = AsyncMock(
         return_value=_fake_community_members_result(next_cursor="mod-nc")
     )
     out = json.loads(await server.get_community_moderators("comm-1", count=5))
     fake_client.get_community_moderators.assert_awaited_once_with("comm-1", 5, None)
-    assert "users" in out
+    assert "moderators" in out
     assert out["next_cursor"] == "mod-nc"
-    assert out["count"] == len(out["users"])
+    assert out["count"] == len(out["moderators"])
+    assert "community_role" in out["moderators"][0]
+    assert "description" not in out["moderators"][0]
 
 
 async def test_get_community_moderators_passes_cursor(fake_client):
@@ -2916,7 +2929,9 @@ async def test_get_community_moderators_passes_cursor(fake_client):
         return_value=_fake_community_members_result()
     )
     await server.get_community_moderators("comm-1", count=10, cursor="cur-mod")
-    fake_client.get_community_moderators.assert_awaited_once_with("comm-1", 10, "cur-mod")
+    fake_client.get_community_moderators.assert_awaited_once_with(
+        "comm-1", 10, "cur-mod"
+    )
 
 
 async def test_get_community_moderators_raises_on_empty_community_id(fake_client):
@@ -2958,7 +2973,9 @@ async def test_get_community_moderators_raises_clean_on_rate_limit(fake_client):
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
-    fake_client.get_community_moderators = AsyncMock(side_effect=TooManyRequests("rate"))
+    fake_client.get_community_moderators = AsyncMock(
+        side_effect=TooManyRequests("rate")
+    )
     with pytest.raises(ToolError) as exc:
         await server.get_community_moderators("comm-1")
     assert "rate limit" in str(exc.value).lower()
@@ -2973,9 +2990,7 @@ async def test_search_community_tweet_returns_compact_tweet_list(fake_client):
             [_fake_tweet(tid="st1"), _fake_tweet(tid="st2")], next_cursor="st-nc"
         )
     )
-    out = json.loads(
-        await server.search_community_tweet("comm-1", "python", count=10)
-    )
+    out = json.loads(await server.search_community_tweet("comm-1", "python", count=10))
     fake_client.search_community_tweet.assert_awaited_once_with(
         "comm-1", "python", 10, None
     )
@@ -3158,7 +3173,9 @@ async def test_request_to_join_community_passes_answer(fake_client):
         return_value=_fake_community("comm-1")
     )
     await server.request_to_join_community("comm-1", answer="My answer")
-    fake_client.request_to_join_community.assert_awaited_once_with("comm-1", "My answer")
+    fake_client.request_to_join_community.assert_awaited_once_with(
+        "comm-1", "My answer"
+    )
 
 
 async def test_request_to_join_community_raises_on_empty_community_id(fake_client):
@@ -3185,7 +3202,9 @@ async def test_request_to_join_community_raises_clean_on_rate_limit(fake_client)
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
-    fake_client.request_to_join_community = AsyncMock(side_effect=TooManyRequests("rate"))
+    fake_client.request_to_join_community = AsyncMock(
+        side_effect=TooManyRequests("rate")
+    )
     with pytest.raises(ToolError) as exc:
         await server.request_to_join_community("comm-1")
     assert "rate limit" in str(exc.value).lower()

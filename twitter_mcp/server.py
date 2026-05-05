@@ -1156,6 +1156,25 @@ def _community_to_dict(c) -> dict:
     }
 
 
+def _community_member_to_dict(m) -> dict:
+    """Compact dict for twikit's CommunityMember (members + moderators).
+
+    CommunityMember is *not* a User — it lacks `description` / `followers_count`.
+    Surfaces only the fields actually present on the model.
+    """
+    return {
+        "id": m.id,
+        "screen_name": m.screen_name,
+        "name": m.name,
+        "community_role": m.community_role,
+        "verified": m.verified,
+        "is_blue_verified": m.is_blue_verified,
+        "protected": m.protected,
+        "following": m.following,
+        "followed_by": m.followed_by,
+    }
+
+
 @mcp.tool()
 async def get_list(list_id: str) -> str:
     """Get a Twitter List by ID.
@@ -1651,7 +1670,9 @@ async def get_community_tweets(
         )
     client = await _get_client()
     try:
-        result = await client.get_community_tweets(community_id, tweet_type, count, cursor)
+        result = await client.get_community_tweets(
+            community_id, tweet_type, count, cursor
+        )
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
@@ -1676,9 +1697,7 @@ async def get_community_tweets(
 
 
 @mcp.tool()
-async def get_communities_timeline(
-    count: int = 20, cursor: str | None = None
-) -> str:
+async def get_communities_timeline(count: int = 20, cursor: str | None = None) -> str:
     """Get tweets from communities the authenticated user has joined (paginated).
 
     Args:
@@ -1741,12 +1760,12 @@ async def get_community_members(
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
-    users = [_user_to_dict(u) for u in result]
+    members = [_community_member_to_dict(m) for m in result]
     return json.dumps(
         {
-            "users": users,
+            "members": members,
             "next_cursor": getattr(result, "next_cursor", None),
-            "count": len(users),
+            "count": len(members),
         }
     )
 
@@ -1777,12 +1796,12 @@ async def get_community_moderators(
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
-    users = [_user_to_dict(u) for u in result]
+    moderators = [_community_member_to_dict(m) for m in result]
     return json.dumps(
         {
-            "users": users,
+            "moderators": moderators,
             "next_cursor": getattr(result, "next_cursor", None),
-            "count": len(users),
+            "count": len(moderators),
         }
     )
 
