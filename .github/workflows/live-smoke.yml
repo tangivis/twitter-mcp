@@ -70,26 +70,86 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Smoke get_article against a known public article
-        # Jaden_riku's "2026年，日本国运的分水岭" — verified at the HTTP layer
-        # in issue #10. If the body comes back populated, the two-hop flow
-        # plus the issue #12 tuple unpack are both working.
+      - name: Smoke 7 idempotent reads against real X
+        # Each block hits a different twikit code path. If X rotates a
+        # GraphQL queryId, changes a field, or moves an endpoint, this
+        # surfaces it within 7 days (cron) instead of when the next
+        # caller hits the dead code path. Strictly read-only — zero
+        # side effects on the burner account.
+        #
+        # Targets chosen for stability / public visibility:
+        #   - Jaden_riku's article (verified end-to-end in issue #10)
+        #   - elonmusk: highest-traffic stable public account
+        #   - "AI" search query: always returns results
+        #   - get_timeline: home timeline (uses cookie identity)
+        #   - get_trends: trending list (no auth-specific data)
+        #   - get_user_followers: known Vercel handle (stable)
+        #   - get_lists: own lists (cookie identity, paginates fine even at 0)
         run: |
           uv run python - <<'PY'
           import asyncio, json
-          from twitter_mcp.server import get_article
+          from twitter_mcp.server import (
+              get_article,
+              get_tweet,
+              get_user_info,
+              search_tweets,
+              get_timeline,
+              get_trends,
+              get_user_followers,
+              get_lists,
+          )
 
-          ARTICLE_ID = "2048420352397864960"
-          out = json.loads(asyncio.run(get_article(ARTICLE_ID)))
+          async def main():
+              checks = []
 
-          title = out.get("title") or ""
-          body  = out.get("plain_text") or ""
-          media = out.get("media_entities") or []
+              # 1. get_article — proven Jaden_riku body
+              out = json.loads(await get_article("2048420352397864960"))
+              assert out.get("title"),                "get_article: no title"
+              assert len(out.get("plain_text", "")) > 1000, "get_article: body too short"
+              checks.append(f"  ✓ get_article: title={out['title'][:20]!r}, body={len(out['plain_text'])}c")
 
-          print(f"title  = {title!r}")
-          print(f"body   = {len(body)} chars")
-          print(f"media  = {len(media)} entries")
+              # 2. get_tweet — well-known stable tweet (Jack's first tweet)
+              out = json.loads(await get_tweet("20"))
+              assert out.get("author") == "jack",     f"get_tweet: unexpected author {out.get('author')!r}"
+              assert out.get("id") == "20",           "get_tweet: id mismatch"
+              checks.append(f"  ✓ get_tweet: jack's #20 found")
 
-          assert title,             "no title in article payload"
-          assert len(body) > 1000,  f"plain_text suspiciously short: {len(body)} chars"
+              # 3. get_user_info — elonmusk (very stable)
+              out = json.loads(await get_user_info(screen_name="elonmusk"))
+              assert out.get("screen_name") == "elonmusk",  "get_user_info: screen_name mismatch"
+              assert out.get("followers_count", 0) > 1_000_000, "get_user_info: follower count suspicious"
+              checks.append(f"  ✓ get_user_info: elonmusk has {out['followers_count']:,} followers")
+
+              # 4. search_tweets — broad query that always returns hits
+              out = json.loads(await search_tweets(query="AI", count=5, product="Top"))
+              assert isinstance(out, list) and len(out) > 0, "search_tweets: empty results for 'AI'"
+              checks.append(f"  ✓ search_tweets: {len(out)} hits for 'AI'")
+
+              # 5. get_timeline — cookie-identity feed
+              out = json.loads(await get_timeline(count=5))
+              assert isinstance(out, list),           "get_timeline: not a list"
+              # may be empty for a brand-new burner; just shape-check
+              checks.append(f"  ✓ get_timeline: {len(out)} tweets")
+
+              # 6. get_trends — globally-available trending list
+              out = json.loads(await get_trends(category="trending", count=5))
+              assert isinstance(out.get("trends"), list), "get_trends: missing 'trends' key"
+              assert len(out["trends"]) > 0,          "get_trends: empty trends list"
+              checks.append(f"  ✓ get_trends: {len(out['trends'])} trends")
+
+              # 7. get_user_followers — vercel (stable mid-size handle)
+              out = json.loads(await get_user_followers(screen_name="vercel", count=5))
+              assert isinstance(out.get("users"), list), "get_user_followers: missing 'users' key"
+              assert len(out["users"]) > 0,           "get_user_followers: empty followers"
+              checks.append(f"  ✓ get_user_followers: vercel has at least {len(out['users'])} followers")
+
+              # 8. get_lists — own lists (cookie identity); empty list is OK
+              out = json.loads(await get_lists(count=5))
+              assert isinstance(out.get("lists"), list), "get_lists: missing 'lists' key"
+              checks.append(f"  ✓ get_lists: {len(out['lists'])} lists")
+
+              print("\n".join(checks))
+              print(f"\nAll 8 reads passed against live X.")
+
+          asyncio.run(main())
           PY
