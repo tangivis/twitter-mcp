@@ -162,27 +162,21 @@ jobs:
           fi
 
           # M2 emits visible reasoning between <think>...</think>. Strip
-          # all such blocks (including same-line <think>...</think>, and
-          # blocks that span multiple lines). Earlier awk-based version
-          # broke on single-line blocks: matching /<think>/ first caused
-          # `next` to skip the line before /<\/think>/ on the same line
-          # could reset the state, leaking everything after.
+          # every such block — single-line, multi-line, repeated, and
+          # unclosed (when max_tokens cuts off mid-reasoning).
           #
-          # Python re.sub with DOTALL is unambiguous and handles every
-          # variant (single line, multi line, multiple blocks, no closing
-          # tag → strip from <think> to EOF).
-          python3 - <<'PY' < raw.md > review.md
+          # NOTE on shell plumbing: `python3 - <<'PY' < raw.md > review.md`
+          # CAN'T be used here. Bash treats both `<<'PY'` and `< raw.md` as
+          # stdin redirections; the later one wins, so python ends up
+          # reading raw.md as if it were Python source (SyntaxError). Pass
+          # the script via `-c` instead and pipe stdin separately.
+          python3 -c '
           import re, sys
           src = sys.stdin.read()
-          # Remove all closed <think>...</think> blocks (greedy-non-greedy mix
-          # via lazy ?). DOTALL so `.` crosses newlines.
-          src = re.sub(r'<think>.*?</think>', '', src, flags=re.DOTALL)
-          # If the model opened <think> but never closed it (e.g. truncated
-          # by max_tokens mid-thought), drop everything from there to EOF.
-          src = re.sub(r'<think>.*$', '', src, flags=re.DOTALL)
-          # Trim leading/trailing whitespace from the user-facing portion.
+          src = re.sub(r"<think>.*?</think>", "", src, flags=re.DOTALL)
+          src = re.sub(r"<think>.*$", "", src, flags=re.DOTALL)
           sys.stdout.write(src.strip() + "\n")
-          PY
+          ' < raw.md > review.md
 
           # Defensive: never post empty.
           if [ ! -s review.md ]; then
