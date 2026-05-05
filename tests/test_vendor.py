@@ -107,6 +107,69 @@ def test_search_uses_gql_post():
     assert "gql_get" not in source, "search_timeline should NOT use gql_get"
 
 
+def test_get_lists_skips_non_list_entries():
+    """twitter-mcp patch (issue #37): get_lists must defend against
+    items[1] entries that don't carry an `itemContent.list` payload —
+    upstream raised KeyError, our patched version skips them.
+
+    Source-level check (cheap regression for the patch marker)."""
+    import inspect
+
+    from twitter_mcp._vendor.twikit.client.client import Client
+
+    source = inspect.getsource(Client.get_lists)
+    assert "issue #37" in source, "patch marker for issue #37 missing"
+    assert ".get(" in source, "patch should use .get() chain for safety"
+    # Upstream's brittle bracket-access form must NOT come back on a vendor
+    # refresh; if a future twikit sync drops this patch we want CI to fail.
+    assert 'list["item"]["itemContent"]["list"]' not in source, (
+        "raw bracket access still present; #37 patch was dropped"
+    )
+
+
+async def test_get_lists_runtime_handles_nonlist_entries():
+    """Issue #37 behavioral regression: when X returns a list-management
+    timeline whose items[1] holds only non-list entries (the burner-with-0-lists
+    case), get_lists must yield an empty Result without raising KeyError.
+
+    Pre-patch this raised `KeyError: 'list'` at the second hop of
+    `list["item"]["itemContent"]["list"]`.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from twitter_mcp._vendor.twikit.client.client import Client
+
+    # response shape: top-level "entries" — first entry's "items" is a stub
+    # (items[0] in the vendor code), second entry's "items" is the lists slot
+    # (items[1]) and contains only entries that lack the `list` key. Last
+    # entry carries the cursor (`entries[-1]["content"]["value"]`).
+    fake_response = {
+        "entries": [
+            {"items": ["sentinel-items[0]"]},
+            {
+                "items": [
+                    {"item": {"itemContent": {}}},  # no list key
+                    {
+                        "item": {"itemContent": {"some_other_key": "promo"}}
+                    },  # no list key
+                ]
+            },
+            {"content": {"value": "next-cursor"}},
+        ]
+    }
+
+    # Skip Client.__init__ — we don't need cookies/HTTP; only the patched
+    # `get_lists` body runs.
+    client = Client.__new__(Client)
+    client.gql = SimpleNamespace(
+        list_management_pace_timeline=AsyncMock(return_value=(fake_response, None))
+    )
+
+    result = await client.get_lists()
+    assert list(result) == []
+
+
 # ── Phase 3: server.py uses vendored twikit ───────────
 
 

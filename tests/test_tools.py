@@ -305,7 +305,7 @@ def _fake_user_full(
     is_blue_verified=True,
     location="The Cloud",
     url="https://claude.com",
-    profile_image_url_https="https://pbs.twimg.com/avatar/x.jpg",
+    profile_image_url="https://pbs.twimg.com/avatar/x.jpg",
     protected=False,
 ):
     return SimpleNamespace(
@@ -321,7 +321,13 @@ def _fake_user_full(
         is_blue_verified=is_blue_verified,
         location=location,
         url=url,
-        profile_image_url_https=profile_image_url_https,
+        # twikit's `User.profile_image_url` (NO `_https` suffix on the
+        # attribute, even though the X JSON key is `profile_image_url_https`).
+        # Issue #37: the test fake formerly used the JSON key shape, so
+        # `server.get_user_info` reading `u.profile_image_url_https` looked
+        # green under mocks but blew up on the real model with
+        # `AttributeError: 'User' object has no attribute …_https`.
+        profile_image_url=profile_image_url,
         protected=protected,
     )
 

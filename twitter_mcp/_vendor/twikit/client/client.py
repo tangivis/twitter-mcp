@@ -3534,9 +3534,20 @@ class Client:
         if len(items) < 2:
             return Result([])
 
+        # twitter-mcp patch (issue #37): X's list-management timeline puts
+        # heterogeneous entries in items[1] — actual lists, "create new list"
+        # promo cards, and (for accounts with 0 lists) cells that have no
+        # itemContent.list key at all. Upstream chained brackets straight
+        # through, raising KeyError on the non-list entries, so an account
+        # with zero lists couldn't even call get_lists without it
+        # exploding. Walk the path with .get() defaults instead and skip
+        # entries that don't carry a list payload.
         lists = []
         for list in items[1]:
-            lists.append(List(self, list["item"]["itemContent"]["list"]))
+            list_payload = list.get("item", {}).get("itemContent", {}).get("list")
+            if list_payload is None:
+                continue
+            lists.append(List(self, list_payload))
 
         next_cursor = entries[-1]["content"]["value"]
 
