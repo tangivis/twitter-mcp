@@ -312,7 +312,7 @@ async def get_user_info(
             # Expose both so callers can pick. (PR #23 review feedback.)
             "verified": u.verified,
             "is_blue_verified": u.is_blue_verified,
-            "profile_image_url": u.profile_image_url_https,
+            "profile_image_url": u.profile_image_url,
             "protected": u.protected,
             "location": u.location,
             "url": u.url,
