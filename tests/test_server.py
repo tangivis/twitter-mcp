@@ -636,6 +636,139 @@ def test_vote_schema():
     assert "card_name" in required
 
 
+def test_get_community_schema():
+    """get_community requires community_id."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_community"]
+    schema = tool.parameters
+    assert "community_id" in schema["properties"]
+    assert "community_id" in schema.get("required", [])
+
+
+def test_search_community_schema():
+    """search_community requires query; cursor is optional; NO count param."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["search_community"]
+    schema = tool.parameters
+    assert "query" in schema["properties"]
+    assert "query" in schema.get("required", [])
+    assert "cursor" in schema["properties"]
+    assert "count" not in schema["properties"]
+    assert "cursor" not in schema.get("required", [])
+
+
+def test_get_community_tweets_schema():
+    """get_community_tweets requires community_id and tweet_type; count/cursor optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_community_tweets"]
+    schema = tool.parameters
+    required = set(schema.get("required", []))
+    assert "community_id" in schema["properties"]
+    assert "tweet_type" in schema["properties"]
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+    assert "community_id" in required
+    assert "tweet_type" in required
+    assert "count" not in required
+    assert "cursor" not in required
+
+
+def test_get_communities_timeline_schema():
+    """get_communities_timeline has optional count and cursor."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_communities_timeline"]
+    schema = tool.parameters
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+    required = set(schema.get("required", []))
+    assert "count" not in required
+    assert "cursor" not in required
+
+
+def test_get_community_members_schema():
+    """get_community_members requires community_id; count and cursor are optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_community_members"]
+    schema = tool.parameters
+    required = set(schema.get("required", []))
+    assert "community_id" in schema["properties"]
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+    assert "community_id" in required
+    assert "count" not in required
+    assert "cursor" not in required
+
+
+def test_get_community_moderators_schema():
+    """get_community_moderators requires community_id; count and cursor are optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["get_community_moderators"]
+    schema = tool.parameters
+    required = set(schema.get("required", []))
+    assert "community_id" in schema["properties"]
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+    assert "community_id" in required
+    assert "count" not in required
+    assert "cursor" not in required
+
+
+def test_search_community_tweet_schema():
+    """search_community_tweet requires community_id and query; count/cursor optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["search_community_tweet"]
+    schema = tool.parameters
+    required = set(schema.get("required", []))
+    assert "community_id" in schema["properties"]
+    assert "query" in schema["properties"]
+    assert "count" in schema["properties"]
+    assert "cursor" in schema["properties"]
+    assert "community_id" in required
+    assert "query" in required
+    assert "count" not in required
+    assert "cursor" not in required
+
+
+def test_join_community_schema():
+    """join_community requires community_id."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["join_community"]
+    schema = tool.parameters
+    assert "community_id" in schema["properties"]
+    assert "community_id" in schema.get("required", [])
+
+
+def test_leave_community_schema():
+    """leave_community requires community_id."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["leave_community"]
+    schema = tool.parameters
+    assert "community_id" in schema["properties"]
+    assert "community_id" in schema.get("required", [])
+
+
+def test_request_to_join_community_schema():
+    """request_to_join_community requires community_id; answer is optional."""
+    from twitter_mcp.server import mcp
+
+    tool = mcp._tool_manager._tools["request_to_join_community"]
+    schema = tool.parameters
+    required = set(schema.get("required", []))
+    assert "community_id" in schema["properties"]
+    assert "answer" in schema["properties"]
+    assert "community_id" in required
+    assert "answer" not in required
+
+
 def test_dm_docstrings_contain_privacy_warning():
     """DM tool docstrings must mention PRIVATE and anti-spam (issue #28 spec)."""
     import inspect
