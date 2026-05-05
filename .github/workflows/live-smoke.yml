@@ -205,29 +205,72 @@ jobs:
       # This makes the failure detail readable via mcp__github__issue_read,
       # closing the observability gap (we can't read raw run logs from MCP).
       # Skips silently if the issue doesn't exist yet (curl returns 404).
-      - name: Post failure summary to tracking issue #37
+      - name: Post failure summary + auto-summon @claude on issue #37
         if: failure() && hashFiles('smoke.log') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
-          # Extract just the ✗ lines (one per failed read) — the rest is noise.
+          # Extract just the ✗ lines (one per failed read).
           fails=$(grep -E '^\s*✗' smoke.log || true)
           if [ -z "$fails" ]; then
             echo "No ✗ lines in log; nothing to post."
             exit 0
           fi
-          # Build the JSON payload with jq so newlines / quotes in $fails are
-          # safe. Single object: {"body": "..."}.
+
+          sha7="${SHA:0:7}"
+
+          # Per-SHA dedup. Two failure paths converge here:
+          #   1. cron re-runs on the same `main` SHA each Monday → don't keep
+          #      pinging Claude every week for the same already-known failure.
+          #   2. Manual `workflow_dispatch` re-runs on the same SHA → same.
+          # We grep existing comments on issue #37 for the exact opener
+          # "live-smoke failed on `<sha7>`" — that's the unique header we
+          # always emit below, so it's a reliable dedup key.
+          existing=$(curl -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues/37/comments?per_page=100" \
+            | jq -r '.[].body' \
+            | grep -cF "live-smoke failed on \`$sha7\`" || true)
+          if [ "$existing" -gt 0 ]; then
+            echo "Already summoned @claude for $sha7; skipping (dedup)."
+            exit 0
+          fi
+
+          # Build comment body. The `@claude` mention triggers `claude.yml`
+          # which spawns a bot session that opens a TDD-fix PR. The prompt
+          # is intentionally explicit so the bot doesn't guess between
+          # the two valid fix paths (relax assertion vs. patch tool/vendor).
+          read -r -d '' INSTRUCTIONS <<'EOM' || true
+          @claude please open a draft PR that fixes this. Read the ✗ line(s) above and follow the project's TDD pattern:
+
+          1. **Identify** which read tool failed and what the failure mode is (assertion, AttributeError, KeyError, NotFound, TooManyRequests, …).
+          2. **Decide which fix path applies:**
+             - **(a) Genuine tool drift** (queryId rotated, response field renamed, X moved an endpoint) → patch in `twitter_mcp/_vendor/twikit/`. Add a `# twitter-mcp patch (#<this-issue-37-comment-id>)` marker the same way `_vendor/twikit/client/gql.py::tweet_result_by_rest_id` is marked for issue #10. Document the patch in `docs/VENDORING.md` under the "本地 patch 清单" table.
+             - **(b) Brittle live-smoke assertion** (X legitimately gates this data for the burner, e.g. follower lists for accounts you don't follow) → loosen the validator in `.github/workflows/live-smoke.yml` to shape-only. Explain *why* in the comment alongside the validator (the existing `v_search` / `v_trends` / `v_followers` comments are the template).
+             - **(c) Defensive parse fix** (response shape changed but tool can recover with `.get(...)` defaults) → patch `twitter_mcp/server.py` or the relevant `_vendor/twikit/*.py` model with `.get()` defaults the same way `User.__init__` was hardened in 0.1.4 / `Tweet` in 0.1.5.
+          3. **Add a regression test** in `tests/test_tools.py` (or a new test file) that reproduces the failure mode against a mock and would have caught it pre-merge.
+          4. Keep all existing tests green and `--cov-fail-under=95` on `twitter_mcp/server.py`.
+          5. Open the PR as draft; do NOT merge.
+
+          If multiple ✗ lines, do them all in one PR but in separate commits (one TDD red→green cycle per failure mode).
+
+          Context this issue (#37) tracks: `live-smoke` runs against real X with burner cookies; failures are recurring due to X's anti-abuse / gating drift. See PR #38 for the observability + assertion-relaxation precedent.
+          EOM
+
           payload=$(jq -nc \
             --arg url "$RUN_URL" \
-            --arg sha "${GITHUB_SHA:0:7}" \
+            --arg sha "$sha7" \
             --arg fails "$fails" \
-            '{body: "live-smoke failed on `\($sha)` — [run](\($url))\n\n```\n\($fails)\n```"}')
-          # Try to comment; ignore if issue #37 doesn't exist (404).
+            --arg instr "$INSTRUCTIONS" \
+            '{body: "live-smoke failed on `\($sha)` — [run](\($url))\n\n```\n\($fails)\n```\n\n---\n\n\($instr)"}')
+
           curl -sS -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -d "$payload" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/37/comments" \
-            -w "\nHTTP %{http_code}\n" || true
+            "https://api.github.com/repos/$REPO/issues/37/comments" \
+            -w "\nHTTP %{http_code}\n"
