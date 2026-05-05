@@ -1,22 +1,20 @@
 name: PR review (MiniMax M2)
 
 # Per-PR automated review by MiniMax M2 via OpenAI-compatible
-# api.minimaxi.com endpoint. Replaces the previous anthropics/claude-code-action
-# version (which lived in PR #21 → reverted here in this PR).
+# api.minimaxi.com endpoint. Originally swapped in via PR #42 (replacing
+# anthropics/claude-code-action). Major v2 changes (this revision):
 #
-# Why MiniMax for review specifically:
-#   - review is the highest-frequency LLM call in this repo (every PR
-#     open/synchronize), and tokens add up; M2 is ~1/10th the cost of
-#     Sonnet for comparable summarisation/critique quality.
-#   - review only needs text-out (no tool use), which the OpenAI-compat
-#     endpoint covers fine.
+#   1. JSON-mode output (`response_format: {"type": "json_object"}`) so
+#      the Decision is a top-level field — no more grep-the-markdown.
+#   2. Post-review action: when decision is `request-changes`, auto-summon
+#      `@claude` with iter cap of 5 + escalation issue (.github/scripts/
+#      auto_summon_claude.sh handles the cap logic).
+#   3. When decision is `approve`/`comment`, enable GitHub native
+#      auto-merge — the PR merges as soon as required CI checks pass.
 #
 # `@claude` mentions in `claude.yml` stay on Anthropic — those need
-# Claude Code's tool-using session to actually edit files / commit / push,
-# which M2 has no equivalent for via curl.
-#
-# Endpoint + model id pinned via PR #41's probe; see that PR's body for
-# the captured response shape if a future model upgrade changes things.
+# Claude Code's tool-using session to actually edit/commit/push, which
+# OpenAI-compat M2 has no equivalent for.
 
 on:
   pull_request:
@@ -30,6 +28,7 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
+  issues: write   # used by auto_summon_claude.sh to open escalation issues
 
 jobs:
   review:
@@ -40,9 +39,6 @@ jobs:
     if: github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v4
-        # `gh pr diff <num>` calls the API directly — it doesn't need a
-        # local git history, so the default depth (1) suffices. Saves a
-        # few seconds per run.
         with:
           fetch-depth: 1
 
@@ -62,12 +58,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
         run: |
-          # Cap to 80 KB. M2 has plenty of context but the full prompt
-          # is diff + rubric + repo conventions; leave headroom and trim
-          # generated lockfiles where the LLM has nothing useful to say.
-          # Explicit lockfile list (not `.*\.lock$`, which would also
-          # eat any unrelated `*.lock` source file the project happens
-          # to have).
           gh pr diff "$PR_NUM" \
             | grep -vE '^(diff --git|---|\+\+\+) .*(/|^)(uv\.lock|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|Gemfile\.lock|Cargo\.lock|composer\.lock)$' \
             | head -c 80000 > pr.diff
@@ -77,16 +67,13 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build prompt
+      - name: Build prompt (JSON output mode)
         if: steps.diff.outputs.skip != 'true'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          # Persist PR body to a file separately — embedding it inline with
-          # echo / heredoc would break on backticks, $-prefixed strings, etc.
-          # `printf '%s'` prints the env var verbatim with no shell escapes.
           printf '%s' "$PR_BODY" > pr_body.txt
 
           {
@@ -115,30 +102,56 @@ jobs:
             cat pr.diff
             echo '```'
             echo
-            echo "## Output format"
-            echo "Output a concise markdown review with these sections (omit a section if empty):"
-            echo "- **Summary** (1-3 sentences: what does this PR do?)"
-            echo "- **Must-fix** (bugs, security holes, missing guards, broken tests)"
-            echo "- **Suggestions** (improvements that aren't blockers)"
-            echo "- **Nits** (style / naming / wording, no architectural impact)"
-            echo "- **Decision**: \`approve\` / \`comment\` / \`request-changes\`"
+            echo "## Output format — STRICT JSON"
             echo
-            echo "Cite specific lines as \`path/to/file.py:42\`. Be terse — under 600 words total. Skip generic praise. If you find no real issues, say so plainly."
+            echo "Respond with a single JSON object (no markdown wrapping, no extra text). Schema:"
+            echo
+            echo '```'
+            cat <<'JSON_SCHEMA'
+          {
+            "summary": "1–3 sentences: what does this PR do?",
+            "must_fix": [
+              {"file": "path/to/file.py", "line": 42, "issue": "what's broken / unsafe / missing"}
+            ],
+            "suggestions": [
+              {"file": "...", "line": 0, "issue": "..."}
+            ],
+            "nits": [
+              {"file": "...", "line": 0, "issue": "..."}
+            ],
+            "decision": "approve | comment | request-changes"
+          }
+          JSON_SCHEMA
+            echo '```'
+            echo
+            echo "**Decision rules** (very important):"
+            echo "- \`approve\`: nothing must-fix; suggestions and nits are optional polish."
+            echo "- \`comment\`: nothing must-fix, but you have suggestions worth seeing — DEFAULT for non-trivial PRs."
+            echo "- \`request-changes\`: at least one entry in \`must_fix\` AND it's a real bug / security hole / broken contract — NOT a stylistic preference."
+            echo
+            echo "Be **conservative** with \`request-changes\`. The auto-fix loop fires on it; false positives waste tokens. If you're unsure whether something is a real bug, put it in \`suggestions\` and pick \`comment\`."
+            echo
+            echo "Cite line numbers as integers from the diff. \`line: 0\` means file-level. Empty arrays where you have nothing to say. No prose outside the JSON."
           } > prompt.txt
 
-      - name: Call MiniMax M2
+      - name: Call MiniMax M2 (JSON mode)
         id: call
         if: steps.diff.outputs.skip != 'true'
         env:
           K: ${{ secrets.MINIMAX_API_KEY }}
         run: |
-          # max_tokens covers BOTH the visible review AND the hidden
-          # reasoning block (M2's <think>…</think> spends 1-2 KB of tokens
-          # on a non-trivial diff). 4000 was too tight — reviews got
-          # truncated mid-Must-fix. 8000 leaves the visible portion
-          # comfortable.
+          # max_tokens covers reasoning + JSON output. M2 reasoning runs
+          # 1-2 KB on a substantive diff; 8000 leaves comfortable room.
+          # response_format: {"type": "json_object"} forces the model to
+          # emit valid JSON (OpenAI-compat semantics).
           payload=$(jq -nc --rawfile p prompt.txt \
-            '{model:"MiniMax-M2", messages:[{role:"user", content:$p}], max_tokens:8000, temperature:0.2}')
+            '{
+              model: "MiniMax-M2",
+              messages: [{role: "user", content: $p}],
+              max_tokens: 8000,
+              temperature: 0.2,
+              response_format: {type: "json_object"}
+            }')
 
           http=$(curl -sS -o response.json -w '%{http_code}' \
             --max-time 180 \
@@ -155,11 +168,11 @@ jobs:
             exit 0
           fi
 
-      - name: Extract review (strip <think> reasoning block)
+      - name: Parse JSON output (strip <think> defensively)
+        id: parse
         if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
         run: |
-          # Save raw model content first — used to extract review and to
-          # dump unaltered into the step summary for debugging.
+          # Save raw model content first.
           jq -r '.choices[0].message.content // empty' response.json > raw.md
 
           if [ ! -s raw.md ]; then
@@ -167,47 +180,95 @@ jobs:
             exit 0
           fi
 
-          # M2 emits visible reasoning between <think>...</think>. Strip
-          # every such block — single-line, multi-line, repeated, and
-          # unclosed (when max_tokens cuts off mid-reasoning).
-          #
-          # NOTE on shell plumbing: `python3 - <<'PY' < raw.md > review.md`
-          # CAN'T be used here. Bash treats both `<<'PY'` and `< raw.md` as
-          # stdin redirections; the later one wins, so python ends up
-          # reading raw.md as if it were Python source (SyntaxError). Pass
-          # the script via `-c` instead and pipe stdin separately.
-          python3 -c '
-          import re, sys
+          # Heredoc-to-file pattern — single-quoted PY delimiter means bash
+          # doesn't touch the body, so the python source can use any quotes
+          # it needs without escape gymnastics.
+          cat > /tmp/parse.py <<'PY'
+          import json, re, sys
           src = sys.stdin.read()
+          # Even in JSON mode, M2 may emit a <think>...</think> reasoning
+          # block before the JSON object. Strip closed and unclosed forms.
           src = re.sub(r"<think>.*?</think>", "", src, flags=re.DOTALL)
           src = re.sub(r"<think>.*$", "", src, flags=re.DOTALL)
-          sys.stdout.write(src.strip() + "\n")
-          ' < raw.md > review.md
+          # Extract the first {...} block (model may still wrap with prose).
+          m = re.search(r"\{.*\}", src, re.DOTALL)
+          if not m:
+              print("ERR: no JSON object in response", file=sys.stderr)
+              sys.exit(1)
+          parsed = json.loads(m.group(0))
+          # Defaults — model occasionally omits empty arrays.
+          parsed.setdefault("summary", "(no summary)")
+          parsed.setdefault("must_fix", [])
+          parsed.setdefault("suggestions", [])
+          parsed.setdefault("nits", [])
+          parsed.setdefault("decision", "comment")
+          # Defensive: clamp decision to known enum.
+          if parsed["decision"] not in ("approve", "comment", "request-changes"):
+              parsed["decision"] = "comment"
+          json.dump(parsed, sys.stdout, indent=2)
+          PY
+          python3 /tmp/parse.py < raw.md > review.json
 
-          # Defensive: never post empty.
-          if [ ! -s review.md ]; then
-            echo "Review file empty after strip; falling back to raw content." >&2
-            cp raw.md review.md
-          fi
+          decision=$(jq -r '.decision' review.json)
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+          echo "Decision: $decision"
 
-      - name: Capture token usage + raw model output for the run summary
+      - name: Render review.md from JSON
+        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200' && steps.parse.outputs.decision != ''
+        run: |
+          cat > /tmp/render.py <<'PY'
+          import json
+          with open("review.json") as f:
+              r = json.load(f)
+          out = ["**Summary:** " + r["summary"]]
+          for section, label in [("must_fix", "Must-fix"),
+                                 ("suggestions", "Suggestions"),
+                                 ("nits", "Nits")]:
+              items = r.get(section) or []
+              if not items:
+                  continue
+              out.append("")
+              out.append(f"## {label}")
+              for it in items:
+                  loc = it.get("file", "?")
+                  ln = it.get("line", 0) or 0
+                  if ln > 0:
+                      loc = f"{loc}:{ln}"
+                  msg = (it.get("issue") or "").strip()
+                  out.append(f"- `{loc}` — {msg}")
+          out.append("")
+          out.append(f"**Decision:** `{r['decision']}`")
+          print("\n".join(out))
+          PY
+          python3 /tmp/render.py > review.md
+
+      - name: Capture token usage + raw output for the run summary
         if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
         run: |
           usage=$(jq -c '.usage // {}' response.json)
           {
             echo "## MiniMax review"
             echo
+            echo "Decision: \`${{ steps.parse.outputs.decision }}\`"
             echo "Token usage: \`$usage\`"
             echo
-            echo "### Posted review (after \`<think>\` strip)"
+            echo "### Posted review"
             echo
             cat review.md
             echo
             echo
-            echo "<details><summary>Raw model content (with <think> reasoning, debug only)</summary>"
+            echo "<details><summary>Parsed JSON (debug)</summary>"
+            echo
+            echo '```json'
+            cat review.json
             echo
             echo '```'
-            # Truncate raw to 16 KB to keep summary readable on a wide diff.
+            echo
+            echo "</details>"
+            echo
+            echo "<details><summary>Raw model content (with <think>, debug)</summary>"
+            echo
+            echo '```'
             head -c 16000 raw.md
             echo
             echo '```'
@@ -215,8 +276,8 @@ jobs:
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Post review as PR comment
-        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
+      - name: Post review comment
+        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200' && steps.parse.outputs.decision != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
@@ -227,7 +288,36 @@ jobs:
             cat review.md
             echo
             echo "---"
-            echo "_Automated review. For deeper changes that need code edits, mention \`@claude\` to invoke a tool-using Anthropic session._"
+            echo "_Automated review. \`request-changes\` triggers an auto-fix loop (cap 5); \`approve\` / \`comment\` triggers GitHub auto-merge once required CI checks are green._"
           } > final.md
 
           gh pr comment "$PR_NUM" --body-file final.md
+
+      # ─── Post-review action: auto-fix loop OR auto-merge ───
+      - name: Auto-summon @claude (decision = request-changes)
+        if: steps.parse.outputs.decision == 'request-changes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          REASON: "MiniMax review"
+          BODY_FILE: review.md
+        run: bash .github/scripts/auto_summon_claude.sh
+
+      - name: Enable GitHub auto-merge (decision = approve | comment)
+        if: steps.parse.outputs.decision == 'approve' || steps.parse.outputs.decision == 'comment'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          # `gh pr merge --auto --squash` enables GitHub's native auto-merge.
+          # GH then merges the PR automatically once **all required checks**
+          # (per branch protection) are green. If branch protection isn't
+          # configured to require checks, this merges immediately — set
+          # protection on `main` if you want CI to gate.
+          #
+          # Idempotent: enabling auto-merge on an already-auto-mergeable PR
+          # is a no-op.
+          if ! gh pr merge --auto --squash "$PR_NUM" 2>&1; then
+            echo "::warning::auto-merge enable failed. Likely causes: (a) auto-merge disabled in repo Settings → General; (b) PR already in a state GH can't auto-merge; (c) branch protection misconfigured. Skipping — PR stays open for manual merge."
+          fi
