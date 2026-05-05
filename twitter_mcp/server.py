@@ -233,6 +233,8 @@ _VALID_TREND_CATEGORIES = frozenset(
     {"trending", "for-you", "news", "sports", "entertainment"}
 )
 
+_VALID_COMMUNITY_TWEET_TYPES = frozenset({"Top", "Latest", "Media"})
+
 
 def _require_exactly_one(
     screen_name: str | None, user_id: str | None, *, op: str
@@ -1138,6 +1140,22 @@ def _list_to_dict(lst) -> dict:
     }
 
 
+def _community_to_dict(c) -> dict:
+    """Compact community dict used in community tool outputs.
+
+    Truncates description to 200 chars (matches _user_to_dict / _list_to_dict).
+    """
+    return {
+        "id": c.id,
+        "name": c.name,
+        "description": (c.description or "")[:200],
+        "member_count": c.member_count,
+        "is_member": c.is_member,
+        "join_policy": c.join_policy,
+        "created_at": str(c.created_at),
+    }
+
+
 @mcp.tool()
 async def get_list(list_id: str) -> str:
     """Get a Twitter List by ID.
@@ -1555,6 +1573,333 @@ async def vote(
     return json.dumps(
         {"tweet_id": tweet_id, "selected_choice": selected_choice, "status": "voted"}
     )
+
+
+@mcp.tool()
+async def get_community(community_id: str) -> str:
+    """Get a Twitter Community by ID.
+
+    Args:
+        community_id: The community ID.
+    """
+    if not community_id:
+        raise ToolError("community_id must be non-empty.")
+    client = await _get_client()
+    try:
+        community = await client.get_community(community_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Community {community_id} not found.")
+    return json.dumps(_community_to_dict(community))
+
+
+@mcp.tool()
+async def search_community(query: str, cursor: str | None = None) -> str:
+    """Search for Twitter Communities by query (paginated).
+
+    Note: twikit's search_community does not support a count parameter.
+
+    Args:
+        query: Search query string.
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if not query.strip():
+        raise ToolError("query must not be empty.")
+    client = await _get_client()
+    try:
+        result = await client.search_community(query, cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    communities = [_community_to_dict(c) for c in result]
+    return json.dumps(
+        {
+            "communities": communities,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(communities),
+        }
+    )
+
+
+@mcp.tool()
+async def get_community_tweets(
+    community_id: str,
+    tweet_type: str,
+    count: int = 40,
+    cursor: str | None = None,
+) -> str:
+    """Get tweets from a Twitter Community (paginated).
+
+    Args:
+        community_id: The community ID.
+        tweet_type: One of "Top", "Latest", or "Media".
+        count: Number of tweets to fetch (default 40, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if not community_id:
+        raise ToolError("community_id must be non-empty.")
+    if tweet_type not in _VALID_COMMUNITY_TWEET_TYPES:
+        raise ToolError(
+            f"tweet_type must be one of {sorted(_VALID_COMMUNITY_TWEET_TYPES)}, "
+            f"got: {tweet_type!r}"
+        )
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_community_tweets(community_id, tweet_type, count, cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Community {community_id} not found.")
+    tweets = [
+        {
+            "id": t.id,
+            "author": t.user.screen_name,
+            "text": t.text[:200],
+            "likes": t.favorite_count,
+            "retweets": t.retweet_count,
+        }
+        for t in result
+    ]
+    return json.dumps(
+        {
+            "tweets": tweets,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(tweets),
+        }
+    )
+
+
+@mcp.tool()
+async def get_communities_timeline(
+    count: int = 20, cursor: str | None = None
+) -> str:
+    """Get tweets from communities the authenticated user has joined (paginated).
+
+    Args:
+        count: Number of tweets to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_communities_timeline(count, cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    tweets = [
+        {
+            "id": t.id,
+            "author": t.user.screen_name,
+            "text": t.text[:200],
+            "likes": t.favorite_count,
+            "retweets": t.retweet_count,
+        }
+        for t in result
+    ]
+    return json.dumps(
+        {
+            "tweets": tweets,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(tweets),
+        }
+    )
+
+
+@mcp.tool()
+async def get_community_members(
+    community_id: str, count: int = 20, cursor: str | None = None
+) -> str:
+    """Get members of a Twitter Community (paginated).
+
+    Args:
+        community_id: The community ID.
+        count: Number of members to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if not community_id:
+        raise ToolError("community_id must be non-empty.")
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_community_members(community_id, count, cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Community {community_id} not found.")
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
+        }
+    )
+
+
+@mcp.tool()
+async def get_community_moderators(
+    community_id: str, count: int = 20, cursor: str | None = None
+) -> str:
+    """Get moderators of a Twitter Community (paginated).
+
+    Args:
+        community_id: The community ID.
+        count: Number of moderators to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if not community_id:
+        raise ToolError("community_id must be non-empty.")
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.get_community_moderators(community_id, count, cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Community {community_id} not found.")
+    users = [_user_to_dict(u) for u in result]
+    return json.dumps(
+        {
+            "users": users,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(users),
+        }
+    )
+
+
+@mcp.tool()
+async def search_community_tweet(
+    community_id: str,
+    query: str,
+    count: int = 20,
+    cursor: str | None = None,
+) -> str:
+    """Search tweets within a Twitter Community (paginated).
+
+    Args:
+        community_id: The community ID.
+        query: Search query string.
+        count: Number of tweets to fetch (default 20, max 100).
+        cursor: Pagination cursor from a previous response's `next_cursor`.
+    """
+    if not community_id:
+        raise ToolError("community_id must be non-empty.")
+    if not query.strip():
+        raise ToolError("query must not be empty.")
+    if count < 1:
+        raise ToolError("count must be >= 1.")
+    if count > _PAGINATED_MAX_COUNT:
+        raise ToolError(
+            f"count exceeds the {_PAGINATED_MAX_COUNT} cap; paginate via `cursor` instead."
+        )
+    client = await _get_client()
+    try:
+        result = await client.search_community_tweet(community_id, query, count, cursor)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Community {community_id} not found.")
+    tweets = [
+        {
+            "id": t.id,
+            "author": t.user.screen_name,
+            "text": t.text[:200],
+            "likes": t.favorite_count,
+            "retweets": t.retweet_count,
+        }
+        for t in result
+    ]
+    return json.dumps(
+        {
+            "tweets": tweets,
+            "next_cursor": getattr(result, "next_cursor", None),
+            "count": len(tweets),
+        }
+    )
+
+
+@mcp.tool()
+async def join_community(community_id: str) -> str:
+    """Join a Twitter Community.
+
+    Args:
+        community_id: The community ID to join.
+    """
+    if not community_id:
+        raise ToolError("community_id must be non-empty.")
+    client = await _get_client()
+    try:
+        community = await client.join_community(community_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Community {community_id} not found.")
+    return json.dumps({**_community_to_dict(community), "status": "joined"})
+
+
+@mcp.tool()
+async def leave_community(community_id: str) -> str:
+    """Leave a Twitter Community.
+
+    Args:
+        community_id: The community ID to leave.
+    """
+    if not community_id:
+        raise ToolError("community_id must be non-empty.")
+    client = await _get_client()
+    try:
+        community = await client.leave_community(community_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Community {community_id} not found.")
+    return json.dumps({**_community_to_dict(community), "status": "left"})
+
+
+@mcp.tool()
+async def request_to_join_community(
+    community_id: str, answer: str | None = None
+) -> str:
+    """Request to join a Twitter Community.
+
+    For communities with restricted join policies that require moderator
+    approval, an `answer` to the join request question may be required.
+
+    Args:
+        community_id: The community ID to request to join.
+        answer: Optional answer to the join request question (required for
+            some communities with moderator approval policy).
+    """
+    if not community_id:
+        raise ToolError("community_id must be non-empty.")
+    client = await _get_client()
+    try:
+        await client.request_to_join_community(community_id, answer)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        raise ToolError(f"Community {community_id} not found.")
+    return json.dumps({"community_id": community_id, "status": "request_sent"})
 
 
 def _get_version() -> str:

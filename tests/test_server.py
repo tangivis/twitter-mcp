@@ -25,7 +25,7 @@ def test_import_client_helper():
 
 
 def test_tools_registered():
-    """All 47 tools are registered in the MCP server."""
+    """All 57 tools are registered in the MCP server."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
@@ -81,16 +81,27 @@ def test_tools_registered():
         "delete_scheduled_tweet",
         "create_poll",
         "vote",
+        # new in v0.1.20
+        "get_community",
+        "search_community",
+        "get_community_tweets",
+        "get_communities_timeline",
+        "get_community_members",
+        "get_community_moderators",
+        "search_community_tweet",
+        "join_community",
+        "leave_community",
+        "request_to_join_community",
     }
     assert set(tools.keys()) == expected
 
 
 def test_tool_count():
-    """Exactly 47 tools are registered."""
+    """Exactly 57 tools are registered."""
     from twitter_mcp.server import mcp
 
     tools = mcp._tool_manager._tools
-    assert len(tools) == 47
+    assert len(tools) == 57
 
 
 # ── Tool Schema Tests ─────────────────────────────────

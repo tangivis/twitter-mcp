@@ -1,4 +1,4 @@
-"""Behavior tests for the 47 MCP tools.
+"""Behavior tests for the 57 MCP tools.
 
 Uses mocks to exercise each tool's body without network or real cookies.
 Covers: args passed through to twikit, output JSON shape, text truncation,
