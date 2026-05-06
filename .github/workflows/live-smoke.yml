@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   smoke:
-    name: 8 idempotent reads (live)
+    name: 25 idempotent reads (live)
     if: github.repository == 'tangivis/twitter-mcp'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -73,7 +73,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Smoke 8 idempotent reads against real X
+      - name: Smoke 25 idempotent reads against real X
         # Each block hits a different twikit code path. If X rotates a
         # GraphQL queryId, changes a field, or moves an endpoint, this
         # surfaces it within 7 days (cron) instead of when the next
@@ -102,6 +102,7 @@ jobs:
           import asyncio, json
           from mcp.server.fastmcp.exceptions import ToolError
           from twitter_mcp.server import (
+              # Original 8 (since 0.1.x).
               get_article,
               get_tweet,
               get_user_info,
@@ -110,7 +111,40 @@ jobs:
               get_trends,
               get_user_followers,
               get_lists,
+              # Issue #73: extend to all 25 idempotent reads.
+              get_article_preview,
+              get_bookmarks,
+              get_communities_timeline,
+              get_community,
+              get_community_members,
+              get_community_moderators,
+              get_community_tweets,
+              get_dm_history,
+              get_favoriters,
+              get_list,
+              get_list_members,
+              get_list_subscribers,
+              get_list_tweets,
+              get_notifications,
+              get_retweeters,
+              get_scheduled_tweets,
+              get_user_following,
+              get_user_tweets,
+              search_community,
+              search_community_tweet,
+              search_user,
           )
+
+          # Issue #73 stable target IDs (last verified 2026-05-06):
+          #   - LIST_ID: a long-lived public list. If deleted/rotated, the
+          #     `tolerate_substr=("not found",)` arm will swallow the failure
+          #     and we'll re-pick on the next run.
+          #   - COMMUNITY_ID: similarly a stable public X Community.
+          # These are the only knobs we hardcode beyond what the original 8
+          # already used (`elonmusk`, `vercel`, jack's tweet `20`, article
+          # `2048420352397864960`).
+          LIST_ID = "1093659386737872897"
+          COMMUNITY_ID = "1487102351550775303"
 
           successes = []
           failures = []
@@ -185,7 +219,111 @@ jobs:
               assert isinstance(o.get("lists"), list), "missing 'lists' key"
               return f"{len(o['lists'])} lists (empty OK)"
 
+          # ── Issue #73 shape-only validators ────────────────────
+          # Pattern matches v_search / v_trends / v_followers above:
+          # only assert the response *shape* (key presence + type).
+          # Burners often see `[]` due to X anti-abuse gating; that's
+          # tolerated. The `tolerate_substr` arm in `check()` handles
+          # the ToolError-not-found case (issue #37 drift).
+
+          def v_user_tweets(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} tweets"
+
+          def v_user_following(o):
+              assert isinstance(o.get("users"), list), "missing 'users' key"
+              return f"{len(o['users'])} following visible (empty OK — X gates following lists)"
+
+          def v_favoriters(o):
+              assert isinstance(o.get("users"), list), "missing 'users' key"
+              return f"{len(o['users'])} favoriters (empty OK — X gates engagement lists)"
+
+          def v_retweeters(o):
+              assert isinstance(o.get("users"), list), "missing 'users' key"
+              return f"{len(o['users'])} retweeters (empty OK — X gates engagement lists)"
+
+          def v_bookmarks(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} bookmarks (own data — burner usually 0)"
+
+          def v_notifications(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} notifications (own data — burner usually 0)"
+
+          def v_dm_history(o):
+              assert isinstance(o.get("messages"), list), "missing 'messages' key"
+              return f"{len(o['messages'])} DM messages (empty OK — burner has no DMs)"
+
+          def v_scheduled_tweets(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} scheduled (own data — burner usually 0)"
+
+          def v_list(o):
+              assert isinstance(o, dict), "not a dict"
+              return f"list keys={sorted(o.keys())[:3]}"
+
+          def v_list_tweets(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} list tweets (empty OK)"
+
+          def v_list_members(o):
+              assert isinstance(o.get("users"), list), "missing 'users' key"
+              return f"{len(o['users'])} list members (empty OK)"
+
+          def v_list_subscribers(o):
+              assert isinstance(o.get("users"), list), "missing 'users' key"
+              return f"{len(o['users'])} list subscribers (empty OK)"
+
+          def v_community(o):
+              assert isinstance(o, dict), "not a dict"
+              return f"community keys={sorted(o.keys())[:3]}"
+
+          def v_search_community(o):
+              assert isinstance(o.get("communities"), list), (
+                  "missing 'communities' key"
+              )
+              return f"{len(o['communities'])} community hits (empty OK — X gates)"
+
+          def v_search_community_tweet(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} community-tweet hits (empty OK — X gates)"
+
+          def v_communities_timeline(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} community-timeline tweets (empty OK)"
+
+          def v_community_tweets(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} community tweets (empty OK)"
+
+          def v_community_members(o):
+              assert isinstance(o.get("users"), list), "missing 'users' key"
+              return f"{len(o['users'])} community members (empty OK)"
+
+          def v_community_moderators(o):
+              assert isinstance(o.get("users"), list), "missing 'users' key"
+              return f"{len(o['users'])} community moderators (empty OK)"
+
+          def v_search_user(o):
+              assert isinstance(o, list), "not a list"
+              return f"{len(o)} user hits (empty OK — X gates user search)"
+
+          def v_article_preview(o):
+              # `get_article_preview` returns a JSON object with article
+              # metadata. Shape varies; only assert it's a dict.
+              assert isinstance(o, dict), "not a dict"
+              return f"preview keys={sorted(o.keys())[:3]}"
+
+          # Reused tolerance sets — X-gating modes seen in the wild.
+          T_USER = ("User not found",)
+          T_TWEET = ("Tweet not found", "not authorized", "not visible")
+          T_LIST = ("List not found", "not found")
+          T_COMM = ("Community not found", "not found", "not authorized")
+          T_DM = ("Cannot send messages", "User not found", "no DM")
+          T_SEARCH = ()  # search returns [] when gated, doesn't raise
+
           async def main():
+              # Original 8 (unchanged).
               await check("get_article",        get_article("2048420352397864960"), v_article)
               await check("get_tweet",          get_tweet("20"), v_tweet)
               await check("get_user_info",      get_user_info(screen_name="elonmusk"), v_user_info)
@@ -198,27 +336,58 @@ jobs:
                   v_followers,
                   # X-gating drift: `User not found` from the burner is treated
                   # as benign (issue #37, 2026-05-06).
-                  tolerate_substr=("User not found",),
+                  tolerate_substr=T_USER,
               )
               await check("get_lists",          get_lists(count=5), v_lists)
+
+              # ── Issue #73 extension: 17 more idempotent reads ────
+              # User content
+              await check("get_user_tweets", get_user_tweets(screen_name="elonmusk", count=5), v_user_tweets, tolerate_substr=T_USER)
+              await check("get_user_following", get_user_following(screen_name="vercel", count=5), v_user_following, tolerate_substr=T_USER)
+              # Engagement (target = jack's #20)
+              await check("get_favoriters", get_favoriters(tweet_id="20", count=5), v_favoriters, tolerate_substr=T_TWEET)
+              await check("get_retweeters", get_retweeters(tweet_id="20", count=5), v_retweeters, tolerate_substr=T_TWEET)
+              # Burner-owned reads (no gating expected, empty OK)
+              await check("get_bookmarks", get_bookmarks(count=5), v_bookmarks)
+              await check("get_notifications", get_notifications(count=5), v_notifications)
+              await check("get_dm_history", get_dm_history(screen_name="elonmusk"), v_dm_history, tolerate_substr=T_DM)
+              await check("get_scheduled_tweets", get_scheduled_tweets(), v_scheduled_tweets)
+              # Lists
+              await check("get_list", get_list(list_id=LIST_ID), v_list, tolerate_substr=T_LIST)
+              await check("get_list_tweets", get_list_tweets(list_id=LIST_ID, count=5), v_list_tweets, tolerate_substr=T_LIST)
+              await check("get_list_members", get_list_members(list_id=LIST_ID, count=5), v_list_members, tolerate_substr=T_LIST)
+              await check("get_list_subscribers", get_list_subscribers(list_id=LIST_ID, count=5), v_list_subscribers, tolerate_substr=T_LIST)
+              # Communities
+              await check("get_community", get_community(community_id=COMMUNITY_ID), v_community, tolerate_substr=T_COMM)
+              await check("search_community", search_community(query="ai"), v_search_community, tolerate_substr=T_SEARCH)
+              await check("search_community_tweet", search_community_tweet(community_id=COMMUNITY_ID, query="ai", count=5), v_search_community_tweet, tolerate_substr=T_COMM)
+              await check("get_communities_timeline", get_communities_timeline(count=5), v_communities_timeline)
+              await check("get_community_tweets", get_community_tweets(community_id=COMMUNITY_ID, tweet_type="Top", count=5), v_community_tweets, tolerate_substr=T_COMM)
+              await check("get_community_members", get_community_members(community_id=COMMUNITY_ID, count=5), v_community_members, tolerate_substr=T_COMM)
+              await check("get_community_moderators", get_community_moderators(community_id=COMMUNITY_ID, count=5), v_community_moderators, tolerate_substr=T_COMM)
+              # Search
+              await check("search_user", search_user(query="vercel", count=5), v_search_user, tolerate_substr=T_SEARCH)
+              # Article preview (uses an article-bearing tweet's id; if X
+              # changes the article system, tolerate via T_TWEET).
+              await check("get_article_preview", get_article_preview(tweet_id="2048420352397864960"), v_article_preview, tolerate_substr=T_TWEET)
 
               print("\n".join(successes))
               if failures:
                   print("\n".join(failures))
-                  raise SystemExit(f"\n{len(failures)} of 8 checks failed against live X")
-              print(f"\nAll 8 reads passed against live X.")
+                  raise SystemExit(f"\n{len(failures)} of 25 checks failed against live X")
+              print(f"\nAll 25 reads passed against live X.")
 
           asyncio.run(main())
           PY
 
       # If smoke.log exists, mirror its tail to the run summary so the failure
       # is visible from the workflow page without expanding the step. Always
-      # runs (even on success) — successes show "All 8 reads passed".
+      # runs (even on success) — successes show "All 25 reads passed".
       - name: Render summary
         if: always() && hashFiles('smoke.log') != ''
         run: |
           {
-            echo "### live-smoke (8 idempotent reads)"
+            echo "### live-smoke (25 idempotent reads)"
             echo
             echo '```'
             tail -n 40 smoke.log
