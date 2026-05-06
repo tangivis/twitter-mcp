@@ -2060,8 +2060,186 @@ def _compact_num(n) -> str:
     return f"{n:,}"
 
 
+# ── TTY-aware card rendering (issue #61) ─────────────
+#
+# When stdout is a tty, human subcommands render boxed cards (Twitter-
+# like UI). When piped, fall back to the existing plain text so
+# `| jq` / `> file` keep the byte-for-byte format users already script
+# against. Pure stdlib — no `rich` / `blessed` / `curses`.
+
+
+def _is_tty() -> bool:
+    """Wrap `sys.stdout.isatty()` so tests can monkeypatch a single source."""
+    import sys as _sys
+
+    return _sys.stdout.isatty()
+
+
+def _term_width() -> int:
+    """Card width: clamp to 60..100. <60 is unreadable, >100 is showy."""
+    import shutil as _shutil
+
+    return min(max(_shutil.get_terminal_size().columns, 60), 100)
+
+
+def _box_top(width: int, label: str = "") -> str:
+    """Render `╭───[ label ]───────────╮` (or plain `╭─...─╮` if no label)."""
+    if label:
+        # Pad: 2 leading dashes, "[ label ]", fill rest with dashes.
+        prefix = f"╭── {label} "
+        # Total width = prefix + dashes + ╮ → solve for dashes.
+        dashes = "─" * (width - len(prefix) - 1)
+        return f"{prefix}{dashes}╮"
+    return "╭" + "─" * (width - 2) + "╮"
+
+
+def _box_bottom(width: int) -> str:
+    return "╰" + "─" * (width - 2) + "╯"
+
+
+def _box_mid(width: int) -> str:
+    """Horizontal divider inside a card: ├─...─┤."""
+    return "├" + "─" * (width - 2) + "┤"
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _visible_len(s: str) -> int:
+    """Length of `s` ignoring ANSI escape sequences (their visual width is 0)."""
+    return len(_ANSI_RE.sub("", s))
+
+
+def _box_line(width: int, content: str) -> str:
+    """Render `│ content<padded to width> │`. Truncates if content too long.
+
+    Pads on **visible** length so ANSI-colored content lines up with the
+    right border (raw `len()` would over-count escape bytes).
+    """
+    inner = width - 4  # account for "│ " + " │"
+    if _visible_len(content) > inner:
+        # Drop colors before truncating — preserving partial ANSI is messy.
+        content = _ANSI_RE.sub("", content)[: inner - 1] + "…"
+    pad = " " * (inner - _visible_len(content))
+    return "│ " + content + pad + " │"
+
+
+def _wrap_into_card(width: int, text: str) -> list[str]:
+    """Wrap `text` into card-body lines (each `│ ... │`, padded to width)."""
+    import textwrap as _textwrap
+
+    inner = width - 4
+    lines: list[str] = []
+    for paragraph in text.splitlines() or [""]:
+        if not paragraph.strip():
+            lines.append(_box_line(width, ""))
+            continue
+        for wrapped in _textwrap.wrap(paragraph, width=inner) or [""]:
+            lines.append(_box_line(width, wrapped))
+    return lines
+
+
+def _color(s: str, code: str) -> str:
+    """Wrap `s` with ANSI escape `code` if TTY + NO_COLOR unset, else passthrough.
+
+    No-color rule: https://no-color.org — any non-empty `NO_COLOR` env
+    suppresses ANSI escapes, even in a tty.
+    """
+    if not _is_tty() or os.environ.get("NO_COLOR"):
+        return s
+    return f"\x1b[{code}m{s}\x1b[0m"
+
+
+def _card_tweet(t: dict, width: int) -> str:
+    author = t.get("author", "?")
+    name = t.get("author_name", "")
+    text = (t.get("text") or "").strip()
+    created = t.get("created_at", "")
+    likes = _compact_num(t.get("likes", 0))
+    rts = _compact_num(t.get("retweets", 0))
+    tid = t.get("id", "")
+    url = f"https://x.com/{author}/status/{tid}" if author and tid else ""
+
+    lines = [_box_top(width)]
+    header = (f"{name} · " if name else "") + f"@{author}"
+    lines.append(_box_line(width, _color(header, "1;36")))  # bold cyan
+    if created:
+        lines.append(_box_line(width, _color(created, "2")))  # dim
+    lines.append(_box_mid(width))
+    if text:
+        lines.extend(_wrap_into_card(width, text))
+    else:
+        lines.append(_box_line(width, ""))
+    lines.append(_box_mid(width))
+    counts = f"❤ {likes}    🔁 {rts}"
+    lines.append(_box_line(width, counts))
+    if url:
+        lines.append(_box_line(width, _color(url, "2")))  # dim
+    lines.append(_box_bottom(width))
+    return "\n".join(lines)
+
+
+def _card_user(u: dict, width: int) -> str:
+    sn = u.get("screen_name", "?")
+    name = u.get("name", "")
+    verified = "✓" if u.get("is_blue_verified") or u.get("verified") else ""
+    desc = (u.get("description") or "").strip()
+    fc = _compact_num(u.get("followers_count", 0))
+    fg = _compact_num(u.get("following_count", 0))
+    tw = _compact_num(u.get("tweets_count", 0))
+    location = u.get("location") or ""
+    url = u.get("url") or ""
+    created = u.get("created_at", "")
+
+    lines = [_box_top(width)]
+    header = (f"{name} · " if name else "") + f"@{sn}"
+    if verified:
+        header += "  ✓"
+    lines.append(_box_line(width, _color(header, "1;36")))
+    lines.append(_box_mid(width))
+    if desc:
+        lines.extend(_wrap_into_card(width, desc))
+        lines.append(_box_mid(width))
+    lines.append(_box_line(width, f"Followers   {fc}"))
+    lines.append(_box_line(width, f"Following   {fg}"))
+    lines.append(_box_line(width, f"Posts       {tw}"))
+    if location:
+        lines.append(_box_line(width, f"📍 {location}"))
+    if created:
+        lines.append(_box_line(width, f"Joined      {created}"))
+    lines.append(_box_mid(width))
+    lines.append(_box_line(width, _color(f"https://x.com/{sn}", "2")))
+    if url:
+        lines.append(_box_line(width, _color(f"Link  {url}", "2")))
+    lines.append(_box_bottom(width))
+    return "\n".join(lines)
+
+
+def _card_trends(payload: dict, width: int) -> str:
+    trends = payload.get("trends") or []
+    if not trends:
+        return "(no trends)"
+    lines = [_box_top(width, "Trending")]
+    for i, t in enumerate(trends, 1):
+        nm = t.get("name", "?")
+        cnt = t.get("tweets_count")
+        ctx = t.get("domain_context") or ""
+        text = f"{i:>2}.  {nm}"
+        if cnt:
+            text += f"   ({_compact_num(cnt)} tweets)"
+        if ctx:
+            text += f"   — {ctx}"
+        lines.extend(_wrap_into_card(width, text))
+    lines.append(_box_bottom(width))
+    return "\n".join(lines)
+
+
 def _format_tweet(t: dict) -> str:
-    """One tweet block, terminal-readable. Fields tolerated as missing."""
+    """One tweet block. TTY → boxed card; piped → plain text (issue #61)."""
+    if _is_tty():
+        return _card_tweet(t, _term_width())
+
+    # Plain (pre-#61, byte-stable for jq / file pipelines).
     author = t.get("author", "?")
     name = t.get("author_name", "")
     header = f"@{author}" + (f" · {name}" if name else "")
@@ -2088,7 +2266,10 @@ def _format_tweet_list(tweets: list[dict]) -> str:
 
 
 def _format_user(u: dict) -> str:
-    """One user profile block."""
+    """One user profile block. TTY → boxed card; piped → plain (issue #61)."""
+    if _is_tty():
+        return _card_user(u, _term_width())
+
     sn = u.get("screen_name", "?")
     name = u.get("name", "")
     verified = "✓" if u.get("is_blue_verified") or u.get("verified") else ""
@@ -2118,7 +2299,10 @@ def _format_user(u: dict) -> str:
 
 
 def _format_trends(payload: dict) -> str:
-    """Numbered trend list."""
+    """Numbered trend list. TTY → boxed card; piped → plain (issue #61)."""
+    if _is_tty():
+        return _card_trends(payload, _term_width())
+
     trends = payload.get("trends") or []
     if not trends:
         return "(no trends)"
