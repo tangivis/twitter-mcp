@@ -304,20 +304,37 @@ jobs:
           BODY_FILE: review.md
         run: bash .github/scripts/auto_summon_claude.sh
 
-      - name: Enable GitHub auto-merge (decision = approve | comment)
+      - name: Enable auto-merge → fall back to direct merge (decision = approve | comment)
         if: steps.parse.outputs.decision == 'approve' || steps.parse.outputs.decision == 'comment'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
         run: |
-          # `gh pr merge --auto --squash` enables GitHub's native auto-merge.
-          # GH then merges the PR automatically once **all required checks**
-          # (per branch protection) are green. If branch protection isn't
-          # configured to require checks, this merges immediately — set
-          # protection on `main` if you want CI to gate.
+          # GitHub's `--auto` flag only enables auto-merge if the PR has at
+          # least one *pending* required check (i.e. branch protection has
+          # required statuses configured AND at least one isn't green yet).
+          # When a repo has no branch protection (or no required statuses),
+          # `--auto` rejects with "Pull Request is in clean status" — there's
+          # nothing for it to wait on. In that case we fall back to a direct
+          # merge: if the PR is mergeable right now, just merge it.
           #
-          # Idempotent: enabling auto-merge on an already-auto-mergeable PR
-          # is a no-op.
-          if ! gh pr merge --auto --squash "$PR_NUM" 2>&1; then
-            echo "::warning::auto-merge enable failed. Likely causes: (a) auto-merge disabled in repo Settings → General; (b) PR already in a state GH can't auto-merge; (c) branch protection misconfigured. Skipping — PR stays open for manual merge."
+          # Either path is correct for a fully-autonomous flow:
+          #   - With protection + required checks → `--auto` enables, GH
+          #     merges later when checks pass. We can return immediately.
+          #   - Without protection → direct `--squash` merges right now.
+          #
+          # Both paths skip / warn instead of failing the workflow, since
+          # auto-merge is best-effort.
+          if gh pr merge --auto --squash --delete-branch "$PR_NUM" 2>&1; then
+            echo "Auto-merge enabled — GitHub will merge once required checks pass."
+            exit 0
           fi
+
+          echo "::notice::Auto-merge enable refused (likely: no pending required checks). Trying direct merge."
+
+          if gh pr merge --squash --delete-branch "$PR_NUM" 2>&1; then
+            echo "Direct merge succeeded — PR is now closed."
+            exit 0
+          fi
+
+          echo "::warning::Both auto-merge enable and direct merge failed. PR stays open for manual handling. Likely causes: (a) 'Allow auto-merge' disabled in repo Settings → General; (b) branch protection requires reviewers; (c) PR has merge conflicts."
