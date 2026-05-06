@@ -1,15 +1,40 @@
 # CLI 模式
 
-`twikit-mcp` 是双模式二进制 — 同一个安装,两种调用方式。
+`twikit-mcp` 是多模式二进制。同一个安装,三种用法:
 
 | 模式 | 命令 | 何时用 |
 |---|---|---|
-| **MCP server**(默认) | `twikit-mcp` 或 `twikit-mcp serve` | AI agent 里调用(Claude Code、Cursor、Cline 等),LLM 通过 stdio 发 JSON-RPC |
-| **CLI** | `twikit-mcp list` / `twikit-mcp call <tool> …` | shell 脚本、自动化、调试 |
+| **MCP server**(默认) | `twikit-mcp` 或 `twikit-mcp serve` | AI agent 里(Claude Code、Cursor、Cline 等),LLM 通过 stdio 发 JSON-RPC |
+| **人用 CLI** | `twikit-mcp tweet 20`、`twikit-mcp user elonmusk` 等 | 在 shell 里想读条推 / 看个 profile / 刷下 timeline。输出是纯文本,原生中日韩文(无转义) |
+| **机器 CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | shell 脚本、自动化、调试。raw JSON 输出,57 个工具全都能调 |
 
-两种模式**共享同一个** cookies 文件(`~/.config/twitter-mcp/cookies.json`)和同样的 57 个工具。
+三种模式**共享同一个** cookies 文件(`~/.config/twitter-mcp/cookies.json`)。
 
-## 子命令
+## 人用子命令
+
+文本输出、位置参数、不输出 JSON。五个子命令覆盖"我就想读 X"的常见场景:
+
+```bash
+twikit-mcp tweet 20                       # 一条推漂亮打印
+twikit-mcp tweet https://x.com/jack/status/20  # URL 也能用
+twikit-mcp user elonmusk                  # 一个用户的 profile
+twikit-mcp tl 10                          # 自己 home timeline 最近 10 条
+twikit-mcp search "AI" 5                  # "AI" 的 top 5 搜索结果
+twikit-mcp trends 20                      # top 20 热门话题
+```
+
+样例输出:
+
+```
+@pathfinderSport · Pathfinder Sports
+Άρσεναλ - Σάντερλαντ: (X) 0-0 τελικό
+❤ 7,269  🔁 5,473  · Sat Feb 21 16:55:22 +0000 2009
+https://x.com/pathfinderSport/status/1234567890
+```
+
+这些只是同一组 MCP 工具的轻包装。需要更细的参数(`product=Latest` / 自定义 `cursor` 等)直接走 `call`。
+
+## 机器子命令
 
 ### `serve`(默认)
 

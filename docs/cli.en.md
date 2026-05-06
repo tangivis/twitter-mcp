@@ -1,15 +1,40 @@
 # CLI mode
 
-`twikit-mcp` is a dual-mode binary: same install, two transports.
+`twikit-mcp` is a multi-mode binary. Same install, three flavors:
 
 | Mode | Command | When |
 |---|---|---|
 | **MCP server** (default) | `twikit-mcp` or `twikit-mcp serve` | Inside an AI agent (Claude Code, Cursor, Cline, …). LLM sends JSON-RPC over stdio. |
-| **CLI** | `twikit-mcp list` / `twikit-mcp call <tool> …` | Shell scripts, automation, debugging. |
+| **Human-friendly CLI** | `twikit-mcp tweet 20`, `twikit-mcp user elonmusk`, etc. | You're at a shell, you want to read a tweet / profile / timeline. Output is plain text, native unicode. |
+| **Machine CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | Shell scripts, automation, debugging. Raw JSON output, every one of the 57 tools available. |
 
-Both share the same cookies file (`~/.config/twitter-mcp/cookies.json`) and the same 57 tools.
+All three share the same cookies file (`~/.config/twitter-mcp/cookies.json`).
 
-## Subcommands
+## Human-friendly subcommands
+
+Pretty-printed text output, positional args, no JSON. Five subcommands cover the common "I want to read X" cases:
+
+```bash
+twikit-mcp tweet 20                       # one tweet pretty-printed
+twikit-mcp tweet https://x.com/jack/status/20  # URL works too
+twikit-mcp user elonmusk                  # one profile
+twikit-mcp tl 10                          # last 10 from your home timeline
+twikit-mcp search "AI" 5                  # 5 top search results
+twikit-mcp trends 20                      # top 20 trending topics
+```
+
+Sample output:
+
+```
+@pathfinderSport · Pathfinder Sports
+Άρσεναλ - Σάντερλαντ: (X) 0-0 τελικό
+❤ 7,269  🔁 5,473  · Sat Feb 21 16:55:22 +0000 2009
+https://x.com/pathfinderSport/status/1234567890
+```
+
+These are wrappers over the same MCP tools; if you need different args (`product=Latest`, custom `cursor`, etc.), drop down to `call`.
+
+## Machine subcommands
 
 ### `serve` (default)
 
