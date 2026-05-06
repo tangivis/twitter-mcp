@@ -78,7 +78,10 @@ def test_live_smoke_covers_all_idempotent_reads():
     idempotent = all_tools - _MUTATING
 
     smoke_yaml = Path(__file__).parent.parent / ".github/workflows/live-smoke.yml"
-    src = smoke_yaml.read_text()
+    # Windows default encoding is cp1252; pin utf-8 since the workflow
+    # contains ✓/✗/—/📍 etc. (same fix pattern as scripts/gen_api_docs.py
+    # for issue #58 — see commit 4d2f997).
+    src = smoke_yaml.read_text(encoding="utf-8")
 
     missing = []
     for name in sorted(idempotent):
