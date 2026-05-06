@@ -135,6 +135,8 @@ jobs:
 
           # OUTPUT FORMAT — STRICT JSON
 
+          Output a JSON object with EXACTLY these top-level keys, no others:
+
           ```
           {
             "summary": "1-2 sentences on what the PR does",
@@ -149,6 +151,10 @@ jobs:
             "decision": "approve | comment | request-changes"
           }
           ```
+
+          Do NOT invent extra top-level keys (e.g. `changed_files`, `changes_summary`, `test_count`). The post-processing pipeline ignores any keys other than `summary` / `items` / `decision`. Put your description IN the `summary` field, not in side-fields.
+
+          Each item MUST have `body` (non-empty). If `file` and `line` are unknown, omit those keys (don't pass empty strings or 0).
 
           ## `severity` ladder (Conventional Comments)
 
@@ -376,13 +382,31 @@ jobs:
           parsed = json.loads(m.group(0))
           parsed.setdefault("summary", "(no summary)")
           parsed.setdefault("items", [])
-          parsed.setdefault("decision", "comment")
-          if parsed["decision"] not in ("approve", "comment", "request-changes"):
-              parsed["decision"] = "comment"
+          # Coerce items to list (model occasionally returns dict / null).
+          if not isinstance(parsed["items"], list):
+              parsed["items"] = []
+
           # Clamp severity per item.
+          ALLOWED_SEV = ("must_fix", "issue", "suggestion", "nitpick", "praise", "question")
           for it in parsed["items"]:
-              if it.get("severity") not in ("must_fix", "issue", "suggestion", "nitpick", "praise", "question"):
+              if not isinstance(it, dict) or it.get("severity") not in ALLOWED_SEV:
                   it["severity"] = "suggestion"
+
+          # Derive decision DETERMINISTICALLY from items, not from the model.
+          # The model occasionally returns inconsistent state (e.g. items=[]
+          # but decision="comment"), or ignores the rule entirely. Authority
+          # lives in code:
+          #   any must_fix       → request-changes
+          #   any substantive    → comment   (issue / suggestion / nitpick)
+          #   praise / question only OR empty → approve
+          SUBSTANTIVE = {"must_fix", "issue", "suggestion", "nitpick"}
+          severities = [it.get("severity") for it in parsed["items"]]
+          if "must_fix" in severities:
+              parsed["decision"] = "request-changes"
+          elif any(s in SUBSTANTIVE for s in severities):
+              parsed["decision"] = "comment"
+          else:
+              parsed["decision"] = "approve"
           json.dump(parsed, sys.stdout, indent=2)
           PY
           python3 /tmp/parse.py < raw.md > review.json
