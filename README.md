@@ -119,6 +119,29 @@ That's it. Start talking:
 > Send a tweet saying: Hello from Claude!
 ```
 
+#### CLI mode (no MCP client needed)
+
+The same `twikit-mcp` binary doubles as a one-shot CLI for shell scripts and quick debugging — `serve` is the default behavior, `list` / `call` are subcommands:
+
+```bash
+# List all available tools
+twikit-mcp list
+
+# Invoke a tool (key=value args; types coerced from your tool signature)
+twikit-mcp call get_user_info screen_name=elonmusk
+twikit-mcp call search_tweets query=AI count=5 product=Top
+twikit-mcp call get_tweet tweet_id=20
+
+# Pipe to jq
+twikit-mcp call get_user_info screen_name=elonmusk | jq .followers_count
+
+# Default mode (no subcommand) is still the MCP server over stdio —
+# every existing client config keeps working unchanged.
+twikit-mcp
+```
+
+Use the same `~/.config/twitter-mcp/cookies.json` file — no separate config.
+
 ### Available Tools
 
 | Tool | Description |
