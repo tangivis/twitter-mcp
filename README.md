@@ -53,7 +53,7 @@ chmod 600 ~/.config/twitter-mcp/cookies.json
 
 Choose **one** of the following methods:
 
-**Option A: uvx** (recommended if you have [uv](https://docs.astral.sh/uv/))
+**Option A: uvx** — zero-install, fetches each call (slow first run, fast after; cache shared with other uv tools). Best for quick try-out.
 
 ```bash
 # Claude Code
@@ -65,7 +65,37 @@ claude mcp add twitter -s user \
 uvx twikit-mcp
 ```
 
-**Option B: pip**
+**Option B: `uv tool install`** *(recommended for daily use)* — pinned isolated venv, instant startup, simple upgrade path.
+
+```bash
+# Install once. Drops a `twikit-mcp` binary on PATH (~/.local/bin).
+uv tool install twikit-mcp
+
+# List your installed uv tools (sanity check)
+uv tool list
+
+# Upgrade when a new version ships
+uv tool upgrade twikit-mcp
+# Or upgrade ALL uv-tool-managed binaries at once:
+uv tool upgrade --all
+
+# Uninstall (clean removal of the venv + binary)
+uv tool uninstall twikit-mcp
+```
+
+Then register with Claude Code (uses the binary on PATH — no `uvx` prefix):
+
+```bash
+claude mcp add twitter -s user \
+  -e "TWITTER_COOKIES=$HOME/.config/twitter-mcp/cookies.json" \
+  -- twikit-mcp
+```
+
+The cookies file is **the same** as for every other option: `~/.config/twitter-mcp/cookies.json` (or wherever `TWITTER_COOKIES` env var points). `uv tool install` doesn't change where config lives — only where the *binary* lives.
+
+> uvx vs `uv tool install` quick rule: use **uvx** if you'll call it once or twice (e.g. one-off script). Use **`uv tool install`** if it's part of your dev workflow (e.g. wired into Claude Code daily) — startup is instant after the one-time install.
+
+**Option C: pip**
 
 ```bash
 pip install twikit-mcp
@@ -79,7 +109,7 @@ claude mcp add twitter -s user \
 TWITTER_COOKIES=~/.config/twitter-mcp/cookies.json twikit-mcp
 ```
 
-**Option C: pipx** (isolated install)
+**Option D: pipx** (isolated install — same idea as `uv tool install`, but with pipx)
 
 ```bash
 pipx install twikit-mcp
@@ -293,7 +323,7 @@ chmod 600 ~/.config/twitter-mcp/cookies.json
 
 选择以下 **任一** 方式：
 
-**方式 A: uvx**（推荐，需要安装 [uv](https://docs.astral.sh/uv/)）
+**方式 A: uvx** — 零安装,每次调用拉一份。第一次慢,之后用 cache,跟其他 uv 工具共享。适合临时试用。
 
 ```bash
 # Claude Code
@@ -305,7 +335,37 @@ claude mcp add twitter -s user \
 uvx twikit-mcp
 ```
 
-**方式 B: pip**
+**方式 B: `uv tool install`** *(日常使用推荐)* — 隔离 venv,启动瞬间,升级简单。
+
+```bash
+# 一次性安装,在 PATH 上注册一个 `twikit-mcp` 二进制(默认路径 ~/.local/bin)
+uv tool install twikit-mcp
+
+# 列出当前 uv 管理的工具(确认装上了)
+uv tool list
+
+# 有新版本时升级
+uv tool upgrade twikit-mcp
+# 或一键升级所有 uv 装的工具:
+uv tool upgrade --all
+
+# 卸载(连 venv 一起清掉)
+uv tool uninstall twikit-mcp
+```
+
+然后用 PATH 上的二进制注册到 Claude Code(不要再加 `uvx` 前缀):
+
+```bash
+claude mcp add twitter -s user \
+  -e "TWITTER_COOKIES=$HOME/.config/twitter-mcp/cookies.json" \
+  -- twikit-mcp
+```
+
+cookies 文件**位置不变** — 仍然是 `~/.config/twitter-mcp/cookies.json`(或者 `TWITTER_COOKIES` 环境变量指的地方)。`uv tool install` 只改变**二进制**的安装位置,不改 config 路径。
+
+> uvx vs `uv tool install` 的简单选择: 一次性 / 偶尔用 → **uvx**;天天接到 Claude Code 里用 → **`uv tool install`**(启动快很多)。
+
+**方式 C: pip**
 
 ```bash
 pip install twikit-mcp
@@ -319,7 +379,7 @@ claude mcp add twitter -s user \
 TWITTER_COOKIES=~/.config/twitter-mcp/cookies.json twikit-mcp
 ```
 
-**方式 C: pipx**（隔离安装）
+**方式 D: pipx**(隔离安装,跟 `uv tool install` 思路一样,但换工具)
 
 ```bash
 pipx install twikit-mcp
@@ -510,7 +570,7 @@ chmod 600 ~/.config/twitter-mcp/cookies.json
 
 以下の **いずれか** の方法を選んでください：
 
-**方法 A: uvx**（推奨、[uv](https://docs.astral.sh/uv/) が必要）
+**方法 A: uvx** — ゼロインストール、毎回フェッチ。初回のみ遅い、以降はキャッシュで高速。お試し向け。
 
 ```bash
 # Claude Code
@@ -522,7 +582,37 @@ claude mcp add twitter -s user \
 uvx twikit-mcp
 ```
 
-**方法 B: pip**
+**方法 B: `uv tool install`**（日常利用に推奨）— 専用 venv で隔離インストール、起動が瞬時、アップグレードも簡単。
+
+```bash
+# 一度だけインストール。PATH (~/.local/bin) に `twikit-mcp` バイナリを配置
+uv tool install twikit-mcp
+
+# uv tool 管理下のツール一覧（確認用）
+uv tool list
+
+# 新バージョンが出たらアップグレード
+uv tool upgrade twikit-mcp
+# uv で入れた全ツールを一括アップグレード:
+uv tool upgrade --all
+
+# アンインストール（venv ごと削除）
+uv tool uninstall twikit-mcp
+```
+
+PATH 上のバイナリで Claude Code に登録（`uvx` プレフィックス不要）:
+
+```bash
+claude mcp add twitter -s user \
+  -e "TWITTER_COOKIES=$HOME/.config/twitter-mcp/cookies.json" \
+  -- twikit-mcp
+```
+
+cookies ファイルの場所は**他のオプションと同じ** — `~/.config/twitter-mcp/cookies.json` (もしくは `TWITTER_COOKIES` 環境変数)。`uv tool install` が変えるのは**バイナリの場所**だけで、設定ファイルの場所は変わりません。
+
+> uvx と `uv tool install` の使い分け: 一回だけ / たまに → **uvx**;Claude Code に組み込んで毎日使う → **`uv tool install`**(起動が圧倒的に速い)。
+
+**方法 C: pip**
 
 ```bash
 pip install twikit-mcp
@@ -536,7 +626,7 @@ claude mcp add twitter -s user \
 TWITTER_COOKIES=~/.config/twitter-mcp/cookies.json twikit-mcp
 ```
 
-**方法 C: pipx**（隔離インストール）
+**方法 D: pipx**（隔離インストール — `uv tool install` と同じ思想、ツール違い）
 
 ```bash
 pipx install twikit-mcp
