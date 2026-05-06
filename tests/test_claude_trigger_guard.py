@@ -70,3 +70,29 @@ def test_claude_yml_documents_why_the_guard_exists():
             f"claude.yml lost the {needle!r} mention; the guard "
             f"rationale comment may have been stripped."
         )
+
+
+def test_claude_yml_pins_sonnet_46_model():
+    """The `claude_args` must pin `--model claude-sonnet-4-6` — not let
+    it default to whatever the action picks (which on a Max plan would
+    be Opus 4.7, ~5× the per-token cost without payoff for this repo's
+    complexity). Local Claude Code still picks Opus when the maintainer
+    drives it directly; this rule only governs the GitHub bot."""
+    src = _src()
+    assert "--model claude-sonnet-4-6" in src, (
+        "claude.yml must pin `--model claude-sonnet-4-6` in claude_args. "
+        "Letting the action default to plan-default (Opus on Max) makes "
+        "@claude ~5× more expensive per turn for no measurable benefit "
+        "on this codebase's task complexity."
+    )
+
+
+def test_claude_yml_caps_turn_count():
+    """`--max-turns` must be set so a runaway agent loop doesn't drain
+    plan quota silently."""
+    src = _src()
+    assert re.search(r"--max-turns\s+\d+", src), (
+        "claude.yml must include `--max-turns N` to cap the agent loop. "
+        "Without it a confused agent can rack up 100+ turns chasing a "
+        "phantom error before timing out."
+    )
