@@ -109,3 +109,9 @@ twikit-mcp call get_user_info screen_name=elonmusk | jq .followers_count
 $ twikit-mcp call get_user_info bogus=x
 Unknown arg `bogus` for tool `get_user_info`. Valid args: ['screen_name', 'user_id']
 ```
+
+---
+
+## All tools (machine CLI)
+
+--8<-- "docs/_cli_tools.en.md"
