@@ -23,9 +23,23 @@ twikit-mcp search "AI" 5                  # 5 top search results
 twikit-mcp trends 20                      # top 20 trending topics
 ```
 
-Sample output:
+Sample output in a terminal (0.1.23+ ASCII Twitter card):
 
+```text
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Pathfinder Sports · @pathfinderSport                                         │
+│ Sat Feb 21 16:55:22 +0000 2009                                               │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Άρσεναλ - Σάντερλαντ: (X) 0-0 τελικό                                         │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ ❤ 7,269    🔁 5,473                                                          │
+│ https://x.com/pathfinderSport/status/1234567890                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
+
+Width is clamped to your terminal columns (between 60 and 100). Piping to a file or another command, or setting `NO_COLOR=1`, auto-falls-back to byte-stable plain text — same shape as 0.1.22, safe for `jq`/`grep`/diffing:
+
+```text
 @pathfinderSport · Pathfinder Sports
 Άρσεναλ - Σάντερλαντ: (X) 0-0 τελικό
 ❤ 7,269  🔁 5,473  · Sat Feb 21 16:55:22 +0000 2009

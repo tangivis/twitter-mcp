@@ -8,6 +8,12 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.23 新增
+
+- **ASCII Twitter 卡片 UI** — `twikit-mcp tweet` / `user` / `tl` / `search` / `trends` 在终端里现在会渲染成 box-drawing 卡片(粗体作者名、灰显时间戳、正文 / 计数 / URL 之间分隔线)。重定向到文件或管道,或设 `NO_COLOR=1`,自动回退到原来的字节稳定纯文本输出。样例见 [CLI 模式](cli.md)。
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.22 新增
 
 - **人用 CLI 子命令** — 直接在 shell 里读推 / 看 profile / 刷 timeline / 搜索 / 看 trends:
@@ -21,8 +27,6 @@
   纯文本输出,原生中日韩文,合理的默认值。详见 [CLI 模式](cli.md)。
 - **全链路 UTF-8 输出** — 不再有 `\uXXXX` 转义。中文 / 日本語 / 希腊文 / emoji 都以可读形式经过工具。
 - **三语文档站** — 你正在看的就是,顶部切换语言。
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 你能拿到什么
 
