@@ -5,12 +5,23 @@ repo_name: tangivis/twitter-mcp
 repo_url: https://github.com/tangivis/twitter-mcp
 edit_uri: edit/main/docs/
 
-# Layout in this repo:
-#   docs/             ← all docs site content (this dir)
-#     index.md        ← landing page (rendered from README at build time)
-#     api.md          ← auto-generated MCP tool reference (mkdocstrings)
-#     TECHNICAL.md    ← existing tech doc
-#     VENDORING.md    ← existing vendor patch log
+# Layout (since the i18n upgrade in PR #51-ish):
+#
+#   docs/
+#     index.{en,zh,ja}.md          ← landing page per locale
+#     cli.{en,zh,ja}.md            ← CLI usage per locale
+#     api.{en,zh,ja}.md            ← auto-generated, locale-aware (chrome
+#                                    is translated; tool docstrings stay
+#                                    English since they are Python types)
+#     TECHNICAL.zh.md              ← original 中文 deep-dive
+#     TECHNICAL.{en,ja}.md         ← stubs pointing at the .zh version
+#     VENDORING.zh.md
+#     VENDORING.{en,ja}.md         ← same stub pattern
+#
+# `docs_structure: suffix` is the cleanest — a single `docs/` tree where
+# each markdown file gets a `.<locale>.md` suffix. The plugin builds
+# `/`, `/zh/`, `/ja/` URL paths automatically and inserts a language
+# switcher in the top bar.
 docs_dir: docs
 
 theme:
@@ -45,12 +56,42 @@ theme:
 
 plugins:
   - search
-  # gen-files runs scripts/gen_api_docs.py at build time to produce
-  # docs/api.md programmatically from `mcp._tool_manager._tools`. Avoids
-  # checking the generated file into git (would always drift).
-  - gen-files:
-      scripts:
-        - scripts/gen_api_docs.py
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+          nav:
+            - Home: index.md
+            - CLI mode: cli.md
+            - MCP Tools API: api.md
+            - Internals:
+                - Technical design: TECHNICAL.md
+                - Vendoring twikit: VENDORING.md
+        - locale: zh
+          name: 中文
+          link: /zh/
+          build: true
+          nav:
+            - 首页: index.md
+            - CLI 模式: cli.md
+            - MCP 工具 API: api.md
+            - 内部实现:
+                - 技术设计: TECHNICAL.md
+                - Vendoring twikit: VENDORING.md
+        - locale: ja
+          name: 日本語
+          link: /ja/
+          build: true
+          nav:
+            - ホーム: index.md
+            - CLI モード: cli.md
+            - MCP ツール API: api.md
+            - 内部実装:
+                - 技術設計: TECHNICAL.md
+                - twikit のベンダリング: VENDORING.md
   - mkdocstrings:
       handlers:
         python:
@@ -80,14 +121,6 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
-
-nav:
-  - Home: index.md
-  - CLI mode: cli.md
-  - MCP Tools API: api.md
-  - Internals:
-      - Technical design: TECHNICAL.md
-      - Vendoring twikit: VENDORING.md
 
 extra:
   social:
