@@ -424,14 +424,25 @@ jobs:
           for it in r["items"]:
               sev = it.get("severity") or "suggestion"
               path = it.get("file") or ""
-              line = it.get("line") or 0
+              # `line` may come back as int OR str (model output is JSON
+              # but typing isn't enforced). Coerce + tolerate junk.
+              raw_line = it.get("line", 0)
+              try:
+                  line = int(raw_line) if raw_line not in (None, "") else 0
+              except (TypeError, ValueError):
+                  line = 0
+              # Don't silently drop empty-body items — render them with a
+              # placeholder so the maintainer SEES that the model emitted
+              # something malformed. Silent drops were the bug observed
+              # on PR #62 iter 1+2.
               body = (it.get("body") or "").strip()
               if not body:
-                  continue
-              if sev in ACTIONABLE and path and isinstance(line, int) and line > 0:
+                  body = "_(model returned this item with empty body — verify in raw JSON below)_"
+
+              if sev in ACTIONABLE and path and line > 0:
                   inline.append({
                       "path": path,
-                      "line": int(line),
+                      "line": line,
                       "side": "RIGHT",
                       "body": f"**{sev}**: {body}",
                   })
@@ -482,6 +493,18 @@ jobs:
             fi
             echo
             cat extra.md
+            echo
+            # Raw JSON appendix for debugging — collapsed by default. If
+            # the bucketing above looks wrong, the maintainer can expand
+            # this and see what the model literally emitted.
+            echo "<details><summary>Raw review JSON (debug)</summary>"
+            echo
+            echo '```json'
+            cat review.json
+            echo
+            echo '```'
+            echo
+            echo "</details>"
             echo
             echo "<!-- review-iter -->"
             echo "_Advisory review — maintainer reads + decides. issue #60 quality pass v2 active._"
