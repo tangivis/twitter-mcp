@@ -1,8 +1,14 @@
-"""Generate docs/api.md from `mcp._tool_manager._tools` at build time.
+"""Generate docs/api.md from `mcp._tool_manager._tools`.
 
-Loaded by `mkdocs-gen-files` per `mkdocs.yml::plugins`. Runs inside a
-mkdocs build, has access to the project's Python environment (i.e.
-`twitter_mcp.server` is importable).
+Run this script BEFORE `mkdocs build` (the docs.yml CI workflow does
+this automatically). The output `docs/api.md` is gitignored — generated
+fresh on every build, so it can never drift from the live tool registry.
+
+Why a standalone script + gitignore instead of `mkdocs-gen-files`:
+the i18n plugin (`mkdocs-static-i18n`) doesn't reliably pick up virtual
+files created by gen-files at on_files time — it scans on_config and
+misses them. A real on-disk file feeds i18n the same way as any other
+markdown page.
 
 Output: a single markdown page that groups all 57 MCP tools by their
 implicit category (read / write / list / community / dm / etc.). For
@@ -17,11 +23,16 @@ and a hand-written file always drifts.
 """
 
 import inspect
+import sys
 from collections import defaultdict
+from pathlib import Path
 
-import mkdocs_gen_files
+# Ensure repo root is on sys.path so `twitter_mcp.server` resolves when
+# this script is run as `python scripts/gen_api_docs.py` from any cwd.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPO_ROOT))
 
-from twitter_mcp.server import mcp
+from twitter_mcp.server import mcp  # noqa: E402  (after sys.path tweak)
 
 
 def _categorize(name: str) -> str:
@@ -161,65 +172,150 @@ SECTION_ORDER = [
 ]
 
 
-with mkdocs_gen_files.open("api.md", "w") as f:
-    f.write("# MCP Tools API Reference\n\n")
-    f.write(
-        "Auto-generated from the `@mcp.tool()`-decorated functions in "
-        "`twitter_mcp.server` at docs build time. Total: "
-        f"**{len(tools)} tools**. Each tool is documented once below "
-        "with both invocation forms.\n\n"
-    )
-    f.write(
-        "| Form | When to use |\n"
-        "|---|---|\n"
-        "| **MCP** | Inside an AI agent (Claude Code, Cursor, etc.) — the LLM picks the tool and fills args from your prompt. |\n"
-        "| **CLI** | Shell scripts, debugging, automations. `twikit-mcp call <tool> key=value …` — same arg names, types coerced from strings. |\n\n"
-    )
-    f.write(
-        "Tool docstrings are the source of truth — if a section here "
-        "looks wrong, fix the docstring in `twitter_mcp/server.py` and "
-        "the next docs build will catch up.\n\n"
-    )
-    f.write("---\n\n")
+# Localized headers and section labels per locale. Tool docstrings stay
+# English — Python signatures + types are language-neutral, and translating
+# 57 docstrings would create maintenance drift.
+_LOCALES = {
+    "en": {
+        "title": "MCP Tools API Reference",
+        "intro": (
+            "Auto-generated from the `@mcp.tool()`-decorated functions in "
+            "`twitter_mcp.server` at docs build time. Total: "
+        ),
+        "intro_after_count": " tools. Each tool is documented once below with both invocation forms.",
+        "table_header": "| Form | When to use |",
+        "table_div": "|---|---|",
+        "table_mcp": "| **MCP** | Inside an AI agent (Claude Code, Cursor, etc.) — the LLM picks the tool and fills args from your prompt. |",
+        "table_cli": "| **CLI** | Shell scripts, debugging, automations. `twikit-mcp call <tool> key=value …` — same arg names, types coerced from strings. |",
+        "source_note": (
+            "Tool docstrings are the source of truth — if a section here looks wrong, "
+            "fix the docstring in `twitter_mcp/server.py` and the next docs build will catch up."
+        ),
+        "cli_label": "**CLI:**",
+        "no_doc": "_(no docstring)_",
+        "sections": {
+            "Tweets": "Tweets",
+            "Users": "Users",
+            "Lists": "Lists",
+            "Communities": "Communities",
+            "Articles": "Articles",
+            "Direct Messages": "Direct Messages",
+            "Discovery & notifications": "Discovery & notifications",
+            "Scheduled tweets & polls": "Scheduled tweets & polls",
+            "Other": "Other",
+        },
+    },
+    "zh": {
+        "title": "MCP 工具 API 参考",
+        "intro": (
+            "在文档构建时,从 `twitter_mcp.server` 里的 `@mcp.tool()` 装饰函数自动生成。共 "
+        ),
+        "intro_after_count": " 个工具。每个工具下面都同时给出 MCP 和 CLI 两种调用形式。",
+        "table_header": "| 形式 | 何时用 |",
+        "table_div": "|---|---|",
+        "table_mcp": "| **MCP** | 在 AI agent(Claude Code、Cursor 等)里 — LLM 自己选工具并从你的 prompt 里填参数。 |",
+        "table_cli": "| **CLI** | shell 脚本、调试、自动化。`twikit-mcp call <tool> key=value …` — 参数名一样,类型从字符串转换。 |",
+        "source_note": (
+            "工具的 docstring 是真理之源 — 如果下面某段看起来不对,改 `twitter_mcp/server.py` 里的 docstring,下一次构建就会同步过来。"
+        ),
+        "cli_label": "**CLI:**",
+        "no_doc": "_(无 docstring)_",
+        "sections": {
+            "Tweets": "推文 (Tweets)",
+            "Users": "用户 (Users)",
+            "Lists": "列表 (Lists)",
+            "Communities": "社群 (Communities)",
+            "Articles": "文章 (Articles)",
+            "Direct Messages": "私信 (DMs)",
+            "Discovery & notifications": "发现与通知",
+            "Scheduled tweets & polls": "定时推文与投票",
+            "Other": "其他",
+        },
+    },
+    "ja": {
+        "title": "MCP ツール API リファレンス",
+        "intro": (
+            "ドキュメントビルド時に、`twitter_mcp.server` の `@mcp.tool()` デコレータ付き関数から自動生成されています。合計 "
+        ),
+        "intro_after_count": " ツール。各ツールについて MCP と CLI 両方の呼び出し形式を併記します。",
+        "table_header": "| 形式 | 使う場面 |",
+        "table_div": "|---|---|",
+        "table_mcp": "| **MCP** | AI エージェント(Claude Code、Cursor 等)内 — LLM がツールを選び、プロンプトから引数を埋めます。 |",
+        "table_cli": "| **CLI** | シェルスクリプト、デバッグ、自動化。`twikit-mcp call <tool> key=value …` — 引数名は同じ、型は文字列から変換。 |",
+        "source_note": (
+            "ツールの docstring が真実の源 — 下の説明が間違っているように見える場合は、`twitter_mcp/server.py` の docstring を修正すれば次回のビルドで反映されます。"
+        ),
+        "cli_label": "**CLI:**",
+        "no_doc": "_(docstring なし)_",
+        "sections": {
+            "Tweets": "ツイート (Tweets)",
+            "Users": "ユーザー (Users)",
+            "Lists": "リスト (Lists)",
+            "Communities": "コミュニティ (Communities)",
+            "Articles": "記事 (Articles)",
+            "Direct Messages": "DM",
+            "Discovery & notifications": "発見と通知",
+            "Scheduled tweets & polls": "予約投稿と投票",
+            "Other": "その他",
+        },
+    },
+}
 
-    for section in SECTION_ORDER:
-        names = by_section.get(section, [])
-        if not names:
-            continue
-        f.write(f"## {section}\n\n")
-        for name in names:
-            tool = tools[name]
-            # Pull the underlying fn off twikit/FastMCP's wrapper if needed.
-            fn = getattr(tool, "fn", None) or getattr(tool, "func", None) or tool
-            f.write(f"### `{name}`\n\n")
 
-            # Signature block.
-            try:
-                f.write(f"```python\n{name}{_signature_str(fn)}\n```\n\n")
-            except (ValueError, TypeError):
-                pass
+def _write_api_page() -> None:
+    """Emit a single English `docs/api.md`.
 
-            # Docstring.
-            doc = inspect.getdoc(fn) or "_(no docstring)_"
-            f.write(doc + "\n\n")
+    The api page content is Python signatures + types + CLI examples —
+    language-neutral, so localizing it would create maintenance churn
+    without meaningful UX gain. Readers in zh/ja locale see this page
+    in English (acceptable tradeoff for API ref since types and arg
+    names are English regardless).
+    """
+    L = _LOCALES["en"]
+    out_path = _REPO_ROOT / "docs" / "api.md"
+    with out_path.open("w") as f:
+        f.write(f"# {L['title']}\n\n")
+        f.write(L["intro"])
+        f.write(f"**{len(tools)}**")
+        f.write(L["intro_after_count"] + "\n\n")
+        f.write(L["table_header"] + "\n")
+        f.write(L["table_div"] + "\n")
+        f.write(L["table_mcp"] + "\n")
+        f.write(L["table_cli"] + "\n\n")
+        f.write(L["source_note"] + "\n\n")
+        f.write("---\n\n")
 
-            # CLI usage example.
-            try:
-                cli = _cli_example(name, fn)
-                f.write("**CLI:**\n\n")
-                f.write(f"```bash\n{cli}\n```\n\n")
-            except (ValueError, TypeError):
-                pass
+        for section in SECTION_ORDER:
+            names = by_section.get(section, [])
+            if not names:
+                continue
+            f.write(f"## {L['sections'][section]}\n\n")
+            for name in names:
+                tool = tools[name]
+                fn = getattr(tool, "fn", None) or getattr(tool, "func", None) or tool
+                f.write(f"### `{name}`\n\n")
+                try:
+                    f.write(f"```python\n{name}{_signature_str(fn)}\n```\n\n")
+                except (ValueError, TypeError):
+                    pass
+                doc = inspect.getdoc(fn) or L["no_doc"]
+                f.write(doc + "\n\n")
+                try:
+                    cli = _cli_example(name, fn)
+                    f.write(L["cli_label"] + "\n\n")
+                    f.write(f"```bash\n{cli}\n```\n\n")
+                except (ValueError, TypeError):
+                    pass
+                f.write("---\n\n")
 
-            f.write("---\n\n")
+        expected = sum(len(v) for v in by_section.values())
+        if expected != len(tools):
+            missing = sorted(set(tools) - {n for ns in by_section.values() for n in ns})
+            f.write(
+                "\n\n> ⚠️ **Categoriser mismatch** — these tools weren't placed: "
+                + ", ".join(f"`{n}`" for n in missing)
+                + ". Update `_categorize()` in `scripts/gen_api_docs.py`.\n"
+            )
 
-    # Catch any tool that didn't fit a section — surface so we tweak
-    # the categoriser instead of silently dropping it.
-    expected = sum(len(v) for v in by_section.values())
-    if expected != len(tools):
-        missing = sorted(set(tools) - {n for ns in by_section.values() for n in ns})
-        f.write(
-            "\n\n> ⚠️ **Categoriser mismatch** — these tools weren't placed: "
-            + ", ".join(f"`{n}`" for n in missing)
-            + ". Update `_categorize()` in `scripts/gen_api_docs.py`.\n"
-        )
+
+_write_api_page()

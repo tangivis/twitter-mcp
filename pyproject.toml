@@ -52,7 +52,7 @@ docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.27",
-    "mkdocs-gen-files>=0.5",
+    "mkdocs-static-i18n>=1.2",
 ]
 
 [tool.hatch.build.targets.wheel]

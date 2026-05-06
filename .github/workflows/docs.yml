@@ -46,18 +46,20 @@ jobs:
           uv python install 3.13
           uv sync --group dev --group docs
 
+      - name: Generate api.md
+        # gen_api_docs.py walks the live mcp._tool_manager registry and
+        # writes docs/api.md (gitignored). Runs BEFORE mkdocs build so
+        # the i18n plugin sees a real on-disk file (the on_config /
+        # on_files event ordering doesn't play nicely with mkdocs-gen-files'
+        # virtual-file approach when i18n is also active).
+        run: uv run --group docs python scripts/gen_api_docs.py
+
       - name: Build site
-        # mkdocs-gen-files runs scripts/gen_api_docs.py during build —
-        # imports twitter_mcp.server, walks @mcp.tool() registrations,
-        # writes docs/api.md. Output goes to ./site/.
-        #
-        # NOT --strict: TECHNICAL.md contains intra-doc anchor links
-        # using Chinese headings (e.g. `#什么是-mcp`) that GitHub's
-        # markdown renderer slugifies but mkdocs' default doesn't.
-        # Site still builds and serves correctly — those specific
-        # in-page jump links won't resolve, which is a known mismatch
-        # between the GitHub-rendered version and the docs site.
-        # Tracking a future cleanup; for now, warnings are non-fatal.
+        # NOT --strict: TECHNICAL.zh.md contains intra-doc anchor links
+        # using Chinese headings (e.g. `#什么是-mcp`) that GitHub's markdown
+        # renderer slugifies but mkdocs's default doesn't. Site still
+        # builds and serves correctly — those specific in-page jump links
+        # won't resolve. Tracked as a future cleanup.
         run: uv run --group docs mkdocs build
 
       - name: Upload artifact

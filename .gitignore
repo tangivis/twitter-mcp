@@ -21,3 +21,4 @@ cookies.json
 
 # MkDocs build output
 /site/
+/docs/api.md
