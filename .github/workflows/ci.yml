@@ -72,52 +72,8 @@ jobs:
             | uv run python -m twitter_mcp.server \
             | uv run python -c "import json, sys; resp = json.loads(sys.stdin.readline()); assert resp['result']['serverInfo']['name'] == 'twitter'; print('MCP handshake OK')"
 
-  # ─── PR auto-fix loop ───
-  # When ANY of the gating jobs (lint/test×3/protocol) fails on a PR, this
-  # job auto-summons @claude with iter cap of 5 + escalation to issue (same
-  # cap logic as pr-review.yml's request-changes path). Doesn't run on
-  # push-to-main fails — those go straight to the live-smoke / publish
-  # error paths.
-  ci-failure-auto-fix:
-    name: Auto-summon @claude on CI failure
-    needs: [lint, test, protocol]
-    if: always() && github.event_name == 'pull_request' && (needs.lint.result == 'failure' || needs.test.result == 'failure' || needs.protocol.result == 'failure')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Build failure summary
-        env:
-          LINT: ${{ needs.lint.result }}
-          TEST: ${{ needs.test.result }}
-          PROTO: ${{ needs.protocol.result }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          {
-            echo "**Failed CI jobs:**"
-            [ "$LINT" = "failure" ]  && echo "- ❌ Lint & Format"
-            [ "$TEST" = "failure" ]  && echo "- ❌ Test (Python 3.14, one or more platforms)"
-            [ "$PROTO" = "failure" ] && echo "- ❌ MCP Protocol Check"
-            echo
-            echo "Run: $RUN_URL"
-            echo
-            echo "_(Workflow logs aren't readable from MCP — open the run URL above to see the failing step's output. Common patterns:)_"
-            echo "- **Lint** → \`uv run ruff format .\` + \`uv run ruff check . --fix\`"
-            echo "- **Test** → run \`uv run pytest -x -q\` locally; an assertion / import / coverage drop will be in the output"
-            echo "- **MCP Protocol** → \`uv run python -m twitter_mcp.server\` should respond to a JSON-RPC initialize within seconds; fails usually mean a \`server.py\` import error"
-          } > failure.md
-
-      - name: Auto-summon @claude
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR_NUM: ${{ github.event.pull_request.number }}
-          REASON: "CI failure"
-          BODY_FILE: failure.md
-        run: bash .github/scripts/auto_summon_claude.sh
+# Issue #54: the auto-fix-on-CI-fail job that previously lived here was
+# removed. CI failures show up directly on the PR; the maintainer (via
+# Claude Code) decides whether to push a fix or close the PR. The
+# `auto_summon_claude.sh` helper is still in the tree because live-smoke
+# uses it — that loop stays as a post-release safety net.
