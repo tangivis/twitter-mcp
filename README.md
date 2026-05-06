@@ -29,7 +29,7 @@ No Twitter API key needed. Free forever.
 | **Auth** | Browser cookies | Twitter API Key |
 | **Cost** | Free | $200+/month |
 | **Setup** | 2 steps, 2 minutes | Apply for developer account, wait for approval |
-| **Library** | [twikit](https://github.com/d60/twikit) (reverse-engineered) | [tweepy](https://github.com/tweepy/tweepy) (official API) |
+| **API** | [twikit](https://github.com/d60/twikit) (reverse-engineered) | [X API](https://developer.x.com/en/docs/x-api) (official, paid) |
 
 ### Quick Start
 
@@ -311,7 +311,7 @@ claude mcp add twitter -s user ^
 | **认证** | 浏览器 Cookies | Twitter API Key |
 | **费用** | 免费 | $200+/月 |
 | **配置** | 2 步，2 分钟 | 申请开发者账号，等审批 |
-| **底层** | [twikit](https://github.com/d60/twikit)（逆向工程） | [tweepy](https://github.com/tweepy/tweepy)（官方 API） |
+| **API** | [twikit](https://github.com/d60/twikit)（逆向工程） | [X API](https://developer.x.com/en/docs/x-api)（官方，付费） |
 
 ### 快速开始
 
@@ -558,7 +558,7 @@ claude mcp add twitter -s user ^
 | **認証** | ブラウザ Cookie | Twitter API Key |
 | **料金** | 無料 | $200+/月 |
 | **セットアップ** | 2ステップ、2分 | 開発者アカウント申請、承認待ち |
-| **ライブラリ** | [twikit](https://github.com/d60/twikit)（リバースエンジニアリング） | [tweepy](https://github.com/tweepy/tweepy)（公式 API） |
+| **API** | [twikit](https://github.com/d60/twikit)（リバースエンジニアリング） | [X API](https://developer.x.com/en/docs/x-api)（公式、有料） |
 
 ### クイックスタート
 
