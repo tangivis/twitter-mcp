@@ -100,6 +100,7 @@ jobs:
           set -o pipefail
           uv run python - 2>&1 <<'PY' | tee smoke.log
           import asyncio, json
+          from mcp.server.fastmcp.exceptions import ToolError
           from twitter_mcp.server import (
               get_article,
               get_tweet,
@@ -114,14 +115,24 @@ jobs:
           successes = []
           failures = []
 
-          async def check(name, coro, validate):
-              """Run one read, capture pass/fail, never bubble exceptions out."""
+          async def check(name, coro, validate, tolerate_substr=()):
+              """Run one read, capture pass/fail, never bubble exceptions out.
+
+              `tolerate_substr` is a tuple of substrings that, when present
+              in the tool error message, mark the check as tolerated rather
+              than failed. Used for X-gating drift (issue #37) where the
+              tool itself works but X gates the data for the burner."""
               try:
                   out = json.loads(await coro)
                   msg = validate(out)
                   successes.append(f"  ✓ {name}: {msg}")
               except AssertionError as e:
                   failures.append(f"  ✗ {name}: assertion failed — {e}")
+              except ToolError as e:
+                  if any(s in str(e) for s in tolerate_substr):
+                      successes.append(f"  ✓ {name}: tolerated ({e})")
+                  else:
+                      failures.append(f"  ✗ {name}: ToolError: {e}")
               except Exception as e:
                   failures.append(f"  ✗ {name}: {type(e).__name__}: {e}")
 
@@ -159,8 +170,14 @@ jobs:
               return f"{len(o['trends'])} trends (empty OK — depends on burner region)"
 
           def v_followers(o):
-              # Since 2024 X has tightened follower-list visibility — burner often can't
-              # see another account's followers and gets `[]` back. Shape check only.
+              # Since 2024 X has tightened follower-list visibility — burner often
+              # can't see another account's followers and gets `[]` back. Since
+              # 2026-Q2 the gating extends further: X returns `User not found` for
+              # the *target* user when the burner has insufficient trust to even
+              # resolve the handle for follower-listing (observed on `vercel`,
+              # 2026-05-06, run 25460864625). Both modes are tolerated as long as
+              # the *tool* doesn't crash on a real network response — the
+              # `tolerate_substr` arm of `check()` covers the ToolError path.
               assert isinstance(o.get("users"), list), "missing 'users' key"
               return f"{len(o['users'])} followers visible (empty OK — X gates follower lists)"
 
@@ -175,7 +192,14 @@ jobs:
               await check("search_tweets",      search_tweets(query="AI", count=5, product="Top"), v_search)
               await check("get_timeline",       get_timeline(count=5), v_timeline)
               await check("get_trends",         get_trends(category="trending", count=5), v_trends)
-              await check("get_user_followers", get_user_followers(screen_name="vercel", count=5), v_followers)
+              await check(
+                  "get_user_followers",
+                  get_user_followers(screen_name="vercel", count=5),
+                  v_followers,
+                  # X-gating drift: `User not found` from the burner is treated
+                  # as benign (issue #37, 2026-05-06).
+                  tolerate_substr=("User not found",),
+              )
               await check("get_lists",          get_lists(count=5), v_lists)
 
               print("\n".join(successes))
