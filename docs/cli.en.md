@@ -23,19 +23,21 @@ twikit-mcp search "AI" 5                  # 5 top search results
 twikit-mcp trends 20                      # top 20 trending topics
 ```
 
-Sample output in a terminal (0.1.23+ ASCII Twitter card):
+Sample output in a terminal (0.1.24+ Rich-rendered card with clickable links):
 
 ```text
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Pathfinder Sports · @pathfinderSport                                         │
 │ Sat Feb 21 16:55:22 +0000 2009                                               │
-├──────────────────────────────────────────────────────────────────────────────┤
+│ ──────────────────────────────────────────────────────────────────────────── │
 │ Άρσεναλ - Σάντερλαντ: (X) 0-0 τελικό                                         │
-├──────────────────────────────────────────────────────────────────────────────┤
+│ ──────────────────────────────────────────────────────────────────────────── │
 │ ❤ 7,269    🔁 5,473                                                          │
 │ https://x.com/pathfinderSport/status/1234567890                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
+
+In a real terminal: the author handle is bold cyan, the timestamp is dim, `❤` is red, `🔁` is green, and the URL is wrapped in an OSC 8 escape so cmd-clicking opens it in your browser (works in iTerm2, kitty, WezTerm, Windows Terminal, gnome-terminal ≥ 3.36). Emoji and CJK lines are width-correct — Rich's cell-aware measurement is used for padding, no border drift.
 
 Width is clamped to your terminal columns (between 60 and 100). Piping to a file or another command, or setting `NO_COLOR=1`, auto-falls-back to byte-stable plain text — same shape as 0.1.22, safe for `jq`/`grep`/diffing:
 

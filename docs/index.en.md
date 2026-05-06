@@ -8,11 +8,16 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.24
+
+- **Rich-rendered cards** — the terminal cards from 0.1.23 are now produced by [Rich](https://github.com/Textualize/rich), giving correct cell-width math for emoji + CJK (no more right-border drift on `❤ 🔁` lines), and **OSC 8 clickable hyperlinks** for tweet / profile / bio URLs in iTerm2, kitty, WezTerm, Windows Terminal, gnome-terminal ≥ 3.36, etc. The trends list is now a proper table.
+- Plain (non-TTY) output unchanged: `| jq` / `> file` / `NO_COLOR=1` consumers stay byte-stable.
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.23
 
 - **ASCII Twitter-card UI** — `twikit-mcp tweet`, `user`, `tl`, `search`, `trends` now render box-drawing cards in your terminal (bold author, dim timestamps, separators between body / counts / URL). Piping to a file or another command, or setting `NO_COLOR=1`, auto-falls-back to the previous byte-stable plain text. See [CLI mode](cli.md) for samples.
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.22
 

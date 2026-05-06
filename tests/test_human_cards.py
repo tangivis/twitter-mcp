@@ -1,22 +1,50 @@
-"""Issue #61: ASCII Twitter-card rendering for human CLI subcommands.
+"""Issue #61 + #68: TTY-aware card rendering for human CLI subcommands.
 
-Tests for the new TTY-aware card formatters. The card path activates
-when `sys.stdout.isatty()` is true; pipes / redirects fall back to the
-existing plain text format (so `| jq` / `> file` still get sane output).
+#61 shipped hand-rolled box-drawing in 0.1.23. #68 replaces the rendering
+layer with [Rich](https://github.com/Textualize/rich) for correct
+emoji/CJK width, OSC 8 clickable hyperlinks, and a more modern look.
 
-Key invariants:
+The card path activates when `sys.stdout.isatty()` is true; pipes /
+redirects fall back to the existing plain text format (so `| jq` /
+`> file` still get sane output).
+
+Key invariants (preserved across the Rich migration):
 
 - Box-drawing chars (`╭ ╮ ╰ ╯ │ ─`) appear ONLY in TTY mode.
-- Plain mode output is byte-equivalent to the pre-#61 format.
+- Plain mode output is byte-equivalent to the pre-#61 / pre-#68 format.
 - Card width is `min(max(terminal_columns, 60), 100)` — clamped.
-- ANSI escape codes only fire when TTY=True AND `NO_COLOR` env unset.
-- Long body text wraps INSIDE the card without breaking the right border.
+- CSI ANSI escape codes (`\\x1b[...m`) only fire when TTY and `NO_COLOR`
+  unset.
+- Long body text wraps INSIDE the card without breaking the right border,
+  including lines containing emoji or CJK characters.
+
+New invariants (#68):
+
+- Tweet URL / profile URL / user-bio URL are wrapped in OSC 8 hyperlinks
+  (`\\x1b]8;;<url>\\x1b\\\\` … `\\x1b]8;;\\x1b\\\\`) in TTY mode.
+- Lines containing emoji (e.g. `❤ 🔁 📍`) and CJK have correct visible
+  width (Rich uses cell-width-aware measurement, not raw `len()`).
 """
 
 import os
+import re
 from unittest.mock import patch
 
 import pytest
+
+# Used in several alignment tests. Kept local so tests don't depend on a
+# private regex still being exported by the server module.
+_CSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_OSC8_RE = re.compile(r"\x1b\]8;[^\x07]*?(?:\x1b\\|\x07)")
+
+
+def _strip_escapes(s: str) -> str:
+    """Drop CSI color codes AND OSC 8 hyperlink wrappers — what's left is
+    what the user actually sees."""
+    s = _CSI_RE.sub("", s)
+    s = _OSC8_RE.sub("", s)
+    return s
+
 
 # ── _is_tty / _term_width helpers ────────────────────
 
@@ -85,6 +113,9 @@ def test_format_tweet_plain_when_not_tty():
             f"Plain (non-tty) mode contains box char {box_char!r} — "
             f"piped output should be plain text only."
         )
+    # Plain output must also contain zero ANSI escape sequences, since
+    # scripts that diff or `jq` the output rely on byte stability.
+    assert "\x1b" not in out, f"plain output leaked ANSI escapes: {out!r}"
 
 
 def test_format_user_plain_when_not_tty():
@@ -104,6 +135,18 @@ def test_format_user_plain_when_not_tty():
         )
     for box_char in ("╭", "╮", "╰", "╯", "│", "─"):
         assert box_char not in out
+    assert "\x1b" not in out
+
+
+def test_format_trends_plain_when_not_tty():
+    from twitter_mcp.server import _format_trends
+
+    with patch("sys.stdout.isatty", return_value=False):
+        out = _format_trends({"trends": [{"name": "AI", "tweets_count": 50_000}]})
+    for box_char in ("╭", "╮", "╰", "╯", "│", "─"):
+        assert box_char not in out
+    assert "\x1b" not in out
+    assert "AI" in out
 
 
 # ── TTY-mode card rendering ──────────────────────────
@@ -141,10 +184,11 @@ def test_format_tweet_renders_box_in_tty(tty_env):
         assert required in out, (
             f"TTY-mode tweet card missing box char {required!r}; got:\n{out}"
         )
-    # Content still present.
-    assert "@jack" in out
-    assert "just setting up my twttr" in out
-    assert "https://x.com/jack/status/20" in out
+    # Content still present (after stripping styling escapes).
+    visible = _strip_escapes(out)
+    assert "@jack" in visible
+    assert "just setting up my twttr" in visible
+    assert "https://x.com/jack/status/20" in visible
 
 
 def test_format_user_renders_box_in_tty(tty_env):
@@ -164,8 +208,9 @@ def test_format_user_renders_box_in_tty(tty_env):
     )
     for required in ("╭", "╮", "╰", "╯", "│", "─"):
         assert required in out
-    assert "@elonmusk" in out
-    assert "200.5M" in out
+    visible = _strip_escapes(out)
+    assert "@elonmusk" in visible
+    assert "200.5M" in visible
 
 
 def test_format_trends_renders_box_in_tty(tty_env):
@@ -174,7 +219,7 @@ def test_format_trends_renders_box_in_tty(tty_env):
     out = _format_trends({"trends": [{"name": "AI", "tweets_count": 50_000}]})
     for required in ("╭", "│", "╰"):
         assert required in out
-    assert "AI" in out
+    assert "AI" in _strip_escapes(out)
 
 
 # ── Width clamping carries through to cards ─────────
@@ -205,9 +250,10 @@ def test_card_width_uses_clamped_terminal():
         )
     # Each rendered border line is exactly the clamped width — pick the
     # top border (starts with ╭, ends with ╮).
-    top_lines = [line for line in out.splitlines() if line.startswith("╭")]
+    visible_lines = [_strip_escapes(line) for line in out.splitlines()]
+    top_lines = [line for line in visible_lines if line.startswith("╭")]
     assert top_lines, "no top-border line found in TTY card output"
-    # Width is 100 visible chars (box chars are single-width Unicode).
+    # Width is 100 visible cells (Rich uses cell-width-aware measurement).
     assert len(top_lines[0]) == 100, (
         f"top border {top_lines[0]!r} length {len(top_lines[0])}, "
         f"expected 100 (clamp ceiling)"
@@ -218,8 +264,8 @@ def test_card_width_uses_clamped_terminal():
 
 
 def test_no_color_env_disables_ansi_in_tty():
-    """`NO_COLOR=1` must suppress ANSI escape codes even when stdout is a tty.
-    De-facto standard documented at https://no-color.org."""
+    """`NO_COLOR=1` must suppress CSI ANSI color codes even when stdout is
+    a tty. De-facto standard: https://no-color.org."""
     from twitter_mcp.server import _format_tweet
 
     with (
@@ -242,7 +288,7 @@ def test_no_color_env_disables_ansi_in_tty():
             }
         )
     assert "\x1b[" not in out, (
-        f"NO_COLOR=1 set but ANSI escape codes leaked into output:\n{out}"
+        f"NO_COLOR=1 set but CSI ANSI escape codes leaked into output:\n{out}"
     )
 
 
@@ -250,8 +296,10 @@ def test_no_color_env_disables_ansi_in_tty():
 
 
 def test_long_tweet_wraps_inside_card(tty_env):
-    """Body longer than the available content width wraps on word
-    boundaries; every line still ends with the right border `│`."""
+    """Body longer than the available content width wraps; every body line
+    has the same visible CELL width (right border doesn't drift)."""
+    from rich.cells import cell_len
+
     from twitter_mcp.server import _format_tweet
 
     long_text = (
@@ -271,36 +319,22 @@ def test_long_tweet_wraps_inside_card(tty_env):
             "retweets": 0,
         }
     )
-    # Every body line — i.e., every line that begins with `│` — has the
-    # same width. (Last char also `│`.) Width consistency means borders
-    # don't break when text is long.
-    from twitter_mcp.server import _ANSI_RE
-
-    body_lines = [line for line in out.splitlines() if line.startswith("│")]
+    visible_lines = [_strip_escapes(line) for line in out.splitlines()]
+    body_lines = [line for line in visible_lines if line.startswith("│")]
     assert len(body_lines) >= 3, "long text should wrap to multiple lines"
-    # Compare VISIBLE widths (raw len() differs across colored vs plain
-    # lines because ANSI escape bytes don't render).
-    widths = {len(_ANSI_RE.sub("", line)) for line in body_lines}
+    # Cell-width comparison (not codepoint) — emoji & CJK occupy 2 cells.
+    widths = {cell_len(line) for line in body_lines}
     assert len(widths) == 1, (
-        f"body lines have inconsistent visible widths {widths!r} — borders broken"
+        f"body lines have inconsistent CELL widths {widths!r} — borders broken"
     )
 
 
-# ── Additional edge cases (cover the rare branches) ──
+# ── Edge cases (cover rare branches) ────────────────
 
 
-def test_box_line_truncates_oversized_unwrapped():
-    """Single unwrappable token longer than the inner width gets cut with ellipsis."""
-    from twitter_mcp.server import _box_line
-
-    long_token = "x" * 120
-    line = _box_line(80, long_token)
-    assert line.endswith("│")
-    assert "…" in line, "oversized token should be truncated with ellipsis"
-
-
-def test_blank_paragraph_rendered_as_empty_card_line(tty_env):
-    """A blank line in tweet body produces an empty-content card line, not nothing."""
+def test_blank_paragraph_rendered_in_card(tty_env):
+    """A blank line in tweet body keeps the body section intact (doesn't
+    collapse the card body)."""
     from twitter_mcp.server import _format_tweet
 
     out = _format_tweet(
@@ -308,19 +342,20 @@ def test_blank_paragraph_rendered_as_empty_card_line(tty_env):
             "id": "1",
             "author": "alice",
             "author_name": "Alice",
-            "text": "first paragraph\n\nsecond paragraph",  # blank in middle
+            "text": "first paragraph\n\nsecond paragraph",
             "created_at": "2026-01-01",
             "likes": 1,
             "retweets": 0,
         }
     )
-    body_lines = [line for line in out.splitlines() if line.startswith("│")]
-    # First + blank + second + counts + URL → ≥4 │ lines.
-    assert len(body_lines) >= 4
+    visible = _strip_escapes(out)
+    assert "first paragraph" in visible
+    assert "second paragraph" in visible
 
 
 def test_tweet_with_no_text_renders_blank_body(tty_env):
-    """A tweet with empty `text` field still renders the body section."""
+    """A tweet with empty `text` field still renders without crashing,
+    box still closed."""
     from twitter_mcp.server import _format_tweet
 
     out = _format_tweet(
@@ -334,12 +369,13 @@ def test_tweet_with_no_text_renders_blank_body(tty_env):
             "retweets": 0,
         }
     )
-    # No crash + box still closed.
     assert "╰" in out
 
 
 def test_user_with_created_and_url_renders_those_lines(tty_env):
-    """Coverage: `created_at` + `url` paths in `_card_user`."""
+    """Coverage: `created_at` + `url` paths in `_card_user`. Spacing in
+    Rich's grid layout isn't fixed-width, so we only assert the values
+    appear (in the right order)."""
     from twitter_mcp.server import _format_user
 
     out = _format_user(
@@ -353,11 +389,13 @@ def test_user_with_created_and_url_renders_those_lines(tty_env):
             "created_at": "Mon Jan 01 2024",
         }
     )
-    assert "Joined      Mon Jan 01 2024" in out
-    assert "https://example.com" in out
+    visible = _strip_escapes(out)
+    assert "Joined" in visible
+    assert "Mon Jan 01 2024" in visible
+    assert "https://example.com" in visible
 
 
-def test_card_trends_empty_returns_no_trends_in_tty(tty_env):
+def test_card_trends_empty_returns_no_trends(tty_env):
     """When trends list is empty, fall back to plain '(no trends)'."""
     from twitter_mcp.server import _format_trends
 
@@ -365,34 +403,86 @@ def test_card_trends_empty_returns_no_trends_in_tty(tty_env):
     assert out == "(no trends)"
 
 
-def test_card_trends_with_domain_context_renders_dash_separator(tty_env):
-    """Coverage: trend with `domain_context` adds an `— context` suffix."""
+def test_card_trends_with_domain_context(tty_env):
+    """Coverage: trend with `domain_context` includes the context value."""
     from twitter_mcp.server import _format_trends
 
     out = _format_trends(
         {"trends": [{"name": "AI", "tweets_count": 10000, "domain_context": "Tech"}]}
     )
-    assert "Tech" in out
-    assert "—" in out
+    visible = _strip_escapes(out)
+    assert "AI" in visible
+    assert "Tech" in visible
 
 
-def test_visible_len_ignores_ansi():
-    """Padding logic must not count ANSI escapes toward the visible width."""
-    from twitter_mcp.server import _visible_len
-
-    plain = "hello"
-    colored = "\x1b[1;36mhello\x1b[0m"
-    assert _visible_len(plain) == 5
-    assert _visible_len(colored) == 5  # same visible width
+# ── Right-border alignment regressions (Rich's wcwidth fix, issue #68) ──
 
 
-def test_colored_card_aligns_right_border(tty_env):
-    """Visible-length padding regression: TTY-rendered lines with colored
-    content must produce visible-width consistent with plain lines.
+def test_emoji_line_aligns_right_border(tty_env):
+    """Issue #68: a line containing emoji (❤ 🔁) has the same visible
+    width as plain lines — Rich uses cell-width-aware measurement, the
+    pre-#68 hand-rolled `_visible_len` (`len()` after ANSI strip) didn't.
+    """
+    from rich.cells import cell_len
 
-    Without _visible_len, `_box_line` would pad based on raw len(),
-    over-counting ANSI bytes → right border drifts left."""
-    from twitter_mcp.server import _ANSI_RE, _format_tweet
+    from twitter_mcp.server import _format_tweet
+
+    out = _format_tweet(
+        {
+            "id": "1",
+            "author": "alice",
+            "author_name": "Alice",
+            "text": "hi",
+            "created_at": "2026-01-01",
+            "likes": 7269,
+            "retweets": 5473,
+        }
+    )
+    visible_lines = [_strip_escapes(line) for line in out.splitlines()]
+    body_lines = [line for line in visible_lines if line.startswith("│")]
+    # `❤ 7,269    🔁 5,473` line is in here. All body lines should have
+    # the same visual cell width — this is the assertion that the
+    # pre-#68 implementation FAILED because it counted emoji as 1 cell.
+    cell_widths = {cell_len(line) for line in body_lines}
+    assert len(cell_widths) == 1, (
+        f"body lines (including emoji line) have inconsistent CELL widths "
+        f"{cell_widths!r} — Rich/cell_len alignment regressed."
+    )
+
+
+def test_cjk_line_aligns_right_border(tty_env):
+    """Issue #68: a body containing CJK (each char ~2 cells) wraps and
+    pads correctly so the right border holds."""
+    from rich.cells import cell_len
+
+    from twitter_mcp.server import _format_tweet
+
+    out = _format_tweet(
+        {
+            "id": "1",
+            "author": "alice",
+            "author_name": "アリス",
+            "text": "今日は良い天気です。日本語のツイートも幅が崩れません。",
+            "created_at": "2026-01-01",
+            "likes": 1,
+            "retweets": 0,
+        }
+    )
+    visible_lines = [_strip_escapes(line) for line in out.splitlines()]
+    body_lines = [line for line in visible_lines if line.startswith("│")]
+    cell_widths = {cell_len(line) for line in body_lines}
+    assert len(cell_widths) == 1, (
+        f"CJK body lines have inconsistent CELL widths {cell_widths!r}"
+    )
+
+
+# ── OSC 8 hyperlinks (issue #68) ────────────────────
+
+
+def test_tweet_emits_osc8_hyperlink_for_url(tty_env):
+    """In TTY + no NO_COLOR, the tweet URL is wrapped in an OSC 8
+    hyperlink escape so cmd-clicking jumps to it in modern terminals."""
+    from twitter_mcp.server import _format_tweet
 
     out = _format_tweet(
         {
@@ -400,17 +490,50 @@ def test_colored_card_aligns_right_border(tty_env):
             "author": "jack",
             "author_name": "jack",
             "text": "hi",
-            "created_at": "2026-01-01",
+            "created_at": "2006-03-21",
             "likes": 1,
             "retweets": 0,
         }
     )
-    # Strip ANSI; every │-line has the same VISIBLE width.
-    visible_lines = [
-        _ANSI_RE.sub("", line) for line in out.splitlines() if line.startswith("│")
-    ]
-    widths = {len(line) for line in visible_lines}
-    assert len(widths) == 1, (
-        f"colored body lines have inconsistent visible widths "
-        f"{widths!r} — _box_line is using raw len() not _visible_len()"
+    # Rich emits OSC 8 as `\x1b]8;;<url>\x1b\\` ... `\x1b]8;;\x1b\\`.
+    assert "\x1b]8;" in out, (
+        "tweet URL should be wrapped in OSC 8 hyperlink escape for "
+        "click-to-open in modern terminals."
     )
+    # The URL is present in the wrapper.
+    assert "https://x.com/jack/status/20" in out
+
+
+def test_user_emits_osc8_for_profile_url(tty_env):
+    """Profile URL `https://x.com/<sn>` is OSC 8 wrapped."""
+    from twitter_mcp.server import _format_user
+
+    out = _format_user(
+        {
+            "screen_name": "alice",
+            "name": "Alice",
+            "followers_count": 0,
+            "following_count": 0,
+            "tweets_count": 0,
+        }
+    )
+    assert "\x1b]8;" in out
+    assert "https://x.com/alice" in out
+
+
+def test_user_emits_osc8_for_bio_url(tty_env):
+    """User-supplied bio URL is OSC 8 wrapped."""
+    from twitter_mcp.server import _format_user
+
+    out = _format_user(
+        {
+            "screen_name": "alice",
+            "name": "Alice",
+            "followers_count": 0,
+            "following_count": 0,
+            "tweets_count": 0,
+            "url": "https://example.com/me",
+        }
+    )
+    assert "\x1b]8;" in out
+    assert "https://example.com/me" in out

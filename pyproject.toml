@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "twikit-mcp"
-version = "0.1.23"
+version = "0.1.24"
 description = "Twitter/X MCP server powered by twikit — no API key needed, free forever"
 readme = "README.md"
 license = "MIT"
@@ -30,6 +30,7 @@ dependencies = [
     "webvtt-py",
     "m3u8",
     "js2py-3-13",
+    "rich",
 ]
 
 [project.urls]

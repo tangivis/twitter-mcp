@@ -2060,12 +2060,13 @@ def _compact_num(n) -> str:
     return f"{n:,}"
 
 
-# ── TTY-aware card rendering (issue #61) ─────────────
+# ── TTY-aware card rendering (issue #61, #68) ────────
 #
 # When stdout is a tty, human subcommands render boxed cards (Twitter-
-# like UI). When piped, fall back to the existing plain text so
-# `| jq` / `> file` keep the byte-for-byte format users already script
-# against. Pure stdlib — no `rich` / `blessed` / `curses`.
+# like UI) via [Rich](https://github.com/Textualize/rich) — gives us
+# correct emoji/CJK cell-width math, OSC 8 clickable hyperlinks, and a
+# theme-friendly look. When piped, fall back to plain text so `| jq` /
+# `> file` keep the byte-for-byte format users already script against.
 
 
 def _is_tty() -> bool:
@@ -2082,104 +2083,97 @@ def _term_width() -> int:
     return min(max(_shutil.get_terminal_size().columns, 60), 100)
 
 
-def _box_top(width: int, label: str = "") -> str:
-    """Render `╭───[ label ]───────────╮` (or plain `╭─...─╮` if no label)."""
-    if label:
-        # Pad: 2 leading dashes, "[ label ]", fill rest with dashes.
-        prefix = f"╭── {label} "
-        # Total width = prefix + dashes + ╮ → solve for dashes.
-        dashes = "─" * (width - len(prefix) - 1)
-        return f"{prefix}{dashes}╮"
-    return "╭" + "─" * (width - 2) + "╮"
+def _rich_render(renderable, width: int) -> str:
+    """Render a Rich `renderable` to string at fixed `width`.
 
-
-def _box_bottom(width: int) -> str:
-    return "╰" + "─" * (width - 2) + "╯"
-
-
-def _box_mid(width: int) -> str:
-    """Horizontal divider inside a card: ├─...─┤."""
-    return "├" + "─" * (width - 2) + "┤"
-
-
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-
-
-def _visible_len(s: str) -> int:
-    """Length of `s` ignoring ANSI escape sequences (their visual width is 0)."""
-    return len(_ANSI_RE.sub("", s))
-
-
-def _box_line(width: int, content: str) -> str:
-    """Render `│ content<padded to width> │`. Truncates if content too long.
-
-    Pads on **visible** length so ANSI-colored content lines up with the
-    right border (raw `len()` would over-count escape bytes).
+    `NO_COLOR=1` → `color_system=None` strips CSI styling entirely
+    (including bold / dim attributes, which Rich's `no_color=True` would
+    otherwise keep). OSC 8 hyperlinks are always emitted in TTY mode.
     """
-    inner = width - 4  # account for "│ " + " │"
-    if _visible_len(content) > inner:
-        # Drop colors before truncating — preserving partial ANSI is messy.
-        content = _ANSI_RE.sub("", content)[: inner - 1] + "…"
-    pad = " " * (inner - _visible_len(content))
-    return "│ " + content + pad + " │"
+    from io import StringIO
+
+    from rich.console import Console
+
+    no_color = bool(os.environ.get("NO_COLOR"))
+    buf = StringIO()
+    Console(
+        file=buf,
+        width=width,
+        force_terminal=True,
+        no_color=no_color,
+        color_system=None if no_color else "truecolor",
+        emoji=False,
+        legacy_windows=False,
+    ).print(renderable, end="")
+    return buf.getvalue().rstrip("\n")
 
 
-def _wrap_into_card(width: int, text: str) -> list[str]:
-    """Wrap `text` into card-body lines (each `│ ... │`, padded to width)."""
-    import textwrap as _textwrap
+def _link_text(url: str, label: str | None = None, style: str = "dim") -> object:
+    """Build a `Text` styled `url` (or `label`) with an OSC 8 hyperlink to
+    `url`. Rendered as `\\x1b]8;;<url>\\x1b\\\\<label>\\x1b]8;;\\x1b\\\\` by Rich."""
+    from rich.text import Text
 
-    inner = width - 4
-    lines: list[str] = []
-    for paragraph in text.splitlines() or [""]:
-        if not paragraph.strip():
-            lines.append(_box_line(width, ""))
-            continue
-        for wrapped in _textwrap.wrap(paragraph, width=inner) or [""]:
-            lines.append(_box_line(width, wrapped))
-    return lines
-
-
-def _color(s: str, code: str) -> str:
-    """Wrap `s` with ANSI escape `code` if TTY + NO_COLOR unset, else passthrough.
-
-    No-color rule: https://no-color.org — any non-empty `NO_COLOR` env
-    suppresses ANSI escapes, even in a tty.
-    """
-    if not _is_tty() or os.environ.get("NO_COLOR"):
-        return s
-    return f"\x1b[{code}m{s}\x1b[0m"
+    txt = Text(label if label is not None else url, style=style)
+    txt.stylize(f"link {url}")
+    return txt
 
 
 def _card_tweet(t: dict, width: int) -> str:
+    from rich.box import ROUNDED
+    from rich.console import Group
+    from rich.panel import Panel
+    from rich.rule import Rule
+    from rich.text import Text
+
     author = t.get("author", "?")
     name = t.get("author_name", "")
-    text = (t.get("text") or "").strip()
+    body = (t.get("text") or "").strip()
     created = t.get("created_at", "")
     likes = _compact_num(t.get("likes", 0))
     rts = _compact_num(t.get("retweets", 0))
     tid = t.get("id", "")
     url = f"https://x.com/{author}/status/{tid}" if author and tid else ""
 
-    lines = [_box_top(width)]
-    header = (f"{name} · " if name else "") + f"@{author}"
-    lines.append(_box_line(width, _color(header, "1;36")))  # bold cyan
+    header = Text()
+    if name:
+        header.append(name + " · ", style="bold")
+    header.append(f"@{author}", style="bold cyan")
+
+    items: list = [header]
     if created:
-        lines.append(_box_line(width, _color(created, "2")))  # dim
-    lines.append(_box_mid(width))
-    if text:
-        lines.extend(_wrap_into_card(width, text))
-    else:
-        lines.append(_box_line(width, ""))
-    lines.append(_box_mid(width))
-    counts = f"❤ {likes}    🔁 {rts}"
-    lines.append(_box_line(width, counts))
+        items.append(Text(created, style="dim"))
+    items.append(Rule(style="dim"))
+    items.append(Text(body) if body else Text(""))
+    items.append(Rule(style="dim"))
+    counts = Text.assemble(
+        ("❤ ", "red"),
+        (likes, "bold"),
+        "    ",
+        ("🔁 ", "green"),
+        (rts, "bold"),
+    )
+    items.append(counts)
     if url:
-        lines.append(_box_line(width, _color(url, "2")))  # dim
-    lines.append(_box_bottom(width))
-    return "\n".join(lines)
+        items.append(_link_text(url))
+
+    panel = Panel(
+        Group(*items),
+        width=width,
+        box=ROUNDED,
+        border_style="cyan",
+        padding=(0, 1),
+    )
+    return _rich_render(panel, width)
 
 
 def _card_user(u: dict, width: int) -> str:
+    from rich.box import ROUNDED
+    from rich.console import Group
+    from rich.panel import Panel
+    from rich.rule import Rule
+    from rich.table import Table
+    from rich.text import Text
+
     sn = u.get("screen_name", "?")
     name = u.get("name", "")
     verified = "✓" if u.get("is_blue_verified") or u.get("verified") else ""
@@ -2188,50 +2182,88 @@ def _card_user(u: dict, width: int) -> str:
     fg = _compact_num(u.get("following_count", 0))
     tw = _compact_num(u.get("tweets_count", 0))
     location = u.get("location") or ""
-    url = u.get("url") or ""
+    bio_url = u.get("url") or ""
     created = u.get("created_at", "")
 
-    lines = [_box_top(width)]
-    header = (f"{name} · " if name else "") + f"@{sn}"
+    header = Text()
+    if name:
+        header.append(name + " · ", style="bold")
+    header.append(f"@{sn}", style="bold cyan")
     if verified:
-        header += "  ✓"
-    lines.append(_box_line(width, _color(header, "1;36")))
-    lines.append(_box_mid(width))
+        header.append("  ✓", style="bold blue")
+
+    items: list = [header, Rule(style="dim")]
     if desc:
-        lines.extend(_wrap_into_card(width, desc))
-        lines.append(_box_mid(width))
-    lines.append(_box_line(width, f"Followers   {fc}"))
-    lines.append(_box_line(width, f"Following   {fg}"))
-    lines.append(_box_line(width, f"Posts       {tw}"))
+        items.append(Text(desc))
+        items.append(Rule(style="dim"))
+
+    stats = Table.grid(padding=(0, 4))
+    stats.add_column(style="dim")
+    stats.add_column(style="bold")
+    stats.add_row("Followers", fc)
+    stats.add_row("Following", fg)
+    stats.add_row("Posts", tw)
+    items.append(stats)
+
+    meta = Table.grid(padding=(0, 4))
+    meta.add_column(style="dim")
+    meta.add_column()
     if location:
-        lines.append(_box_line(width, f"📍 {location}"))
+        meta.add_row("📍", location)
     if created:
-        lines.append(_box_line(width, f"Joined      {created}"))
-    lines.append(_box_mid(width))
-    lines.append(_box_line(width, _color(f"https://x.com/{sn}", "2")))
-    if url:
-        lines.append(_box_line(width, _color(f"Link  {url}", "2")))
-    lines.append(_box_bottom(width))
-    return "\n".join(lines)
+        meta.add_row("Joined", created)
+    if location or created:
+        items.append(meta)
+
+    items.append(Rule(style="dim"))
+    items.append(_link_text(f"https://x.com/{sn}"))
+    if bio_url:
+        link_row = Table.grid(padding=(0, 1))
+        link_row.add_column(style="dim")
+        link_row.add_column()
+        link_row.add_row("Link", _link_text(bio_url))
+        items.append(link_row)
+
+    panel = Panel(
+        Group(*items),
+        width=width,
+        box=ROUNDED,
+        border_style="cyan",
+        padding=(0, 1),
+    )
+    return _rich_render(panel, width)
 
 
 def _card_trends(payload: dict, width: int) -> str:
+    from rich.box import ROUNDED
+    from rich.table import Table
+
     trends = payload.get("trends") or []
     if not trends:
         return "(no trends)"
-    lines = [_box_top(width, "Trending")]
+
+    table = Table(
+        title="Trending",
+        title_style="bold",
+        box=ROUNDED,
+        border_style="cyan",
+        header_style="bold cyan",
+        width=width,
+        padding=(0, 1),
+    )
+    table.add_column("#", style="dim", justify="right", no_wrap=True)
+    table.add_column("Trend", style="bold")
+    table.add_column("Tweets", style="green", justify="right", no_wrap=True)
+    table.add_column("Context", style="dim")
+
     for i, t in enumerate(trends, 1):
         nm = t.get("name", "?")
         cnt = t.get("tweets_count")
         ctx = t.get("domain_context") or ""
-        text = f"{i:>2}.  {nm}"
-        if cnt:
-            text += f"   ({_compact_num(cnt)} tweets)"
-        if ctx:
-            text += f"   — {ctx}"
-        lines.extend(_wrap_into_card(width, text))
-    lines.append(_box_bottom(width))
-    return "\n".join(lines)
+        cnt_str = _compact_num(cnt) if cnt else ""
+        table.add_row(str(i), nm, cnt_str, ctx)
+
+    return _rich_render(table, width)
 
 
 def _format_tweet(t: dict) -> str:
