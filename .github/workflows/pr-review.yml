@@ -313,7 +313,22 @@ jobs:
       - name: Enable auto-merge → fall back to direct merge (decision = approve | comment)
         if: steps.parse.outputs.decision == 'approve' || steps.parse.outputs.decision == 'comment'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # IMPORTANT: prefer MERGE_PAT over GITHUB_TOKEN for the merge.
+          #
+          # GitHub's anti-loop protection: pushes (and tag pushes) made by
+          # GITHUB_TOKEN do NOT trigger downstream workflows. So when this
+          # step uses GITHUB_TOKEN to merge, the resulting push to `main`
+          # is invisible to publish.yml — the new release never ships.
+          #
+          # MERGE_PAT (a fine-grained Personal Access Token with
+          # contents:write + pull_requests:write on this repo) bypasses
+          # that limit: PAT-initiated pushes DO cascade to publish.yml +
+          # docs.yml + ci.yml as expected.
+          #
+          # If the secret isn't set, fall back to GITHUB_TOKEN — merge
+          # still happens, just no downstream cascade. The maintainer
+          # would have to trigger publish.yml manually each release.
+          GH_TOKEN: ${{ secrets.MERGE_PAT || secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
         run: |
           # GitHub's `--auto` flag only enables auto-merge if the PR has at
@@ -324,13 +339,12 @@ jobs:
           # nothing for it to wait on. In that case we fall back to a direct
           # merge: if the PR is mergeable right now, just merge it.
           #
-          # Either path is correct for a fully-autonomous flow:
-          #   - With protection + required checks → `--auto` enables, GH
-          #     merges later when checks pass. We can return immediately.
-          #   - Without protection → direct `--squash` merges right now.
-          #
           # Both paths skip / warn instead of failing the workflow, since
           # auto-merge is best-effort.
+          if [ -z "${{ secrets.MERGE_PAT }}" ]; then
+            echo "::warning::MERGE_PAT not set; falling back to GITHUB_TOKEN. Downstream workflows (publish.yml / docs.yml) will NOT auto-trigger after merge — releases require a manual workflow_dispatch. See README for the one-time PAT setup."
+          fi
+
           if gh pr merge --auto --squash --delete-branch "$PR_NUM" 2>&1; then
             echo "Auto-merge enabled — GitHub will merge once required checks pass."
             exit 0
