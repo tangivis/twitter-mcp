@@ -17,7 +17,8 @@ An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-c
 
 ## Where to go next
 
-- **[MCP Tools API](api.md)** — auto-generated reference of all 57 tools, with arg signatures and behavior. Read this if you want to know what a specific tool does.
+- **[MCP Tools API](api.md)** — auto-generated reference of all 57 tools, with **MCP and CLI usage** side by side for each tool. Read this when you want to know what a specific tool does.
+- **[CLI mode](cli.md)** — the same `twikit-mcp` binary as a one-shot CLI. Subcommands, type coercion, exit codes, examples.
 - **[Technical design](TECHNICAL.md)** — how the server works internally, how tool output shapes are kept compact, etc.
 - **[Vendoring twikit](VENDORING.md)** — every patch applied to the vendored copy, with the issue that motivated it.
 - **[Repo on GitHub](https://github.com/tangivis/twitter-mcp)** — README has install / quickstart in English / 中文 / 日本語.
