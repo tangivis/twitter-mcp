@@ -1,18 +1,18 @@
-name: PR review (MiniMax M2)
+name: PR review (MiniMax M2 → Sonnet 4.6)
 
-# Per-PR ADVISORY review by MiniMax M2 via OpenAI-compatible
-# api.minimaxi.com endpoint. Issue #54 — this workflow only POSTS a review
-# comment; merging and code fixes are the maintainer's call (driven via
-# Claude Code session + `mcp__github__merge_pull_request`).
+# Per-PR ADVISORY review. Issue #60 — quality-pass v2:
 #
-# Why MiniMax for review specifically:
-#   - review is the highest-frequency LLM call in this repo (every PR
-#     open / synchronize / reopen / ready_for_review), and tokens add up;
-#     M2 is ~10x cheaper than Sonnet at comparable critique quality.
-#   - review is text-out only, so the OpenAI-compat endpoint covers fine.
+#   1. Strict prompt with 3 hard rules + Conventional Comments labels
+#   2. Selective grounding (repo cheat sheet for known false-positive classes)
+#   3. Few-shot examples (1 good + 1 noisy review) for calibration
+#   4. Self-critique pass — model drops items it can't defend on second look
+#   5. Inline code-anchored comments via /pulls/<num>/reviews API
+#   6. Sonnet 4.6 escalation: after 5 MiniMax `request-changes` iterations,
+#      switch to Sonnet via the existing CLAUDE_CODE_OAUTH_TOKEN
+#   7. If Sonnet also returns request-changes → open `needs-human` issue + stop
 #
 # Coding (the actual edits) stays on Claude Code via `claude.yml`'s
-# `@claude` mention handler — quality matters more than cost there.
+# `@claude` mention handler. This workflow only POSTS reviews.
 
 on:
   pull_request:
@@ -25,29 +25,35 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write   # post the review comment
+  pull-requests: write   # post the review + inline comments
+  issues: write          # open `needs-human` issue when Sonnet also fails
 
 jobs:
   review:
     name: MiniMax M2 review
     runs-on: ubuntu-latest
-    timeout-minutes: 4
-    # Skip drafts — review is for ready-for-review PRs only.
+    timeout-minutes: 6
     if: github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Verify secret + mask
+      - name: Verify secrets
         env:
           K: ${{ secrets.MINIMAX_API_KEY }}
+          A: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           if [ -z "$K" ]; then
-            echo "::error::MINIMAX_API_KEY secret not set on this repo. Settings → Secrets and variables → Actions."
+            echo "::error::MINIMAX_API_KEY secret not set."
             exit 1
           fi
           echo "::add-mask::$K"
+          # CLAUDE_CODE_OAUTH_TOKEN is optional for the Sonnet ladder; if
+          # missing, the 6th-iter escalation degrades to "skip review".
+          if [ -n "$A" ]; then
+            echo "::add-mask::$A"
+          fi
 
       - name: Capture PR diff (capped at 80 KB)
         id: diff
@@ -64,7 +70,51 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build prompt (JSON output mode)
+      - name: Count prior review iterations on this PR
+        id: iter
+        if: steps.diff.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          # Issue #60 ladder: count prior `<!-- review-iter -->` markers in
+          # PR comments. After 5 MiniMax iterations all decision=request-changes,
+          # the 6th uses Sonnet.
+          prior=$(curl -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues/$PR_NUM/comments?per_page=100" \
+            | jq -r '.[] | select(.user.login == "github-actions[bot]") | .body' \
+            | grep -cF "<!-- review-iter -->" || true)
+          echo "prior=$prior" >> "$GITHUB_OUTPUT"
+          echo "next=$((prior + 1))" >> "$GITHUB_OUTPUT"
+
+          # Did the most recent prior review have decision=request-changes?
+          # Used to gate Sonnet escalation: only if MiniMax has been blocked.
+          last_decision=$(curl -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues/$PR_NUM/comments?per_page=100" \
+            | jq -r '[.[] | select(.user.login == "github-actions[bot]")
+                              | select(.body | contains("<!-- review-iter -->"))
+                     ] | .[-1].body // ""' \
+            | grep -oE 'decision: \`(approve|comment|request-changes)\`' \
+            | tail -1 | sed -E 's/.*\`(.*)\`.*/\1/')
+          echo "last_decision=$last_decision" >> "$GITHUB_OUTPUT"
+
+          # Escalate to Sonnet 4.6 when iter >= 5 AND last was request-changes
+          # AND we have an OAuth token to talk to api.anthropic.com.
+          escalate=false
+          if [ "$prior" -ge 5 ] \
+             && [ "$last_decision" = "request-changes" ] \
+             && [ -n "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" ]; then
+            escalate=true
+          fi
+          echo "escalate=$escalate" >> "$GITHUB_OUTPUT"
+          echo "Iteration ${prior} → ${prior+1}; last_decision=${last_decision}; escalate=${escalate}"
+
+      - name: Build prompt (issue #60 v2 — strict + grounded + few-shot)
         if: steps.diff.outputs.skip != 'true'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -73,219 +123,374 @@ jobs:
         run: |
           printf '%s' "$PR_BODY" > pr_body.txt
 
+          # Heredoc — avoids shell expansion of $-tokens inside markdown.
+          cat > prompt_head.md <<'PROMPT_EOF'
+          You are reviewing a pull request for the **twitter-mcp** project — a Python MCP server wrapping vendored twikit for Twitter/X access via browser cookies.
+
+          # HARD RULES (must follow)
+
+          1. **Empty arrays are correct outputs.** If you find no real issue, return `items: []`. The maintainer's time matters more than your apparent thoroughness.
+          2. **If you can't verify a claim by reading the diff or surrounding code below, don't make it.** Speculation = false positive. Examples of forbidden moves: "this regex MIGHT not handle X", "this MIGHT have side effects", "consider adding a TODO for future X".
+          3. **Max 1 must_fix per 1000 lines of diff.** Pick the SINGLE most important one. Less is more.
+
+          # OUTPUT FORMAT — STRICT JSON
+
+          ```
           {
-            echo "You are reviewing a pull request for the **twitter-mcp** project — a Python MCP server wrapping vendored twikit for Twitter/X access via browser cookies."
+            "summary": "1-2 sentences on what the PR does",
+            "items": [
+              {
+                "severity": "must_fix | issue | suggestion | nitpick | praise | question",
+                "file": "path/to/file.py",
+                "line": 42,
+                "body": "What's wrong + concretely how to fix"
+              }
+            ],
+            "decision": "approve | comment | request-changes"
+          }
+          ```
+
+          ## `severity` ladder (Conventional Comments)
+
+          - **must_fix**: real bug, security hole, broken contract — caps merge
+          - **issue**: design problem worth discussing, not blocking
+          - **suggestion**: non-blocking improvement
+          - **nitpick**: style / wording / naming — maintainer can skip-without-explanation
+          - **praise**: well-done specific point (use SPARINGLY)
+          - **question**: I don't understand X — explain?
+
+          ## `decision` rules
+
+          - **approve**: nothing must_fix; few or no issues
+          - **comment**: nothing must_fix, but you have ≥1 substantive item — DEFAULT for non-trivial PRs
+          - **request-changes**: ≥1 must_fix that's a REAL bug, not speculation
+
+          # REPO CHEAT SHEET — apply to avoid known false-positive classes
+
+          - **i18n suffix mode**: mkdocs-static-i18n auto-rewrites `cli.md` → `cli.<locale>.md`. **Don't claim missing files** like `cli.md` when only suffixed variants exist in `docs/`.
+          - **`pymdownx.snippets`** is enabled in `mkdocs.yml`. `--8<-- "docs/_x.md"` inlines content at build. Files referenced by `--8<--` are gitignored generated artifacts; **don't claim they're missing**.
+          - **Test fakes** (`_fake_*` factories in `tests/test_tools.py`) MUST mirror real twikit model attributes — `tests/test_fixture_shapes.py` enforces this. **Don't suggest "add fields the real model doesn't have"**.
+          - **Typed errors**: every MCP tool already handles `TooManyRequests` + `NotFound`. **Don't suggest adding generic try/except**.
+          - **Workflow GITHUB_TOKEN can't trigger downstream workflows** (anti-loop protection). The maintainer merges via `mcp__github__merge_pull_request` (uses user OAuth, cascades). **Don't suggest "use PAT" unless workflow merges directly**.
+          - **`json.dumps` is renamed `_dumps`** repo-wide; it always uses `ensure_ascii=False`. **Don't flag missing `ensure_ascii`** — it's automatic.
+          - **`server.py` has 100% coverage gate (`--cov-fail-under=95`)**. New code without tests will fail CI; you don't need to flag it as must_fix because CI catches it.
+          - **Test files use module-level docstrings** (`"""..."""` at line 1). **Verify they're missing before claiming so**.
+
+          # FEW-SHOT EXAMPLES
+
+          <example_good_review>
+          ```json
+          {
+            "summary": "Adds a new MCP tool `bookmark_tweet` with cursor pagination.",
+            "items": [
+              {
+                "severity": "must_fix",
+                "file": "twitter_mcp/server.py",
+                "line": 1245,
+                "body": "`bookmark_tweet` is missing the empty-string guard on `tweet_id` that every other paginated tool uses (e.g. line 982). Pass `''` and it'll hit twikit with a malformed request. Add `if not tweet_id: raise ToolError('tweet_id must be non-empty.')` at the top."
+              }
+            ],
+            "decision": "request-changes"
+          }
+          ```
+
+          One real bug, points at a specific line, gives a concrete fix anchored in repo conventions. The maintainer can act on this in 30 seconds.
+          </example_good_review>
+
+          <example_noisy_review>
+          ```json
+          {
+            "summary": "Adds bookmark_tweet tool.",
+            "items": [
+              {"severity": "suggestion", "body": "Consider adding type hints to all parameters."},
+              {"severity": "nitpick", "body": "The function name could be more descriptive."},
+              {"severity": "issue", "body": "What if twikit's bookmark API changes its response shape?"},
+              {"severity": "nitpick", "body": "Consider adding logging for debugging."},
+              {"severity": "suggestion", "body": "The error message could be more user-friendly."}
+            ],
+            "decision": "comment"
+          }
+          ```
+
+          This is what NOT to produce. Type hints already exist in the diff (you didn't read it). Naming is fine. Speculation about future API changes is forbidden by Hard Rule 2. Logging suggestions are bikeshed. The maintainer wastes 5 minutes finding zero real issues.
+          </example_noisy_review>
+          PROMPT_EOF
+
+          # Assemble the full prompt: rules + cheat sheet + examples + PR.
+          {
+            cat prompt_head.md
             echo
-            echo "Repository conventions (apply when relevant):"
-            echo "- TDD pattern: red test commit → green fix commit → docs+chore commit."
-            echo "- 100% \`twitter_mcp/server.py\` coverage; CI gate \`--cov-fail-under=95\`."
-            echo "- Mock-based unit tests + post-merge live-smoke against real X (issue #37 tracks failures)."
-            echo "- Vendored twikit at \`twitter_mcp/_vendor/twikit/\`. Patches must carry \`# twitter-mcp patch (issue #N)\` and be logged in \`docs/VENDORING.md\`."
-            echo "- Typed twikit errors \`TooManyRequests\`/\`NotFound\` get translated to \`ToolError\` with clear messages."
-            echo "- Paginated tools cap count at 100 (\`_PAGINATED_MAX_COUNT\`) and use cursor."
-            echo "- Validators use \`frozenset\` literal sets (\`_VALID_TREND_CATEGORIES\`, \`_VALID_COMMUNITY_TWEET_TYPES\`)."
+            echo "# THIS PR"
             echo
-            echo "PR title: ${PR_TITLE}"
-            echo "PR author: @${PR_AUTHOR}"
+            echo "**Title:** ${PR_TITLE}"
+            echo "**Author:** @${PR_AUTHOR}"
             echo
-            echo "PR body:"
+            echo "**Body:**"
             echo "---"
             cat pr_body.txt
             echo
             echo "---"
             echo
-            echo "PR diff (truncated to 80 KB):"
+            echo "**Diff (truncated to 80 KB):**"
             echo '```diff'
             cat pr.diff
             echo '```'
             echo
-            echo "## Output format — STRICT JSON"
-            echo
-            echo "Respond with a single JSON object (no markdown wrapping, no extra text). Schema:"
-            echo
-            echo '```'
-            cat <<'JSON_SCHEMA'
-          {
-            "summary": "1–3 sentences: what does this PR do?",
-            "must_fix": [
-              {"file": "path/to/file.py", "line": 42, "issue": "what's broken / unsafe / missing"}
-            ],
-            "suggestions": [
-              {"file": "...", "line": 0, "issue": "..."}
-            ],
-            "nits": [
-              {"file": "...", "line": 0, "issue": "..."}
-            ],
-            "decision": "approve | comment | request-changes"
-          }
-          JSON_SCHEMA
-            echo '```'
-            echo
-            echo "**Decision rules** (very important):"
-            echo "- \`approve\`: nothing must-fix; suggestions and nits are optional polish."
-            echo "- \`comment\`: nothing must-fix, but you have suggestions worth seeing — DEFAULT for non-trivial PRs."
-            echo "- \`request-changes\`: at least one entry in \`must_fix\` AND it's a real bug / security hole / broken contract — NOT a stylistic preference."
-            echo
-            echo "Be **conservative** with \`request-changes\`. The auto-fix loop fires on it; false positives waste tokens. If you're unsure whether something is a real bug, put it in \`suggestions\` and pick \`comment\`."
-            echo
-            echo "Cite line numbers as integers from the diff. \`line: 0\` means file-level. Empty arrays where you have nothing to say. No prose outside the JSON."
+            echo "Output the JSON only. No prose around it."
           } > prompt.txt
 
-      - name: Call MiniMax M2 (JSON mode)
+      - name: Call MiniMax M2 (or Sonnet 4.6 on escalation)
         id: call
         if: steps.diff.outputs.skip != 'true'
         env:
           K: ${{ secrets.MINIMAX_API_KEY }}
+          A: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ESCALATE: ${{ steps.iter.outputs.escalate }}
         run: |
-          # max_tokens covers reasoning + JSON output. M2 reasoning runs
-          # 1-2 KB on a substantive diff; 8000 leaves comfortable room.
-          # response_format: {"type": "json_object"} forces the model to
-          # emit valid JSON (OpenAI-compat semantics).
-          payload=$(jq -nc --rawfile p prompt.txt \
-            '{
-              model: "MiniMax-M2",
+          payload_minimax=$(jq -nc --rawfile p prompt.txt \
+            '{model: "MiniMax-M2",
               messages: [{role: "user", content: $p}],
               max_tokens: 8000,
               temperature: 0.2,
-              response_format: {type: "json_object"}
-            }')
+              response_format: {type: "json_object"}}')
 
-          http=$(curl -sS -o response.json -w '%{http_code}' \
-            --max-time 180 \
-            https://api.minimaxi.com/v1/chat/completions \
-            -H "Authorization: Bearer $K" \
-            -H "Content-Type: application/json" \
-            -d "$payload")
+          payload_sonnet=$(jq -nc --rawfile p prompt.txt \
+            '{model: "claude-sonnet-4-6",
+              max_tokens: 8000,
+              messages: [{role: "user", content: $p}]}')
+
+          if [ "$ESCALATE" = "true" ]; then
+            echo "Escalating to Sonnet 4.6 (5+ MiniMax iters all request-changes)"
+            http=$(curl -sS -o response.json -w '%{http_code}' --max-time 180 \
+              https://api.anthropic.com/v1/messages \
+              -H "Authorization: Bearer $A" \
+              -H "Content-Type: application/json" \
+              -H "anthropic-version: 2023-06-01" \
+              -d "$payload_sonnet")
+            echo "model=sonnet" >> "$GITHUB_OUTPUT"
+          else
+            http=$(curl -sS -o response.json -w '%{http_code}' --max-time 180 \
+              https://api.minimaxi.com/v1/chat/completions \
+              -H "Authorization: Bearer $K" \
+              -H "Content-Type: application/json" \
+              -d "$payload_minimax")
+            echo "model=minimax" >> "$GITHUB_OUTPUT"
+          fi
+
           echo "http=$http" >> "$GITHUB_OUTPUT"
-          echo "MiniMax HTTP $http"
-
           if [ "$http" != "200" ]; then
-            echo "::warning::MiniMax returned HTTP $http; review skipped."
+            echo "::warning::Review LLM returned HTTP $http; skipping review."
             head -c 2000 response.json
             exit 0
           fi
 
-      - name: Parse JSON output (strip <think> defensively)
+      - name: Self-critique pass (MiniMax only)
+        id: critique
+        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200' && steps.call.outputs.model == 'minimax'
+        env:
+          K: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          # Extract the first review's content.
+          first=$(jq -r '.choices[0].message.content // empty' response.json)
+          if [ -z "$first" ]; then
+            echo "::warning::First review empty; skipping self-critique."
+            exit 0
+          fi
+          printf '%s' "$first" > first_review.json
+
+          # Build a self-critique prompt: feed the first review back, ask
+          # which items survive on second look.
+          cat > critique_prompt.txt <<'CRIT_EOF'
+          You just produced this review of a PR:
+
+          CRIT_EOF
+          cat first_review.json >> critique_prompt.txt
+          cat >> critique_prompt.txt <<'CRIT_EOF'
+
+          # YOUR TASK
+
+          Re-emit the JSON with ONLY items you can DEFEND on second look. Drop any item where:
+
+          - You cited a hypothetical scenario ("if X were true...")
+          - The issue is bikeshed (style, naming, "consider adding X" without a concrete bug)
+          - You can't point to specific evidence in the diff
+          - A competent maintainer would skip it without explanation
+
+          Recompute `decision` based on what survives:
+          - any must_fix → "request-changes"
+          - any non-praise / non-question item → "comment"
+          - all empty → "approve"
+
+          Output the SAME JSON shape (summary, items, decision). JSON only, no prose.
+          CRIT_EOF
+
+          payload=$(jq -nc --rawfile p critique_prompt.txt \
+            '{model: "MiniMax-M2",
+              messages: [{role: "user", content: $p}],
+              max_tokens: 6000,
+              temperature: 0.1,
+              response_format: {type: "json_object"}}')
+
+          http=$(curl -sS -o critique_response.json -w '%{http_code}' --max-time 180 \
+            https://api.minimaxi.com/v1/chat/completions \
+            -H "Authorization: Bearer $K" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+
+          if [ "$http" = "200" ]; then
+            # Replace response.json with the critiqued version.
+            cp critique_response.json response.json
+            echo "self-critique pass complete"
+          else
+            echo "::warning::Self-critique returned HTTP $http; using first review unchanged."
+          fi
+
+      - name: Parse JSON output
         id: parse
         if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
         run: |
-          # Save raw model content first.
-          jq -r '.choices[0].message.content // empty' response.json > raw.md
+          MODEL='${{ steps.call.outputs.model }}'
+          if [ "$MODEL" = "sonnet" ]; then
+            # Anthropic Messages API: content[0].text
+            jq -r '.content[0].text // empty' response.json > raw.md
+          else
+            # OpenAI-compat: choices[0].message.content
+            jq -r '.choices[0].message.content // empty' response.json > raw.md
+          fi
 
           if [ ! -s raw.md ]; then
-            echo "::warning::Empty content from MiniMax; review skipped."
+            echo "::warning::Empty content; review skipped."
             exit 0
           fi
 
-          # Heredoc-to-file pattern — single-quoted PY delimiter means bash
-          # doesn't touch the body, so the python source can use any quotes
-          # it needs without escape gymnastics.
+          # Strip <think>...</think> (M2 sometimes; Sonnet doesn't but harmless).
           cat > /tmp/parse.py <<'PY'
           import json, re, sys
           src = sys.stdin.read()
-          # Even in JSON mode, M2 may emit a <think>...</think> reasoning
-          # block before the JSON object. Strip closed and unclosed forms.
           src = re.sub(r"<think>.*?</think>", "", src, flags=re.DOTALL)
           src = re.sub(r"<think>.*$", "", src, flags=re.DOTALL)
-          # Extract the first {...} block (model may still wrap with prose).
           m = re.search(r"\{.*\}", src, re.DOTALL)
           if not m:
-              print("ERR: no JSON object in response", file=sys.stderr)
+              print("ERR: no JSON object", file=sys.stderr)
               sys.exit(1)
           parsed = json.loads(m.group(0))
-          # Defaults — model occasionally omits empty arrays.
           parsed.setdefault("summary", "(no summary)")
-          parsed.setdefault("must_fix", [])
-          parsed.setdefault("suggestions", [])
-          parsed.setdefault("nits", [])
+          parsed.setdefault("items", [])
           parsed.setdefault("decision", "comment")
-          # Defensive: clamp decision to known enum.
           if parsed["decision"] not in ("approve", "comment", "request-changes"):
               parsed["decision"] = "comment"
+          # Clamp severity per item.
+          for it in parsed["items"]:
+              if it.get("severity") not in ("must_fix", "issue", "suggestion", "nitpick", "praise", "question"):
+                  it["severity"] = "suggestion"
           json.dump(parsed, sys.stdout, indent=2)
           PY
           python3 /tmp/parse.py < raw.md > review.json
 
           decision=$(jq -r '.decision' review.json)
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
-          echo "Decision: $decision"
 
-      - name: Render review.md from JSON
-        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200' && steps.parse.outputs.decision != ''
-        run: |
-          cat > /tmp/render.py <<'PY'
-          import json
-          with open("review.json") as f:
-              r = json.load(f)
-          out = ["**Summary:** " + r["summary"]]
-          for section, label in [("must_fix", "Must-fix"),
-                                 ("suggestions", "Suggestions"),
-                                 ("nits", "Nits")]:
-              items = r.get(section) or []
-              if not items:
-                  continue
-              out.append("")
-              out.append(f"## {label}")
-              for it in items:
-                  loc = it.get("file", "?")
-                  ln = it.get("line", 0) or 0
-                  if ln > 0:
-                      loc = f"{loc}:{ln}"
-                  msg = (it.get("issue") or "").strip()
-                  out.append(f"- `{loc}` — {msg}")
-          out.append("")
-          out.append(f"**Decision:** `{r['decision']}`")
-          print("\n".join(out))
-          PY
-          python3 /tmp/render.py > review.md
-
-      - name: Capture token usage + raw output for the run summary
-        if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200'
-        run: |
-          usage=$(jq -c '.usage // {}' response.json)
-          {
-            echo "## MiniMax review"
-            echo
-            echo "Decision: \`${{ steps.parse.outputs.decision }}\`"
-            echo "Token usage: \`$usage\`"
-            echo
-            echo "### Posted review"
-            echo
-            cat review.md
-            echo
-            echo
-            echo "<details><summary>Parsed JSON (debug)</summary>"
-            echo
-            echo '```json'
-            cat review.json
-            echo
-            echo '```'
-            echo
-            echo "</details>"
-            echo
-            echo "<details><summary>Raw model content (with <think>, debug)</summary>"
-            echo
-            echo '```'
-            head -c 16000 raw.md
-            echo
-            echo '```'
-            echo
-            echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Post review comment
+      - name: Render summary + post review (top-level + inline)
         if: steps.diff.outputs.skip != 'true' && steps.call.outputs.http == '200' && steps.parse.outputs.decision != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          NEXT_ITER: ${{ steps.iter.outputs.next }}
+          MODEL: ${{ steps.call.outputs.model }}
         run: |
-          {
-            echo "## 🤖 MiniMax M2 review"
-            echo
-            cat review.md
-            echo
-            echo "---"
-            echo "_Advisory review by MiniMax M2 — the maintainer (via Claude Code) reads this and decides whether to push fixes or merge. Decision values are informational only; this workflow does **not** auto-merge or auto-summon @claude. To request a code change, mention \`@claude\` in a comment._"
-          } > final.md
+          # Build the summary comment (top-level PR comment) — short, with
+          # the iter marker for ladder counting + decision for at-a-glance.
+          decision=$(jq -r '.decision' review.json)
+          summary=$(jq -r '.summary' review.json)
+          item_count=$(jq -r '.items | length' review.json)
 
-          gh pr comment "$PR_NUM" --body-file final.md
+          {
+            echo "## 🤖 Review by ${MODEL} (iter ${NEXT_ITER})"
+            echo
+            echo "**Summary:** $summary"
+            echo
+            echo "**Decision:** \`$decision\`"
+            echo "**Items:** $item_count"
+            echo
+            if [ "$item_count" -eq 0 ]; then
+              echo "_No items flagged. Empty arrays are correct outputs — see the review prompt._"
+            else
+              echo "_Items posted as inline review comments below._"
+            fi
+            echo
+            echo "<!-- review-iter -->"
+            echo "_Advisory review — maintainer reads + decides. issue #60 quality pass v2 active._"
+          } > summary.md
+
+          gh pr comment "$PR_NUM" --body-file summary.md
+
+          # Build the inline-review payload for items with file+line.
+          python3 - <<'PY'
+          import json
+          with open("review.json") as f:
+              r = json.load(f)
+          comments = []
+          # Skip praise / question for inline (top-level summary covers them).
+          # Inline only items the maintainer needs to act on.
+          ACTIONABLE = {"must_fix", "issue", "suggestion", "nitpick"}
+          for it in r["items"]:
+              if it.get("severity") not in ACTIONABLE:
+                  continue
+              path = it.get("file") or ""
+              line = it.get("line") or 0
+              body = it.get("body") or ""
+              if not path or line <= 0 or not body:
+                  continue
+              comments.append({
+                  "path": path,
+                  "line": int(line),
+                  "side": "RIGHT",
+                  "body": f"**{it['severity']}**: {body}"
+              })
+          payload = {"event": "COMMENT", "comments": comments}
+          with open("review_payload.json", "w") as f:
+              json.dump(payload, f)
+          PY
+
+          # Post inline review only if there are actionable items with line anchors.
+          comment_count=$(jq -r '.comments | length' review_payload.json)
+          if [ "$comment_count" -gt 0 ]; then
+            curl -sS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -d @review_payload.json \
+              "https://api.github.com/repos/$REPO/pulls/$PR_NUM/reviews" \
+              -o /dev/null \
+              -w "Posted inline review with $comment_count comments → HTTP %{http_code}\n"
+          else
+            echo "No actionable items with line anchors; summary-only post."
+          fi
+
+      - name: Sonnet still says request-changes — escalate to needs-human issue
+        if: |
+          steps.call.outputs.model == 'sonnet'
+          && steps.parse.outputs.decision == 'request-changes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          # Sonnet 4.6 is our final reviewer. If even it returns request-changes
+          # after 5+ MiniMax iterations, this PR genuinely needs human eyes.
+          jq -nc \
+            --arg pr "$PR_NUM" \
+            --arg summary "$(jq -r '.summary' review.json)" \
+            --rawfile review review.json \
+            '{
+              title: "Review deadlock on PR #\($pr) — Sonnet 4.6 still flags must_fix",
+              body: "PR #\($pr) hit the review ladder cap: 5 MiniMax iterations all returned `request-changes`, then Sonnet 4.6 (final reviewer) ALSO returned `request-changes`. Auto-review stops here. A maintainer needs to look.\n\n**Sonnet summary:** \($summary)\n\n**Full Sonnet review JSON:**\n```json\n\($review)\n```",
+              labels: ["needs-human", "ci"]
+            }' > /tmp/issue.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -d @/tmp/issue.json \
+            "https://api.github.com/repos/$REPO/issues" \
+            -o /dev/null \
+            -w "Filed needs-human issue → HTTP %{http_code}\n"
