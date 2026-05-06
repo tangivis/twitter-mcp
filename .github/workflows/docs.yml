@@ -1,0 +1,77 @@
+name: Docs (GitHub Pages)
+
+# Builds the MkDocs site and deploys to GitHub Pages.
+#
+# One-time setup the repo owner needs to do:
+#   1. Settings → Pages → Source = "GitHub Actions"
+#      (the deploy step won't work until this is set)
+#   2. Nothing else — branch protection / auto-merge / secrets all
+#      irrelevant to docs deploy.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "twitter_mcp/**"          # tool docstrings → API reference
+      - "docs/**"
+      - "mkdocs.yml"
+      - "scripts/gen_api_docs.py"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deploy at a time; cancel any running one when a new
+# main push arrives.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build MkDocs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python + docs deps
+        run: |
+          uv python install 3.13
+          uv sync --group dev --group docs
+
+      - name: Build site
+        # mkdocs-gen-files runs scripts/gen_api_docs.py during build —
+        # imports twitter_mcp.server, walks @mcp.tool() registrations,
+        # writes docs/api.md. Output goes to ./site/.
+        #
+        # NOT --strict: TECHNICAL.md contains intra-doc anchor links
+        # using Chinese headings (e.g. `#什么是-mcp`) that GitHub's
+        # markdown renderer slugifies but mkdocs' default doesn't.
+        # Site still builds and serves correctly — those specific
+        # in-page jump links won't resolve, which is a known mismatch
+        # between the GitHub-rendered version and the docs site.
+        # Tracking a future cleanup; for now, warnings are non-fatal.
+        run: uv run --group docs mkdocs build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
