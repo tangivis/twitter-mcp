@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/twikit-mcp)](https://pypi.org/project/twikit-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An [MCP](https://modelcontextprotocol.io/) server that lets Claude interact with Twitter/X using browser cookies.
+An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies.
 No Twitter API key needed. Free forever.
 
 **[English](#english)** | **[中文](#中文)** | **[日本語](#日本語)**
