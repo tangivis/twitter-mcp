@@ -36,6 +36,33 @@ The instinct to "ask before merging" is wrong here. The maintainer has already
 delegated this decision via #54's pipeline simplification + repeated explicit
 agreement. Asking again per-PR is friction without value.
 
+### Monitoring contract — never break the callback chain
+
+The maintainer's hard rule (PR #66 retro): **the moment you open a PR, the
+event chain is your responsibility — don't let it stall.** If the maintainer
+ever has to type "what's the status?" the chain has broken and you failed.
+
+For every PR you open:
+
+1. **Subscribe** to `mcp__github__subscribe_pr_activity` for review/CI events.
+2. **In parallel**, start a `Bash run_in_background` poll script that:
+   - Polls `https://api.github.com/repos/tangivis/twitter-mcp/commits/<sha>/check-runs`
+     every ~10s.
+   - **Encodes the merge-policy decision in-script**: when all checks complete
+     and substantive ones are green (MiniMax `skipped` is fine for docs-only
+     PRs), the foreground session should auto-merge as soon as the
+     notification arrives — don't wait for a second nudge.
+   - Exits non-zero on red so you fix-and-push without asking.
+3. After merge, start a **second** poll for the cascade run on `main`
+   (publish.yml / docs.yml) so PyPI / Pages confirmation also surfaces
+   automatically.
+
+Webhook alone is not sufficient — events can be batched, dropped, or arrive
+after a long quiet stretch. Background poll is the safety net. Run both.
+
+The cost of "I'll just sit and wait for the webhook" is asking the maintainer
+to be the heartbeat. That's the failure mode this rule prevents.
+
 ---
 
 ## Spec-first workflow
