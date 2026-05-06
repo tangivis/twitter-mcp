@@ -1,0 +1,96 @@
+site_name: twikit-mcp
+site_url: https://tangivis.github.io/twitter-mcp/
+site_description: Twitter/X MCP server powered by twikit — no API key needed
+repo_name: tangivis/twitter-mcp
+repo_url: https://github.com/tangivis/twitter-mcp
+edit_uri: edit/main/docs/
+
+# Layout in this repo:
+#   docs/             ← all docs site content (this dir)
+#     index.md        ← landing page (rendered from README at build time)
+#     api.md          ← auto-generated MCP tool reference (mkdocstrings)
+#     TECHNICAL.md    ← existing tech doc
+#     VENDORING.md    ← existing vendor patch log
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  # gen-files runs scripts/gen_api_docs.py at build time to produce
+  # docs/api.md programmatically from `mcp._tool_manager._tools`. Avoids
+  # checking the generated file into git (would always drift).
+  - gen-files:
+      scripts:
+        - scripts/gen_api_docs.py
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_root_heading: false
+            heading_level: 3
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            docstring_style: google
+            merge_init_into_class: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - MCP Tools API: api.md
+  - Internals:
+      - Technical design: TECHNICAL.md
+      - Vendoring twikit: VENDORING.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/tangivis/twitter-mcp
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/twikit-mcp/
