@@ -63,6 +63,22 @@ async def _get_client() -> Client:
     return client
 
 
+def _dumps(obj) -> str:
+    """JSON-encode a tool output with native non-ASCII characters preserved.
+
+    `json.dumps` defaults to `ensure_ascii=True`, which turns 中文 / 日本語 /
+    希腊文 / emoji / etc. into `\\uXXXX` escapes. That makes tool outputs
+    technically valid JSON but unreadable when an LLM reads them or a human
+    pipes them through the CLI. Always emit raw UTF-8 instead.
+    """
+    # NOTE: must call stdlib `json.dumps` directly here. The project-wide
+    # rewrite that introduced this helper renamed every `json.dumps(` to
+    # `_dumps(`, including this line — left unfixed it infinite-recurses.
+    import json as _stdlib_json
+
+    return _stdlib_json.dumps(obj, ensure_ascii=False)
+
+
 def _parse_article_url_or_id(value: str | None) -> str | None:
     """Return the article rest_id if `value` is an /i/article/<id> URL, else None.
 
@@ -95,7 +111,7 @@ async def send_tweet(text: str, reply_to: str | None = None) -> str:
     """
     client = await _get_client()
     tweet = await client.create_tweet(text=text, reply_to=reply_to)
-    return json.dumps({"id": tweet.id, "text": text, "status": "sent"})
+    return _dumps({"id": tweet.id, "text": text, "status": "sent"})
 
 
 @mcp.tool()
@@ -122,7 +138,7 @@ async def get_tweet(tweet_id: str) -> str:
             f"use get_article instead."
         )
     t = tweets[0]
-    return json.dumps(
+    return _dumps(
         {
             "id": t.id,
             "author": t.user.screen_name,
@@ -155,7 +171,7 @@ async def get_timeline(count: int = 20) -> str:
                 "retweets": t.retweet_count,
             }
         )
-    return json.dumps(result)
+    return _dumps(result)
 
 
 @mcp.tool()
@@ -180,7 +196,7 @@ async def search_tweets(query: str, count: int = 20, product: str = "Latest") ->
                 "retweets": t.retweet_count,
             }
         )
-    return json.dumps(result)
+    return _dumps(result)
 
 
 @mcp.tool()
@@ -192,7 +208,7 @@ async def like_tweet(tweet_id: str) -> str:
     """
     client = await _get_client()
     await client.favorite_tweet(tweet_id)
-    return json.dumps({"tweet_id": tweet_id, "status": "liked"})
+    return _dumps({"tweet_id": tweet_id, "status": "liked"})
 
 
 @mcp.tool()
@@ -204,7 +220,7 @@ async def retweet(tweet_id: str) -> str:
     """
     client = await _get_client()
     await client.retweet(tweet_id)
-    return json.dumps({"tweet_id": tweet_id, "status": "retweeted"})
+    return _dumps({"tweet_id": tweet_id, "status": "retweeted"})
 
 
 @mcp.tool()
@@ -229,7 +245,7 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
                 "retweets": t.retweet_count,
             }
         )
-    return json.dumps(result)
+    return _dumps(result)
 
 
 _PAGINATED_MAX_COUNT = 100
@@ -301,7 +317,7 @@ async def get_user_info(
             f"User not found: {screen_name or user_id}. Check the spelling / id."
         )
 
-    return json.dumps(
+    return _dumps(
         {
             "id": u.id,
             "screen_name": u.screen_name,
@@ -373,7 +389,7 @@ async def get_user_followers(
         raise ToolError(f"User not found: {screen_name or user_id}.")
 
     users = [_user_to_dict(u) for u in result]
-    return json.dumps(
+    return _dumps(
         {
             "users": users,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -420,7 +436,7 @@ async def get_user_following(
         raise ToolError(f"User not found: {screen_name or user_id}.")
 
     users = [_user_to_dict(u) for u in result]
-    return json.dumps(
+    return _dumps(
         {
             "users": users,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -442,7 +458,7 @@ async def follow_user(screen_name: str) -> str:
     client = await _get_client()
     user = await client.get_user_by_screen_name(screen_name)
     await client.follow_user(user.id)
-    return json.dumps(
+    return _dumps(
         {"user_id": user.id, "screen_name": screen_name, "status": "followed"}
     )
 
@@ -460,7 +476,7 @@ async def unfollow_user(screen_name: str) -> str:
     client = await _get_client()
     user = await client.get_user_by_screen_name(screen_name)
     await client.unfollow_user(user.id)
-    return json.dumps(
+    return _dumps(
         {"user_id": user.id, "screen_name": screen_name, "status": "unfollowed"}
     )
 
@@ -479,7 +495,7 @@ async def delete_tweet(tweet_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Tweet {tweet_id} not found.")
-    return json.dumps({"tweet_id": tweet_id, "status": "deleted"})
+    return _dumps({"tweet_id": tweet_id, "status": "deleted"})
 
 
 @mcp.tool()
@@ -496,7 +512,7 @@ async def unfavorite_tweet(tweet_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Tweet {tweet_id} not found.")
-    return json.dumps({"tweet_id": tweet_id, "status": "unliked"})
+    return _dumps({"tweet_id": tweet_id, "status": "unliked"})
 
 
 @mcp.tool()
@@ -513,7 +529,7 @@ async def delete_retweet(tweet_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Tweet {tweet_id} not found.")
-    return json.dumps({"tweet_id": tweet_id, "status": "un-retweeted"})
+    return _dumps({"tweet_id": tweet_id, "status": "un-retweeted"})
 
 
 @mcp.tool()
@@ -534,7 +550,7 @@ async def bookmark_tweet(tweet_id: str, folder_id: str | None = None) -> str:
     result: dict = {"tweet_id": tweet_id, "status": "bookmarked"}
     if folder_id is not None:
         result["folder_id"] = folder_id
-    return json.dumps(result)
+    return _dumps(result)
 
 
 @mcp.tool()
@@ -551,7 +567,7 @@ async def delete_bookmark(tweet_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Bookmark for tweet {tweet_id} not found.")
-    return json.dumps({"tweet_id": tweet_id, "status": "un-bookmarked"})
+    return _dumps({"tweet_id": tweet_id, "status": "un-bookmarked"})
 
 
 @mcp.tool()
@@ -583,7 +599,7 @@ async def get_bookmarks(count: int = 20, cursor: str | None = None) -> str:
         }
         for t in result
     ]
-    return json.dumps(
+    return _dumps(
         {
             "tweets": tweets,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -617,7 +633,7 @@ async def get_favoriters(
     except NotFound:
         raise ToolError(f"Tweet {tweet_id} not found.")
     users = [_user_to_dict(u) for u in result]
-    return json.dumps(
+    return _dumps(
         {
             "users": users,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -651,7 +667,7 @@ async def get_retweeters(
     except NotFound:
         raise ToolError(f"Tweet {tweet_id} not found.")
     users = [_user_to_dict(u) for u in result]
-    return json.dumps(
+    return _dumps(
         {
             "users": users,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -683,7 +699,7 @@ async def search_user(query: str, count: int = 20, cursor: str | None = None) ->
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     users = [_user_to_dict(u) for u in result]
-    return json.dumps(
+    return _dumps(
         {
             "users": users,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -720,7 +736,7 @@ async def get_trends(category: str = "trending", count: int = 20) -> str:
         }
         for t in trends
     ]
-    return json.dumps({"trends": result, "category": category})
+    return _dumps({"trends": result, "category": category})
 
 
 @mcp.tool()
@@ -745,7 +761,7 @@ async def get_article_preview(tweet_id: str) -> str:
     if not article:
         raise ToolError(f"Tweet {tweet_id} does not embed an article.")
     cover = article.get("cover_media", {}).get("media_info", {}).get("original_img_url")
-    return json.dumps(
+    return _dumps(
         {
             "rest_id": article["rest_id"],
             "title": article.get("title", ""),
@@ -836,7 +852,7 @@ async def get_article(article_id: str, format: str = "plain") -> str:
         )
 
     if format == "full":
-        return json.dumps(article, ensure_ascii=False)
+        return _dumps(article)
 
     cover = article.get("cover_media", {}).get("media_info", {}).get("original_img_url")
 
@@ -866,7 +882,7 @@ async def get_article(article_id: str, format: str = "plain") -> str:
             "media": media,
             "lifecycle_state": article.get("lifecycle_state"),
         }
-    return json.dumps(out, ensure_ascii=False)
+    return _dumps(out)
 
 
 _VALID_NOTIFICATION_TYPES = frozenset({"All", "Verified", "Mentions"})
@@ -890,9 +906,7 @@ async def block_user(screen_name: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"User not found: {screen_name}.")
-    return json.dumps(
-        {"user_id": user.id, "screen_name": screen_name, "status": "blocked"}
-    )
+    return _dumps({"user_id": user.id, "screen_name": screen_name, "status": "blocked"})
 
 
 @mcp.tool()
@@ -913,7 +927,7 @@ async def unblock_user(screen_name: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"User not found: {screen_name}.")
-    return json.dumps(
+    return _dumps(
         {"user_id": user.id, "screen_name": screen_name, "status": "unblocked"}
     )
 
@@ -936,9 +950,7 @@ async def mute_user(screen_name: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"User not found: {screen_name}.")
-    return json.dumps(
-        {"user_id": user.id, "screen_name": screen_name, "status": "muted"}
-    )
+    return _dumps({"user_id": user.id, "screen_name": screen_name, "status": "muted"})
 
 
 @mcp.tool()
@@ -959,9 +971,7 @@ async def unmute_user(screen_name: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"User not found: {screen_name}.")
-    return json.dumps(
-        {"user_id": user.id, "screen_name": screen_name, "status": "unmuted"}
-    )
+    return _dumps({"user_id": user.id, "screen_name": screen_name, "status": "unmuted"})
 
 
 @mcp.tool()
@@ -1008,7 +1018,7 @@ async def get_notifications(
             entry["tweet_id"] = n.tweet.id
         notifications.append(entry)
 
-    return json.dumps(
+    return _dumps(
         {
             "notifications": notifications,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1039,7 +1049,7 @@ async def send_dm(screen_name: str, text: str, media_id: str | None = None) -> s
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"User not found: {screen_name}.")
-    return json.dumps({"message_id": message.id, "status": "sent"})
+    return _dumps({"message_id": message.id, "status": "sent"})
 
 
 @mcp.tool()
@@ -1065,7 +1075,7 @@ async def send_dm_to_group(
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Group {group_id!r} not found.")
-    return json.dumps({"message_id": message.id, "status": "sent"})
+    return _dumps({"message_id": message.id, "status": "sent"})
 
 
 @mcp.tool()
@@ -1100,7 +1110,7 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
         }
         for m in result
     ]
-    return json.dumps(
+    return _dumps(
         {
             "messages": messages,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1125,7 +1135,7 @@ async def delete_dm(message_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Message {message_id} not found.")
-    return json.dumps({"message_id": message_id, "status": "deleted"})
+    return _dumps({"message_id": message_id, "status": "deleted"})
 
 
 def _list_to_dict(lst) -> dict:
@@ -1194,7 +1204,7 @@ async def get_list(list_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"List {list_id} not found.")
-    return json.dumps(_list_to_dict(lst))
+    return _dumps(_list_to_dict(lst))
 
 
 @mcp.tool()
@@ -1217,7 +1227,7 @@ async def get_lists(count: int = 20, cursor: str | None = None) -> str:
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     lists = [_list_to_dict(lst) for lst in result]
-    return json.dumps(
+    return _dumps(
         {
             "lists": lists,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1260,7 +1270,7 @@ async def get_list_tweets(
         }
         for t in result
     ]
-    return json.dumps(
+    return _dumps(
         {
             "tweets": tweets,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1294,7 +1304,7 @@ async def get_list_members(
     except NotFound:
         raise ToolError(f"List {list_id} not found.")
     users = [_user_to_dict(u) for u in result]
-    return json.dumps(
+    return _dumps(
         {
             "users": users,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1328,7 +1338,7 @@ async def get_list_subscribers(
     except NotFound:
         raise ToolError(f"List {list_id} not found.")
     users = [_user_to_dict(u) for u in result]
-    return json.dumps(
+    return _dumps(
         {
             "users": users,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1355,7 +1365,7 @@ async def create_list(
         lst = await client.create_list(name, description, is_private)
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
-    return json.dumps(_list_to_dict(lst))
+    return _dumps(_list_to_dict(lst))
 
 
 @mcp.tool()
@@ -1385,7 +1395,7 @@ async def edit_list(
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"List {list_id} not found.")
-    return json.dumps(_list_to_dict(lst))
+    return _dumps(_list_to_dict(lst))
 
 
 @mcp.tool()
@@ -1412,7 +1422,7 @@ async def add_list_member(
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Not found: list {list_id} or user {screen_name or user_id}.")
-    return json.dumps(_list_to_dict(lst))
+    return _dumps(_list_to_dict(lst))
 
 
 @mcp.tool()
@@ -1439,7 +1449,7 @@ async def remove_list_member(
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Not found: list {list_id} or user {screen_name or user_id}.")
-    return json.dumps(_list_to_dict(lst))
+    return _dumps(_list_to_dict(lst))
 
 
 @mcp.tool()
@@ -1468,7 +1478,7 @@ async def create_scheduled_tweet(
         tweet_id = await client.create_scheduled_tweet(scheduled_at, text, media_ids)
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
-    return json.dumps(
+    return _dumps(
         {
             "scheduled_tweet_id": tweet_id,
             "scheduled_at": scheduled_at,
@@ -1502,7 +1512,7 @@ async def get_scheduled_tweets() -> str:
         }
         for t in tweets
     ]
-    return json.dumps({"scheduled_tweets": result, "count": len(result)})
+    return _dumps({"scheduled_tweets": result, "count": len(result)})
 
 
 @mcp.tool()
@@ -1524,7 +1534,7 @@ async def delete_scheduled_tweet(scheduled_tweet_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Scheduled tweet {scheduled_tweet_id} not found.")
-    return json.dumps({"scheduled_tweet_id": scheduled_tweet_id, "status": "deleted"})
+    return _dumps({"scheduled_tweet_id": scheduled_tweet_id, "status": "deleted"})
 
 
 @mcp.tool()
@@ -1558,7 +1568,7 @@ async def create_poll(choices: list[str], duration_minutes: int) -> str:
         card_uri = await client.create_poll(choices, duration_minutes)
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
-    return json.dumps({"card_uri": card_uri, "status": "created"})
+    return _dumps({"card_uri": card_uri, "status": "created"})
 
 
 @mcp.tool()
@@ -1594,7 +1604,7 @@ async def vote(
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Tweet {tweet_id} or poll card not found.")
-    return json.dumps(
+    return _dumps(
         {"tweet_id": tweet_id, "selected_choice": selected_choice, "status": "voted"}
     )
 
@@ -1615,7 +1625,7 @@ async def get_community(community_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
-    return json.dumps(_community_to_dict(community))
+    return _dumps(_community_to_dict(community))
 
 
 @mcp.tool()
@@ -1636,7 +1646,7 @@ async def search_community(query: str, cursor: str | None = None) -> str:
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     communities = [_community_to_dict(c) for c in result]
-    return json.dumps(
+    return _dumps(
         {
             "communities": communities,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1692,7 +1702,7 @@ async def get_community_tweets(
         }
         for t in result
     ]
-    return json.dumps(
+    return _dumps(
         {
             "tweets": tweets,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1730,7 +1740,7 @@ async def get_communities_timeline(count: int = 20, cursor: str | None = None) -
         }
         for t in result
     ]
-    return json.dumps(
+    return _dumps(
         {
             "tweets": tweets,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1766,7 +1776,7 @@ async def get_community_members(
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
     members = [_community_member_to_dict(m) for m in result]
-    return json.dumps(
+    return _dumps(
         {
             "members": members,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1802,7 +1812,7 @@ async def get_community_moderators(
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
     moderators = [_community_member_to_dict(m) for m in result]
-    return json.dumps(
+    return _dumps(
         {
             "moderators": moderators,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1853,7 +1863,7 @@ async def search_community_tweet(
         }
         for t in result
     ]
-    return json.dumps(
+    return _dumps(
         {
             "tweets": tweets,
             "next_cursor": getattr(result, "next_cursor", None),
@@ -1878,7 +1888,7 @@ async def join_community(community_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
-    return json.dumps({**_community_to_dict(community), "status": "joined"})
+    return _dumps({**_community_to_dict(community), "status": "joined"})
 
 
 @mcp.tool()
@@ -1897,7 +1907,7 @@ async def leave_community(community_id: str) -> str:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
-    return json.dumps({**_community_to_dict(community), "status": "left"})
+    return _dumps({**_community_to_dict(community), "status": "left"})
 
 
 @mcp.tool()
@@ -1923,7 +1933,7 @@ async def request_to_join_community(
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
-    return json.dumps({"community_id": community_id, "status": "request_sent"})
+    return _dumps({"community_id": community_id, "status": "request_sent"})
 
 
 def _get_version() -> str:
@@ -2027,6 +2037,144 @@ def _parse_kv_pairs(items: list[str]) -> dict[str, str]:
     return out
 
 
+# ── Human-friendly CLI formatters ─────────────────────
+#
+# These are used by the `tweet` / `user` / `tl` / `search` / `trends`
+# subcommands. They take the tool's already-decoded dict (or list-of-
+# dicts) output and render plain text for terminal reading. No external
+# deps (no `rich` etc.) — keeps install tiny.
+
+
+def _compact_num(n) -> str:
+    """1234567 → '1.2M' / 12500 → '12.5K' / small numbers unchanged."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return str(n)
+    if n >= 1_000_000_000:
+        return f"{n / 1_000_000_000:.1f}B"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 10_000:
+        return f"{n / 1_000:.1f}K"
+    return f"{n:,}"
+
+
+def _format_tweet(t: dict) -> str:
+    """One tweet block, terminal-readable. Fields tolerated as missing."""
+    author = t.get("author", "?")
+    name = t.get("author_name", "")
+    header = f"@{author}" + (f" · {name}" if name else "")
+    text = (t.get("text") or "").strip()
+    created = t.get("created_at", "")
+    likes = _compact_num(t.get("likes", 0))
+    rts = _compact_num(t.get("retweets", 0))
+    tid = t.get("id", "")
+    url = f"https://x.com/{author}/status/{tid}" if author and tid else ""
+    parts = [header, text, f"❤ {likes}  🔁 {rts}  · {created}"]
+    if url:
+        parts.append(url)
+    return "\n".join(p for p in parts if p)
+
+
+def _format_tweet_list(tweets: list[dict]) -> str:
+    """Numbered tweets separated by blank lines."""
+    if not tweets:
+        return "(no tweets)"
+    blocks = []
+    for i, t in enumerate(tweets, 1):
+        blocks.append(f"[{i}] " + _format_tweet(t))
+    return "\n\n".join(blocks)
+
+
+def _format_user(u: dict) -> str:
+    """One user profile block."""
+    sn = u.get("screen_name", "?")
+    name = u.get("name", "")
+    verified = "✓" if u.get("is_blue_verified") or u.get("verified") else ""
+    header = f"@{sn}" + (f" · {name}" if name else "")
+    if verified:
+        header += f" {verified}"
+    desc = (u.get("description") or "").strip()
+    fc = _compact_num(u.get("followers_count", 0))
+    fg = _compact_num(u.get("following_count", 0))
+    tw = _compact_num(u.get("tweets_count", 0))
+    location = u.get("location") or ""
+    url = u.get("url") or ""
+    created = u.get("created_at", "")
+    line2 = f"Followers: {fc}   Following: {fg}   Posts: {tw}"
+    line3_bits = []
+    if location:
+        line3_bits.append(f"📍 {location}")
+    if created:
+        line3_bits.append(f"Joined: {created}")
+    parts = [header, desc, line2]
+    if line3_bits:
+        parts.append("   ".join(line3_bits))
+    parts.append(f"https://x.com/{sn}")
+    if url:
+        parts.append(f"Link: {url}")
+    return "\n".join(p for p in parts if p)
+
+
+def _format_trends(payload: dict) -> str:
+    """Numbered trend list."""
+    trends = payload.get("trends") or []
+    if not trends:
+        return "(no trends)"
+    out = []
+    for i, t in enumerate(trends, 1):
+        nm = t.get("name", "?")
+        cnt = t.get("tweets_count")
+        ctx = t.get("domain_context") or ""
+        line = f"{i:>2}. {nm}"
+        if cnt:
+            line += f"  ({_compact_num(cnt)} tweets)"
+        if ctx:
+            line += f"  — {ctx}"
+        out.append(line)
+    return "\n".join(out)
+
+
+async def _human_tweet(id_or_url: str) -> str:
+    raw = await _call_tool_async("get_tweet", {"tweet_id": id_or_url})
+    import json as _stdlib_json
+
+    return _format_tweet(_stdlib_json.loads(raw))
+
+
+async def _human_user(screen_name: str) -> str:
+    raw = await _call_tool_async("get_user_info", {"screen_name": screen_name})
+    import json as _stdlib_json
+
+    return _format_user(_stdlib_json.loads(raw))
+
+
+async def _human_timeline(count: int) -> str:
+    raw = await _call_tool_async("get_timeline", {"count": str(count)})
+    import json as _stdlib_json
+
+    return _format_tweet_list(_stdlib_json.loads(raw))
+
+
+async def _human_search(query: str, count: int) -> str:
+    raw = await _call_tool_async(
+        "search_tweets", {"query": query, "count": str(count), "product": "Top"}
+    )
+    import json as _stdlib_json
+
+    return _format_tweet_list(_stdlib_json.loads(raw))
+
+
+async def _human_trends(count: int) -> str:
+    raw = await _call_tool_async(
+        "get_trends", {"category": "trending", "count": str(count)}
+    )
+    import json as _stdlib_json
+
+    return _format_trends(_stdlib_json.loads(raw))
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="twikit-mcp",
@@ -2070,6 +2218,51 @@ def main():
         help="Zero or more arguments in key=value form.",
     )
 
+    # ── Human-friendly subcommands ────────────────────
+    # Same underlying tools as `call`, but with positional args + pretty
+    # text output (no raw JSON). For when you want to read X in the shell.
+    p_tweet = sub.add_parser(
+        "tweet",
+        help="Pretty-print a single tweet by ID or URL.",
+        description="Example: twikit-mcp tweet 20",
+    )
+    p_tweet.add_argument("id_or_url", help="Tweet ID (numeric) or full x.com URL.")
+
+    p_user = sub.add_parser(
+        "user",
+        help="Pretty-print a user's profile.",
+        description="Example: twikit-mcp user elonmusk",
+    )
+    p_user.add_argument("screen_name", help="Twitter username (without @).")
+
+    p_tl = sub.add_parser(
+        "tl",
+        help="Pretty-print your home timeline (cookie identity).",
+        description="Example: twikit-mcp tl 10",
+    )
+    p_tl.add_argument(
+        "count", nargs="?", default=20, type=int, help="Number of tweets (default 20)."
+    )
+
+    p_search = sub.add_parser(
+        "search",
+        help="Pretty-print Top search results.",
+        description='Example: twikit-mcp search "AI" 5',
+    )
+    p_search.add_argument("query", help="Search query string.")
+    p_search.add_argument(
+        "count", nargs="?", default=10, type=int, help="Number of results (default 10)."
+    )
+
+    p_trends = sub.add_parser(
+        "trends",
+        help="Pretty-print global trending topics.",
+        description="Example: twikit-mcp trends 10",
+    )
+    p_trends.add_argument(
+        "count", nargs="?", default=20, type=int, help="Number of trends (default 20)."
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "list":
@@ -2080,6 +2273,24 @@ def main():
         kwargs = _parse_kv_pairs(args.kwargs)
         try:
             out = asyncio.run(_call_tool_async(args.tool, kwargs))
+        except ToolError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            raise SystemExit(2)
+        print(out)
+        return
+
+    # Human-friendly read paths. All share the same ToolError → stderr +
+    # exit-2 handling as `call`.
+    _human_dispatch = {
+        "tweet": lambda a: _human_tweet(a.id_or_url),
+        "user": lambda a: _human_user(a.screen_name),
+        "tl": lambda a: _human_timeline(a.count),
+        "search": lambda a: _human_search(a.query, a.count),
+        "trends": lambda a: _human_trends(a.count),
+    }
+    if args.cmd in _human_dispatch:
+        try:
+            out = asyncio.run(_human_dispatch[args.cmd](args))
         except ToolError as e:
             print(f"Error: {e}", file=sys.stderr)
             raise SystemExit(2)

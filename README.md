@@ -151,26 +151,38 @@ That's it. Start talking:
 
 #### CLI mode (no MCP client needed)
 
-The same `twikit-mcp` binary doubles as a one-shot CLI for shell scripts and quick debugging — `serve` is the default behavior, `list` / `call` are subcommands:
+The same `twikit-mcp` binary doubles as a one-shot CLI. Two modes:
+
+**Human-friendly subcommands** — pretty-print tweets, profiles, timeline directly:
 
 ```bash
-# List all available tools
-twikit-mcp list
-
-# Invoke a tool (key=value args; types coerced from your tool signature)
-twikit-mcp call get_user_info screen_name=elonmusk
-twikit-mcp call search_tweets query=AI count=5 product=Top
-twikit-mcp call get_tweet tweet_id=20
-
-# Pipe to jq
-twikit-mcp call get_user_info screen_name=elonmusk | jq .followers_count
-
-# Default mode (no subcommand) is still the MCP server over stdio —
-# every existing client config keeps working unchanged.
-twikit-mcp
+twikit-mcp tweet 20                     # show tweet 20 (Jack's first one)
+twikit-mcp tweet https://x.com/u/status/123    # URL works too
+twikit-mcp user elonmusk                # pretty profile
+twikit-mcp tl 10                        # last 10 tweets from your home timeline
+twikit-mcp search "AI" 5                # 5 top results for "AI"
+twikit-mcp trends 20                    # top 20 trending topics
 ```
 
-Use the same `~/.config/twitter-mcp/cookies.json` file — no separate config.
+Output is plain text — readable in any terminal, native unicode (no `\uXXXX` escapes).
+
+**Machine-friendly subcommands** — raw JSON, `key=value` args, every one of the 57 MCP tools:
+
+```bash
+twikit-mcp list                         # all 57 tool names
+twikit-mcp call get_user_info screen_name=elonmusk
+twikit-mcp call search_tweets query=AI count=5 product=Top
+twikit-mcp call get_user_info screen_name=elonmusk | jq .followers_count
+```
+
+**MCP server mode** — the default when no subcommand is given:
+
+```bash
+twikit-mcp                              # stdio JSON-RPC for MCP clients
+twikit-mcp serve                        # explicit, same behavior
+```
+
+All three modes share the same `~/.config/twitter-mcp/cookies.json` — no separate config.
 
 ### Available Tools
 

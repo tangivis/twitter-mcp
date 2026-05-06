@@ -1,15 +1,40 @@
 # CLI モード
 
-`twikit-mcp` はデュアルモードのバイナリです — 同じインストールで、2 つの利用方法。
+`twikit-mcp` はマルチモードのバイナリです。同じインストールで、3 種類の使い方:
 
 | モード | コマンド | 使う場面 |
 |---|---|---|
-| **MCP サーバー**(デフォルト) | `twikit-mcp` または `twikit-mcp serve` | AI エージェント(Claude Code、Cursor、Cline など)から呼び出し、LLM が stdio 経由で JSON-RPC を送る |
-| **CLI** | `twikit-mcp list` / `twikit-mcp call <tool> …` | シェルスクリプト、自動化、デバッグ |
+| **MCP サーバー**(デフォルト) | `twikit-mcp` または `twikit-mcp serve` | AI エージェント(Claude Code、Cursor、Cline など)、LLM が stdio 経由で JSON-RPC を送る |
+| **ヒューマン CLI** | `twikit-mcp tweet 20`、`twikit-mcp user elonmusk` など | シェルでツイート / プロフィール / タイムラインを直接読みたいとき。出力はプレーンテキスト、ネイティブ Unicode |
+| **マシン CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | シェルスクリプト、自動化、デバッグ。生 JSON 出力、57 ツール全部呼べる |
 
-両モードとも**同じ cookies ファイル**(`~/.config/twitter-mcp/cookies.json`)と同じ 57 ツールを共有します。
+3 モードとも**同じ cookies ファイル**(`~/.config/twitter-mcp/cookies.json`)を共有します。
 
-## サブコマンド
+## ヒューマン用サブコマンド
+
+整形済みテキスト、位置引数、JSON なし。「X を読みたい」の典型ケースを 5 つカバー:
+
+```bash
+twikit-mcp tweet 20                       # 1 ツイートを整形表示
+twikit-mcp tweet https://x.com/jack/status/20  # URL も可
+twikit-mcp user elonmusk                  # 1 プロフィール
+twikit-mcp tl 10                          # 自分のホームタイムライン直近 10 件
+twikit-mcp search "AI" 5                  # "AI" のトップ 5 検索結果
+twikit-mcp trends 20                      # トップ 20 トレンド
+```
+
+出力例:
+
+```
+@pathfinderSport · Pathfinder Sports
+Άρσεναλ - Σάντερλαντ: (X) 0-0 τελικό
+❤ 7,269  🔁 5,473  · Sat Feb 21 16:55:22 +0000 2009
+https://x.com/pathfinderSport/status/1234567890
+```
+
+これらは同じ MCP ツール群の薄いラッパーです。より細かな引数(`product=Latest` / カスタム `cursor` など)が必要なら `call` を使ってください。
+
+## マシン用サブコマンド
 
 ### `serve`(デフォルト)
 
