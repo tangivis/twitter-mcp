@@ -399,11 +399,71 @@ jobs:
           NEXT_ITER: ${{ steps.iter.outputs.next }}
           MODEL: ${{ steps.call.outputs.model }}
         run: |
-          # Build the summary comment (top-level PR comment) — short, with
-          # the iter marker for ladder counting + decision for at-a-glance.
           decision=$(jq -r '.decision' review.json)
           summary=$(jq -r '.summary' review.json)
           item_count=$(jq -r '.items | length' review.json)
+
+          # Build the inline-review payload first — items with file+line+body
+          # qualify; the rest fall back to the summary as a bulleted list.
+          # Without this fallback, a model that returns items without line
+          # anchors would silently drop ALL feedback (the bug observed on PR
+          # #62 first review).
+          python3 - <<'PY'
+          import json
+
+          ACTIONABLE = {"must_fix", "issue", "suggestion", "nitpick"}
+          PRESENTATIONAL = {"praise", "question"}
+
+          with open("review.json") as f:
+              r = json.load(f)
+
+          inline = []
+          orphan = []  # actionable items without anchors → render in summary
+          presentational = []  # praise / question → render in summary
+
+          for it in r["items"]:
+              sev = it.get("severity") or "suggestion"
+              path = it.get("file") or ""
+              line = it.get("line") or 0
+              body = (it.get("body") or "").strip()
+              if not body:
+                  continue
+              if sev in ACTIONABLE and path and isinstance(line, int) and line > 0:
+                  inline.append({
+                      "path": path,
+                      "line": int(line),
+                      "side": "RIGHT",
+                      "body": f"**{sev}**: {body}",
+                  })
+              elif sev in PRESENTATIONAL:
+                  presentational.append({"sev": sev, "path": path, "line": line, "body": body})
+              else:
+                  orphan.append({"sev": sev, "path": path, "line": line, "body": body})
+
+          payload = {"event": "COMMENT", "comments": inline}
+          with open("review_payload.json", "w") as f:
+              json.dump(payload, f)
+
+          # Markdown rendering of orphans + presentational for the summary.
+          def render_block(label, entries):
+              if not entries:
+                  return ""
+              lines = [f"### {label}", ""]
+              for e in entries:
+                  loc = e["path"] or "_(file unspecified)_"
+                  if e["line"] and e["line"] > 0:
+                      loc = f"{loc}:{e['line']}"
+                  lines.append(f"- **{e['sev']}** — `{loc}` — {e['body']}")
+              lines.append("")
+              return "\n".join(lines)
+
+          extra_md = render_block("Orphan items (no line anchor)", orphan)
+          extra_md += render_block("Notes from reviewer", presentational)
+          with open("extra.md", "w") as f:
+              f.write(extra_md)
+          PY
+
+          inline_count=$(jq -r '.comments | length' review_payload.json)
 
           {
             echo "## 🤖 Review by ${MODEL} (iter ${NEXT_ITER})"
@@ -411,13 +471,17 @@ jobs:
             echo "**Summary:** $summary"
             echo
             echo "**Decision:** \`$decision\`"
-            echo "**Items:** $item_count"
+            echo "**Items:** $item_count (inline: $inline_count)"
             echo
             if [ "$item_count" -eq 0 ]; then
               echo "_No items flagged. Empty arrays are correct outputs — see the review prompt._"
+            elif [ "$inline_count" -gt 0 ]; then
+              echo "_Actionable items posted as inline review comments below; orphans and notes inlined here:_"
             else
-              echo "_Items posted as inline review comments below._"
+              echo "_All items lacked precise file:line anchors; rendering inline in this summary:_"
             fi
+            echo
+            cat extra.md
             echo
             echo "<!-- review-iter -->"
             echo "_Advisory review — maintainer reads + decides. issue #60 quality pass v2 active._"
@@ -425,46 +489,17 @@ jobs:
 
           gh pr comment "$PR_NUM" --body-file summary.md
 
-          # Build the inline-review payload for items with file+line.
-          python3 - <<'PY'
-          import json
-          with open("review.json") as f:
-              r = json.load(f)
-          comments = []
-          # Skip praise / question for inline (top-level summary covers them).
-          # Inline only items the maintainer needs to act on.
-          ACTIONABLE = {"must_fix", "issue", "suggestion", "nitpick"}
-          for it in r["items"]:
-              if it.get("severity") not in ACTIONABLE:
-                  continue
-              path = it.get("file") or ""
-              line = it.get("line") or 0
-              body = it.get("body") or ""
-              if not path or line <= 0 or not body:
-                  continue
-              comments.append({
-                  "path": path,
-                  "line": int(line),
-                  "side": "RIGHT",
-                  "body": f"**{it['severity']}**: {body}"
-              })
-          payload = {"event": "COMMENT", "comments": comments}
-          with open("review_payload.json", "w") as f:
-              json.dump(payload, f)
-          PY
-
-          # Post inline review only if there are actionable items with line anchors.
-          comment_count=$(jq -r '.comments | length' review_payload.json)
-          if [ "$comment_count" -gt 0 ]; then
+          # Post inline review only if there are anchored actionable items.
+          if [ "$inline_count" -gt 0 ]; then
             curl -sS -X POST \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               -d @review_payload.json \
               "https://api.github.com/repos/$REPO/pulls/$PR_NUM/reviews" \
               -o /dev/null \
-              -w "Posted inline review with $comment_count comments → HTTP %{http_code}\n"
+              -w "Posted inline review with $inline_count comments → HTTP %{http_code}\n"
           else
-            echo "No actionable items with line anchors; summary-only post."
+            echo "No actionable items with line anchors; orphans rendered in summary."
           fi
 
       - name: Sonnet still says request-changes — escalate to needs-human issue
