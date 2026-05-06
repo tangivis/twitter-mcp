@@ -26,7 +26,13 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  # `contents: write` is needed for the auto-merge step at the bottom of
+  # this workflow — `gh pr merge --auto --squash` uses the GraphQL
+  # `enableAutoMerge` mutation, which then asks GitHub itself to push
+  # the merge commit using the workflow's GITHUB_TOKEN. Without write,
+  # the merge silently fails after auto-merge "enables". Same for the
+  # direct-merge fallback.
+  contents: write
   pull-requests: write
   issues: write   # used by auto_summon_claude.sh to open escalation issues
 
