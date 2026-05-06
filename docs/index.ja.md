@@ -8,11 +8,16 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.24 の新機能
+
+- **Rich レンダリングのカード** — 0.1.23 のターミナルカードを [Rich](https://github.com/Textualize/rich) が描画するようになりました。emoji と CJK の**列幅計測が正確**(`❤ 🔁` 行で右ボーダーがずれない)、ツイート / プロフィール / bio URL は **OSC 8 でクリッカブル**(iTerm2 / kitty / WezTerm / Windows Terminal / gnome-terminal ≥ 3.36 で cmd-クリックで開きます)。トレンドは真の Table レイアウトに。
+- プレーンテキスト出力(非 TTY)は無変更:`| jq` / `> file` / `NO_COLOR=1` の消費者にとってバイト安定が保たれます。
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.23 の新機能
 
 - **ASCII Twitter カード UI** — `twikit-mcp tweet` / `user` / `tl` / `search` / `trends` がターミナルで box-drawing のカード表示になりました(太字の作者名、薄い表示の作成日時、本文 / カウント / URL の区切り線)。ファイルやパイプへリダイレクト、または `NO_COLOR=1` を設定すると、従来通りのバイト安定なプレーンテキストへ自動フォールバック。出力例は [CLI モード](cli.md)。
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.22 の新機能
 
