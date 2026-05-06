@@ -8,6 +8,22 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.22
+
+- **Human-friendly CLI subcommands** — read tweets / profiles / timeline / search / trends straight from your terminal:
+
+  ```bash
+  twikit-mcp tweet 20
+  twikit-mcp user elonmusk
+  twikit-mcp tl 10
+  ```
+
+  Plain text output, native unicode, sensible defaults. See the [CLI mode page](cli.md).
+- **UTF-8 outputs end-to-end** — no more `\uXXXX` escapes. Greek / 中文 / 日本語 / emoji all flow through tools as readable text.
+- **Tri-lingual docs site** — this very page; switch language in the top bar.
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What you get
 
 - **57 tools** covering tweets, users, lists, communities, scheduled tweets + polls, DMs, articles, search, trends, notifications.

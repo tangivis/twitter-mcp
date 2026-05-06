@@ -8,6 +8,22 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.22 の新機能
+
+- **ヒューマン CLI サブコマンド** — シェルから直接ツイート / プロフィール / タイムライン / 検索 / トレンドを読めます:
+
+  ```bash
+  twikit-mcp tweet 20
+  twikit-mcp user elonmusk
+  twikit-mcp tl 10
+  ```
+
+  プレーンテキスト出力、ネイティブ Unicode、ちょうどいいデフォルト値。詳細は [CLI モード](cli.md)。
+- **エンドツーエンド UTF-8 出力** — `\uXXXX` エスケープはもうありません。中文 / 日本語 / Ελληνικά / emoji はすべて読める形でツール出力されます。
+- **三言語ドキュメントサイト** — 今ご覧のこのページ。上部で言語を切り替えてください。
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 得られるもの
 
 - **57 ツール** — ツイート、ユーザー、リスト、コミュニティ、予約投稿+投票、DM、記事、検索、トレンド、通知。
