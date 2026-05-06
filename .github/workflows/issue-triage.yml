@@ -1,60 +1,186 @@
-name: Claude Issue Triage
+name: Issue triage (MiniMax M2)
 
-# Auto-labels new issues based on existing repo labels. Inline-prompt
-# version of anthropics/claude-code-action/examples/issue-triage.yml —
-# the official example uses a `/label-issue` slash command requiring
-# `.claude/commands/label-issue.md` + a custom script. We skip that
-# and just inline the instructions; upgrade to a slash command later
-# if the prompt grows.
+# Single-shot label triage on new issues. Was on Anthropic
+# claude-code-action; swapped to MiniMax M2 because:
+#   - triage is text-in / labels-out, no agentic flow needed
+#   - cheap + frequent enough to matter at scale
+#
+# Logic:
+#   1. Fetch the new issue body + repo's existing label set.
+#   2. Ask MiniMax to pick 1–3 best-fit existing labels (NEVER invent new
+#      ones; that's a maintainer decision).
+#   3. Apply via the GitHub API.
+#
+# `@claude` mentions inside the issue body are still routed by claude.yml
+# (Anthropic) — that's the code-fixing path, separate concern.
 
 on:
   issues:
     types: [opened]
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
-  triage-issue:
+  triage:
+    name: MiniMax label-triage
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: write
+    timeout-minutes: 3
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
+      - name: Verify secret + mask
+        env:
+          K: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          if [ -z "$K" ]; then
+            echo "::error::MINIMAX_API_KEY not set."
+            exit 1
+          fi
+          echo "::add-mask::$K"
 
-      - name: Run Claude Code for Issue Triage
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # NOTE: with the default (allowed_non_write_users not set),
-          # only issues opened by users with write permission trigger
-          # this workflow. For a single-maintainer repo that's fine.
-          # If you start getting issues from outside contributors and
-          # want them auto-triaged too, add:
-          #   allowed_non_write_users: "*"
-          # but be aware that's the ⚠️ RISKY input — combined with the
-          # strict --allowedTools below it's bounded, but think before
-          # flipping it on.
-          prompt: |
-            REPO: ${{ github.repository }}
-            ISSUE: ${{ github.event.issue.number }}
+      - name: Fetch issue + repo labels
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          curl -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues/$ISSUE" \
+            | jq -r '{title: .title, body: .body, author: .user.login}' \
+            > issue.json
 
-            Triage this newly-opened issue. Steps:
+          # Get all repo labels (paginated; bump if you have >100).
+          curl -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/labels?per_page=100" \
+            | jq -r '[.[] | {name: .name, description: .description}]' \
+            > labels.json
 
-            1. Read the issue body and title with `gh issue view ${{ github.event.issue.number }}`.
-            2. List existing repo labels with `gh label list`.
-            3. Apply the 1–3 most relevant existing labels using
-               `gh issue edit ${{ github.event.issue.number }} --add-label "<name>"`.
-            4. Do NOT create new labels. If no existing label fits, leave
-               it unlabeled.
-            5. Do NOT post a triage comment unless the issue is missing
-               critical info (no repro steps for a bug, no version, etc.)
-               in which case post one short comment asking for it.
+      - name: Build prompt
+        run: |
+          cat > /tmp/build.py <<'PY'
+          import json
+          with open("issue.json") as f: i = json.load(f)
+          with open("labels.json") as f: lbls = json.load(f)
+          label_lines = "\n".join(
+              f"- `{x['name']}`" + (f": {x['description']}" if x.get('description') else "")
+              for x in lbls
+          )
+          prompt = f"""You are triaging a newly-opened GitHub issue on the **twitter-mcp** repo.
 
-            Keep it terse — labels first, words last.
-          claude_args: |
-            --allowedTools "Bash(gh label list:*),Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*)"
+          Existing labels (you MUST pick from these — do NOT invent new labels):
+          {label_lines}
+
+          Issue title: {i.get('title','')}
+          Issue author: @{i.get('author','?')}
+
+          Issue body:
+          ---
+          {i.get('body') or '(empty)'}
+          ---
+
+          ## Output format — STRICT JSON
+
+          Respond with a single JSON object (no markdown wrap, no prose):
+          {{
+            "labels": ["pick", "1–3", "best-fit", "labels", "from", "the", "list", "above"],
+            "needs_more_info": true | false,
+            "info_request": "if needs_more_info=true, one short comment asking for what's missing (e.g. 'Please share the twikit version + a reproducer.'). Otherwise empty string."
+          }}
+
+          Rules:
+          - `labels`: pick 1–3 labels that genuinely apply. If nothing fits, return empty array `[]`.
+          - `needs_more_info`: true ONLY for bug reports missing repro / version / log. Don't use for feature requests.
+          - Be terse — labels first, words last."""
+          with open("prompt.txt", "w") as f: f.write(prompt)
+          PY
+          python3 /tmp/build.py
+
+      - name: Call MiniMax M2 (JSON mode)
+        id: call
+        env:
+          K: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          payload=$(jq -nc --rawfile p prompt.txt \
+            '{
+              model: "MiniMax-M2",
+              messages: [{role: "user", content: $p}],
+              max_tokens: 2000,
+              temperature: 0.1,
+              response_format: {type: "json_object"}
+            }')
+
+          http=$(curl -sS -o response.json -w '%{http_code}' \
+            --max-time 60 \
+            https://api.minimaxi.com/v1/chat/completions \
+            -H "Authorization: Bearer $K" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+          echo "http=$http" >> "$GITHUB_OUTPUT"
+
+          if [ "$http" != "200" ]; then
+            echo "::warning::MiniMax HTTP $http; triage skipped."
+            head -c 1000 response.json
+            exit 0
+          fi
+
+      - name: Parse + apply
+        if: steps.call.outputs.http == '200'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          jq -r '.choices[0].message.content // empty' response.json > raw.md
+
+          cat > /tmp/parse.py <<'PY'
+          import json, re, sys
+          src = sys.stdin.read()
+          src = re.sub(r"<think>.*?</think>", "", src, flags=re.DOTALL)
+          src = re.sub(r"<think>.*$", "", src, flags=re.DOTALL)
+          m = re.search(r"\{.*\}", src, re.DOTALL)
+          if not m:
+              print("ERR: no JSON object", file=sys.stderr); sys.exit(1)
+          parsed = json.loads(m.group(0))
+          parsed.setdefault("labels", [])
+          parsed.setdefault("needs_more_info", False)
+          parsed.setdefault("info_request", "")
+          json.dump(parsed, sys.stdout)
+          PY
+          python3 /tmp/parse.py < raw.md > triage.json
+          cat triage.json | jq .
+
+          # Apply labels (if any).
+          labels=$(jq -c '.labels' triage.json)
+          if [ "$labels" != "[]" ] && [ "$labels" != "null" ]; then
+            curl -sS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -d "{\"labels\": $labels}" \
+              "https://api.github.com/repos/$REPO/issues/$ISSUE/labels" \
+              -o /dev/null \
+              -w "Applied labels → HTTP %{http_code}\n"
+          else
+            echo "No labels selected."
+          fi
+
+          # Info-request comment (only if needed).
+          needs=$(jq -r '.needs_more_info' triage.json)
+          if [ "$needs" = "true" ]; then
+            req=$(jq -r '.info_request' triage.json)
+            if [ -n "$req" ] && [ "$req" != "null" ]; then
+              jq -nc --arg b "$req" '{body: $b}' > /tmp/comment.json
+              curl -sS -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -d @/tmp/comment.json \
+                "https://api.github.com/repos/$REPO/issues/$ISSUE/comments" \
+                -o /dev/null \
+                -w "Posted info-request → HTTP %{http_code}\n"
+            fi
+          fi
