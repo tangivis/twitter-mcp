@@ -1,10 +1,15 @@
 """Twitter MCP Server - twikit-based, no API key needed."""
 
 import argparse
+import asyncio
+import inspect
 import json
 import os
 import re
+import sys
 import time
+import types
+import typing
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -1929,10 +1934,107 @@ def _get_version() -> str:
         return "unknown"
 
 
+# ── CLI mode ──────────────────────────────────────────
+#
+# `twikit-mcp` is dual-mode:
+#   - Default (no subcommand) / `serve` → MCP server over stdio. Backward
+#     compatible with every existing client config in the wild.
+#   - `list` → print the names of all registered tools, one per line.
+#   - `call <tool> [key=value …]` → invoke that tool and print the JSON
+#     output, useful for shell scripts + interactive debugging without
+#     needing an MCP client wired up.
+#
+# Tool args come in as strings (`count=5`); we coerce them to the type
+# declared on the tool's Python signature. Bools accept loose forms
+# (true/false/1/0/yes/no). `Optional[X] = None` and `X | None` both
+# unwrap to the inner type. Unknown args raise a clear error naming
+# the legal set.
+
+
+def _coerce(value: str, annotation):
+    """Cast a CLI string to the annotation's expected Python type.
+
+    Handles the annotation forms our tools actually use:
+      - `str` (passthrough), `int`, `float`, `bool`
+      - `Optional[X]` / `X | None` (PEP 604 union with None)
+      - any unknown/fancy annotation → return the raw string
+    """
+    # Empty / unspecified annotation → pass through.
+    if annotation is inspect.Parameter.empty or annotation is str:
+        return value
+    if annotation is int:
+        return int(value)
+    if annotation is float:
+        return float(value)
+    if annotation is bool:
+        return value.strip().lower() in ("true", "1", "yes", "y", "on")
+
+    # PEP 604 union (`int | None`) and typing.Union[...]: unwrap to a
+    # non-None member and recurse. NoneType is dropped — passing
+    # `--key=` as the empty string is the way to send None explicitly.
+    origin = typing.get_origin(annotation)
+    if origin is typing.Union or isinstance(annotation, types.UnionType):
+        members = [a for a in typing.get_args(annotation) if a is not type(None)]
+        if value == "" and len(members) < len(typing.get_args(annotation)):
+            return None
+        for m in members:
+            try:
+                return _coerce(value, m)
+            except (TypeError, ValueError):
+                continue
+    # Fallback: pass the raw string. Any tool-side validation will
+    # surface a clean ToolError if needed.
+    return value
+
+
+def _list_tools_text() -> str:
+    """Sorted tool names, one per line."""
+    return "\n".join(sorted(mcp._tool_manager._tools))
+
+
+async def _call_tool_async(tool_name: str, raw_kwargs: dict[str, str]) -> str:
+    """Look up a tool, coerce kwargs, await it, return its string output."""
+    tools = mcp._tool_manager._tools
+    if tool_name not in tools:
+        raise SystemExit(
+            f"Unknown tool: {tool_name!r}. Run `twikit-mcp list` to see "
+            f"the available {len(tools)} tools."
+        )
+    tool = tools[tool_name]
+    fn = getattr(tool, "fn", None) or getattr(tool, "func", None) or tool
+    sig = inspect.signature(fn)
+    coerced: dict[str, object] = {}
+    for k, v in raw_kwargs.items():
+        if k not in sig.parameters:
+            raise SystemExit(
+                f"Unknown arg `{k}` for tool `{tool_name}`. "
+                f"Valid args: {list(sig.parameters)}"
+            )
+        coerced[k] = _coerce(v, sig.parameters[k].annotation)
+    return await fn(**coerced)
+
+
+def _parse_kv_pairs(items: list[str]) -> dict[str, str]:
+    """Parse the `key=value` positional args from `twikit-mcp call`."""
+    out: dict[str, str] = {}
+    for item in items:
+        if "=" not in item:
+            raise SystemExit(
+                f"Bad arg form: {item!r}. Use `key=value` (e.g. screen_name=elonmusk)."
+            )
+        k, v = item.split("=", 1)
+        out[k] = v
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="twikit-mcp",
-        description="Twitter/X MCP server — twikit-based, no API key needed.",
+        description=(
+            "Twitter/X MCP server — twikit-based, no API key needed. "
+            "Default mode runs the MCP server over stdio; subcommands "
+            "give a one-shot CLI for scripts + debugging."
+        ),
     )
     parser.add_argument(
         "-v",
@@ -1940,7 +2042,51 @@ def main():
         action="version",
         version=f"twikit-mcp {_get_version()}",
     )
-    parser.parse_args()
+    sub = parser.add_subparsers(dest="cmd")
+
+    sub.add_parser(
+        "serve",
+        help="Run as an MCP server over stdio (default when no subcommand given).",
+    )
+    sub.add_parser(
+        "list",
+        help="List the names of all registered MCP tools, one per line.",
+    )
+    p_call = sub.add_parser(
+        "call",
+        help="Invoke a single tool from the CLI. Args use key=value form.",
+        description=(
+            "Invoke a tool. Args are key=value pairs whose names match the "
+            "tool's Python signature. Type coercion: int / float / bool from "
+            "their string forms; bool accepts true|false|1|0|yes|no. "
+            "Example: twikit-mcp call get_user_info screen_name=elonmusk"
+        ),
+    )
+    p_call.add_argument("tool", help="Tool name (see `twikit-mcp list`).")
+    p_call.add_argument(
+        "kwargs",
+        nargs="*",
+        metavar="KEY=VALUE",
+        help="Zero or more arguments in key=value form.",
+    )
+
+    args = parser.parse_args()
+
+    if args.cmd == "list":
+        print(_list_tools_text())
+        return
+
+    if args.cmd == "call":
+        kwargs = _parse_kv_pairs(args.kwargs)
+        try:
+            out = asyncio.run(_call_tool_async(args.tool, kwargs))
+        except ToolError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            raise SystemExit(2)
+        print(out)
+        return
+
+    # Default / `serve` → existing MCP server behavior.
     mcp.run(transport="stdio")
 
 
