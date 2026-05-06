@@ -33,7 +33,12 @@ jobs:
     name: MiniMax M2 review
     runs-on: ubuntu-latest
     timeout-minutes: 6
-    if: github.event.pull_request.draft == false
+    # No draft filter — review fires on every PR open / synchronize /
+    # ready_for_review (even when still draft). The maintainer's
+    # workflow opens drafts then auto-merges on green per CLAUDE.md's
+    # Monitoring contract; without this MiniMax review never had time
+    # to run on the maintainer's PRs (skip-on-draft + immediate merge
+    # on ready). Tokens are cheap; review every iteration.
     steps:
       - uses: actions/checkout@v4
         with:

@@ -194,3 +194,18 @@ def test_workflow_keeps_summary_as_top_level_comment():
         "Summary must still post as a top-level PR comment so the "
         "iteration marker + decision are visible at-a-glance."
     )
+
+
+def test_workflow_does_not_skip_drafts():
+    """Reviews run on draft PRs too. The maintainer's workflow opens
+    drafts, polls CI, and auto-merges on green per CLAUDE.md's
+    Monitoring contract — a skip-on-draft filter means MiniMax never
+    actually reviews the maintainer's PRs. Tokens are cheap; review
+    every iteration."""
+    src = _PR_REVIEW.read_text()
+    assert "pull_request.draft == false" not in src, (
+        "pr-review.yml has a `draft == false` filter — that re-introduces "
+        "the gap that PR #82-era retro fixed: maintainer drafts open + "
+        "immediately get merged on green, never giving MiniMax review a "
+        "chance to run. Drop the filter so review fires on every PR event."
+    )
