@@ -45,6 +45,7 @@ PyPI 上的 twikit 2.3.3 有两个已知 bug：
 | 0.1.5 | `_vendor/twikit/tweet.py` | `Tweet` 属性全面防御化：`text`/`created_at`/`lang`/`favorite_count`/`retweet_count`/`reply_count`/`favorited`/`is_quote_status` 以及 `entities.*` 子树（hashtags/urls/media）都走 `.get()`。构造时 `_data["legacy"]` 也改为可选。|
 | 0.1.9 | `_vendor/twikit/client/gql.py` | `GQLClient.tweet_result_by_rest_id` 把 `fieldToggles.withArticlePlainText` 从 `False` 翻成 `True`。这是 issue #10 修复 `get_article` 的关键一步：上游默认抑制 article 正文，翻成 `True` 后 `.article.article_results.result.plain_text` 才会真的填充。改动在源文件里加了 `# twitter-mcp patch (issue #10)` 注释,下次 vendor 刷新时不要漏掉。|
 | 0.1.21 | `_vendor/twikit/client/client.py` | `Client.get_lists` 防御化 items[1] 遍历。issue #37 暴露:burner 0 lists 时 X 在 items[1] 塞了 promo 卡片或没有 `itemContent.list` 的 cell,上游用 `list["item"]["itemContent"]["list"]` 直挂 KeyError。改成 `.get()` 链 + 跳过没 list payload 的 entry。打了 `# twitter-mcp patch (issue #37)` 标记 + `tests/test_vendor.py::test_get_lists_skips_non_list_entries` 双重 guard,下次 vendor 刷新别漏。|
+| 0.1.24 | `_vendor/twikit/tweet.py` | 新增 `Tweet.conversation_id` 属性，从 `_legacy["conversation_id_str"]` 读取推文会话根 ID（issue #77）。上游 twikit 未暴露此字段，但 X API legacy 对象始终带有 `conversation_id_str`。用于 `get_tweet` 工具返回 `conversation_id` 和 `in_reply_to` 以支持 agentic 线程回溯。|
 
 ### 为什么要防御化 `User.__init__`
 

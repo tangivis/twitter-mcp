@@ -129,6 +129,10 @@ class Tweet:
         return self._legacy.get("in_reply_to_status_id_str")
 
     @property
+    def conversation_id(self) -> str | None:  # twitter-mcp patch (issue #77)
+        return self._legacy.get("conversation_id_str")
+
+    @property
     def is_quote_status(self) -> bool:
         return self._legacy.get("is_quote_status", False)
 

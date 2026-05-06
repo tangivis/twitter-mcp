@@ -8,12 +8,16 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.25 新增
+
+- **`get_tweet` 返回会话上下文** — 响应里现在多了 `in_reply_to`(回复时的父推 ID)和 `conversation_id`(整条 thread 的根推 ID)。Agent 拿到一条回复推文不再需要让用户手动贴父推链接,直接能溯源到根。(closes #77)
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.24 新增
 
 - **Rich 渲染卡片** — 0.1.23 的终端卡片现在改由 [Rich](https://github.com/Textualize/rich) 输出,emoji 和中日韩字符**列宽正确**(`❤ 🔁` 行不再让右边框偏移),并且 tweet / 个人主页 / bio URL 都用 **OSC 8 可点超链接**包裹 — 在 iTerm2 / kitty / WezTerm / Windows Terminal / gnome-terminal ≥ 3.36 里 cmd-click 直接打开。Trends 改成了真正的 Table 排版。
 - 纯文本(非 TTY)输出不变:`| jq` / `> file` / `NO_COLOR=1` 消费者继续字节稳定。
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.23 新增
 

@@ -147,6 +147,8 @@ async def get_tweet(tweet_id: str) -> str:
             "created_at": str(t.created_at),
             "likes": t.favorite_count,
             "retweets": t.retweet_count,
+            "in_reply_to": t.in_reply_to,
+            "conversation_id": t.conversation_id,
         }
     )
 

@@ -8,12 +8,16 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.25 の新機能
+
+- **`get_tweet` に会話コンテキストを追加** — レスポンスに `in_reply_to`(リプライ元ツイートID)と `conversation_id`(スレッドのルートツイートID)が含まれるようになりました。エージェントは1つのリプライから親リンクをユーザーに尋ねることなくスレッド全体を遡れます。(closes #77)
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.24 の新機能
 
 - **Rich レンダリングのカード** — 0.1.23 のターミナルカードを [Rich](https://github.com/Textualize/rich) が描画するようになりました。emoji と CJK の**列幅計測が正確**(`❤ 🔁` 行で右ボーダーがずれない)、ツイート / プロフィール / bio URL は **OSC 8 でクリッカブル**(iTerm2 / kitty / WezTerm / Windows Terminal / gnome-terminal ≥ 3.36 で cmd-クリックで開きます)。トレンドは真の Table レイアウトに。
 - プレーンテキスト出力(非 TTY)は無変更:`| jq` / `> file` / `NO_COLOR=1` の消費者にとってバイト安定が保たれます。
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.23 の新機能
 

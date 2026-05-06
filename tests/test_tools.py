@@ -27,6 +27,8 @@ def _fake_tweet(
     favorite_count=5,
     retweet_count=2,
     created_at="Mon Jan 01 00:00:00 +0000 2026",
+    in_reply_to=None,
+    conversation_id=None,
 ):
     return SimpleNamespace(
         id=tid,
@@ -35,6 +37,8 @@ def _fake_tweet(
         favorite_count=favorite_count,
         retweet_count=retweet_count,
         created_at=created_at,
+        in_reply_to=in_reply_to,
+        conversation_id=conversation_id,
     )
 
 
@@ -89,7 +93,21 @@ async def test_get_tweet_returns_full_shape(fake_client):
         "created_at": "Sat Apr 18 10:00:00 +0000 2026",
         "likes": 10,
         "retweets": 3,
+        "in_reply_to": None,
+        "conversation_id": None,
     }
+
+
+async def test_get_tweet_includes_reply_context(fake_client):
+    t = _fake_tweet(
+        tid="99999",
+        in_reply_to="88888",
+        conversation_id="77777",
+    )
+    fake_client.get_tweets_by_ids = AsyncMock(return_value=[t])
+    out = json.loads(await server.get_tweet("99999"))
+    assert out["in_reply_to"] == "88888"
+    assert out["conversation_id"] == "77777"
 
 
 @pytest.mark.parametrize(
