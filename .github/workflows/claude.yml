@@ -66,23 +66,20 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # Optional: Customize the trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
-
-          # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
-
-          # Optional: Configure Claude's behavior with CLI arguments
-          # claude_args: |
-          #   --model claude-opus-4-1-20250805
-          #   --max-turns 10
-          #   --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
-          #   --system-prompt "Follow our coding standards. Ensure all new code has tests. Use TypeScript for new files."
-
-          # Optional: Advanced settings configuration
-          # settings: |
-          #   {
-          #     "env": {
-          #       "NODE_ENV": "test"
-          #     }
-          #   }
+          # Pin model + turn cap to control plan-quota burn.
+          #
+          # Sonnet 4.6 is plenty for 90% of issue triage / small fixes /
+          # PR feedback in this repo. (Reference: pr-review.yml runs on
+          # MiniMax M2 — strictly weaker — and converges within 5 review
+          # iterations on real PRs.) Opus 4.7 is reserved for cases the
+          # maintainer drives locally via Claude Code; routing the
+          # GitHub bot to Opus on every @claude burns ~5× the tokens
+          # without proportional payoff for this codebase's complexity.
+          #
+          # max-turns 15 caps a runaway loop (each turn = one LLM call
+          # + tool action). 15 covers a typical TDD red→green→PR cycle
+          # with headroom; if the bot can't finish in 15 turns the
+          # task probably needed local Claude Code anyway.
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 15
