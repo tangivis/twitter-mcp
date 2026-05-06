@@ -22,3 +22,4 @@ cookies.json
 # MkDocs build output
 /site/
 /docs/api.md
+/docs/_cli_tools.*.md

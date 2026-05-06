@@ -273,7 +273,7 @@ def _write_api_page() -> None:
     """
     L = _LOCALES["en"]
     out_path = _REPO_ROOT / "docs" / "api.md"
-    with out_path.open("w") as f:
+    with out_path.open("w", encoding="utf-8") as f:
         f.write(f"# {L['title']}\n\n")
         f.write(L["intro"])
         f.write(f"**{len(tools)}**")
@@ -316,6 +316,106 @@ def _write_api_page() -> None:
                 + ", ".join(f"`{n}`" for n in missing)
                 + ". Update `_categorize()` in `scripts/gen_api_docs.py`.\n"
             )
+
+
+# ── Per-locale CLI tool listing ───────────────────────
+#
+# Issue #58: `cli.{en,zh,ja}.md` only documents the 3 modes + 5 human
+# subcommands. zh/ja users have to jump to English-only `api.md` to see
+# the full `twikit-mcp call <tool>` surface. Fix: emit a localized
+# excerpt per locale that lists every tool with one-line summary +
+# `call` example. The cli.{en,zh,ja}.md pages include this excerpt via
+# `pymdownx.snippets` (already enabled).
+#
+# Excerpts go to `docs/_cli_tools.{en,zh,ja}.md` — gitignored, regenerated
+# on every docs build. Same script, same source registry as `api.md`,
+# zero drift.
+
+
+_CLI_LOCALES = {
+    "en": {
+        "intro": (
+            "All registered MCP tools, callable via the machine-mode CLI "
+            "(`twikit-mcp call <tool> key=value …`). Auto-generated from "
+            "the live tool registry — never drifts from code. For full "
+            "argument signatures + return shapes, see the [MCP Tools API "
+            "reference](api.md)."
+        ),
+        "no_doc_summary": "(no description)",
+        "category_intro": "**{count}** tool(s):",
+    },
+    "zh": {
+        "intro": (
+            "所有注册的 MCP 工具,可通过 machine 模式 CLI 调用"
+            "(`twikit-mcp call <tool> key=value …`)。自动生成,不会漂移。"
+            "完整的参数签名和返回形状见 [MCP 工具 API 参考](api.md)。"
+        ),
+        "no_doc_summary": "(无描述)",
+        "category_intro": "共 **{count}** 个:",
+    },
+    "ja": {
+        "intro": (
+            "すべての登録済み MCP ツール、マシンモード CLI で呼び出せます"
+            "(`twikit-mcp call <tool> key=value …`)。自動生成、ドリフトしません。"
+            "完全な引数シグネチャと戻り値の形は [MCP ツール API リファレンス]"
+            "(api.md) を参照。"
+        ),
+        "no_doc_summary": "(説明なし)",
+        "category_intro": "全 **{count}** ツール:",
+    },
+}
+
+
+def _docstring_first_line(fn) -> str:
+    """First non-empty line of the docstring (Python convention for summary)."""
+    doc = inspect.getdoc(fn) or ""
+    for line in doc.splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return ""
+
+
+def _write_cli_tools_page(locale: str) -> None:
+    """Emit `docs/_cli_tools.<locale>.md` with localized chrome.
+
+    Tool docstring summaries stay English (Python source). Section
+    headers + intros are translated via `_LOCALES["sections"]` (same
+    table the api page uses).
+    """
+    section_labels = _LOCALES[locale]["sections"]
+    L = _CLI_LOCALES[locale]
+    out_path = _REPO_ROOT / "docs" / f"_cli_tools.{locale}.md"
+    # NOTE: Windows defaults to cp1252 for `open()` without explicit
+    # encoding; that fails on zh / ja content with UnicodeEncodeError.
+    # Pin utf-8 — also matches what mkdocs reads on the build side.
+    with out_path.open("w", encoding="utf-8") as f:
+        f.write(L["intro"] + "\n\n")
+
+        for section in SECTION_ORDER:
+            names = by_section.get(section, [])
+            if not names:
+                continue
+            f.write(f"### {section_labels[section]}\n\n")
+            f.write(L["category_intro"].format(count=len(names)) + "\n\n")
+            for name in names:
+                tool = tools[name]
+                fn = getattr(tool, "fn", None) or getattr(tool, "func", None) or tool
+                summary = _docstring_first_line(fn) or L["no_doc_summary"]
+                # `**name**` for the tool name, italic summary, bash cli on next line.
+                # No `###` per tool — keeps the page compact (57 entries × 4 lines
+                # ≈ 240 lines per locale, vs 600+ if every tool got a heading).
+                f.write(f"#### `{name}`\n\n")
+                f.write(f"{summary}\n\n")
+                try:
+                    cli = _cli_example(name, fn)
+                    f.write(f"```bash\n{cli}\n```\n\n")
+                except (ValueError, TypeError):
+                    pass
+
+
+for _loc in ("en", "zh", "ja"):
+    _write_cli_tools_page(_loc)
 
 
 _write_api_page()
