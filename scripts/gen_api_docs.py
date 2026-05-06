@@ -273,7 +273,7 @@ def _write_api_page() -> None:
     """
     L = _LOCALES["en"]
     out_path = _REPO_ROOT / "docs" / "api.md"
-    with out_path.open("w") as f:
+    with out_path.open("w", encoding="utf-8") as f:
         f.write(f"# {L['title']}\n\n")
         f.write(L["intro"])
         f.write(f"**{len(tools)}**")
@@ -386,7 +386,10 @@ def _write_cli_tools_page(locale: str) -> None:
     section_labels = _LOCALES[locale]["sections"]
     L = _CLI_LOCALES[locale]
     out_path = _REPO_ROOT / "docs" / f"_cli_tools.{locale}.md"
-    with out_path.open("w") as f:
+    # NOTE: Windows defaults to cp1252 for `open()` without explicit
+    # encoding; that fails on zh / ja content with UnicodeEncodeError.
+    # Pin utf-8 — also matches what mkdocs reads on the build side.
+    with out_path.open("w", encoding="utf-8") as f:
         f.write(L["intro"] + "\n\n")
 
         for section in SECTION_ORDER:

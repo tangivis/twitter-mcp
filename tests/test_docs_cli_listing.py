@@ -28,7 +28,7 @@ def test_cli_page_includes_tools_excerpt(locale):
     "All tools (machine CLI)" section won't render even when
     `_cli_tools.<locale>.md` is generated."""
     cli_page = _ROOT / "docs" / f"cli.{locale}.md"
-    src = cli_page.read_text()
+    src = cli_page.read_text(encoding="utf-8")
     expected = f'--8<-- "docs/_cli_tools.{locale}.md"'
     assert expected in src, (
         f"{cli_page.name} doesn't include the snippet directive "
@@ -65,7 +65,7 @@ def test_gen_script_writes_per_locale_cli_tool_excerpts(tmp_path):
         assert excerpt.exists(), (
             f"Generator didn't produce {excerpt.relative_to(_ROOT)}"
         )
-        body = excerpt.read_text()
+        body = excerpt.read_text(encoding="utf-8")
 
         # Every tool name appears in a `twikit-mcp call <name>` line.
         # Use a regex that requires word boundary + the call form, so
@@ -88,7 +88,7 @@ def test_gen_script_localizes_zh_section_headers():
     excerpt = _ROOT / "docs" / "_cli_tools.zh.md"
     if not excerpt.exists():
         pytest.skip("excerpt not generated yet — see prior test")
-    body = excerpt.read_text()
+    body = excerpt.read_text(encoding="utf-8")
     # `_LOCALES["zh"]["sections"]["Tweets"]` is "推文 (Tweets)".
     assert "推文 (Tweets)" in body, "zh excerpt missing localized section header"
 
@@ -98,5 +98,5 @@ def test_gen_script_localizes_ja_section_headers():
     excerpt = _ROOT / "docs" / "_cli_tools.ja.md"
     if not excerpt.exists():
         pytest.skip("excerpt not generated yet — see prior test")
-    body = excerpt.read_text()
+    body = excerpt.read_text(encoding="utf-8")
     assert "ツイート (Tweets)" in body, "ja excerpt missing localized section header"
