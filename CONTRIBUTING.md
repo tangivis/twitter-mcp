@@ -252,3 +252,32 @@ def test_tools_registered():
     }
     assert set(tools.keys()) == expected
 ```
+
+---
+
+## PR pipeline(issue #54 简化后)
+
+每个 PR 上跑这几条流水线,**全部为 advisory(顾问性)**,不再有 workflow 自动 merge / auto-summon。
+
+```
+PR open / push
+  ├─ ci.yml          → lint + 3 平台 test + MCP protocol(决定能不能合)
+  └─ pr-review.yml   → MiniMax M2 拉个 review,post 成评论(顾问)
+
+  ↓
+maintainer(在 Claude Code session 里)
+  ├─ 读 review,挑出真问题(忽略误报 / bikeshed)
+  ├─ 真问题 → 自己 push 修复 → 触发新一轮 review,最多 5 轮
+  ├─ 5 轮还 request-changes → 开 issue 记录现状 → 停手(或人工 escalate)
+  └─ 没问题 / 价值低 → 用 mcp__github__merge_pull_request 合
+                       → push 走 maintainer token,自然 cascade
+                       → publish.yml + docs.yml 自动跑(版本变了就发 PyPI;docs 路径变了就 redeploy)
+```
+
+为什么这样:
+- review = MiniMax(便宜 + 频繁,~$0.01/PR)
+- coding = Claude Code(在 session 里写,质量优先)
+- merge = Claude Code 用 mcp 工具(走你 token,GitHub 不会拦截 cascade)
+- 不需要 PAT,不需要 branch protection 上的特殊配置
+
+什么时候手动召唤 `@claude`?当你想让 bot session 接活(写代码、改 docs、跑命令)而不想自己写。在 issue 或 PR 评论里 `@claude please ...`,`claude.yml` 接管。

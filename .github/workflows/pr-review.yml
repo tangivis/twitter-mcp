@@ -1,20 +1,18 @@
 name: PR review (MiniMax M2)
 
-# Per-PR automated review by MiniMax M2 via OpenAI-compatible
-# api.minimaxi.com endpoint. Originally swapped in via PR #42 (replacing
-# anthropics/claude-code-action). Major v2 changes (this revision):
+# Per-PR ADVISORY review by MiniMax M2 via OpenAI-compatible
+# api.minimaxi.com endpoint. Issue #54 — this workflow only POSTS a review
+# comment; merging and code fixes are the maintainer's call (driven via
+# Claude Code session + `mcp__github__merge_pull_request`).
 #
-#   1. JSON-mode output (`response_format: {"type": "json_object"}`) so
-#      the Decision is a top-level field — no more grep-the-markdown.
-#   2. Post-review action: when decision is `request-changes`, auto-summon
-#      `@claude` with iter cap of 5 + escalation issue (.github/scripts/
-#      auto_summon_claude.sh handles the cap logic).
-#   3. When decision is `approve`/`comment`, enable GitHub native
-#      auto-merge — the PR merges as soon as required CI checks pass.
+# Why MiniMax for review specifically:
+#   - review is the highest-frequency LLM call in this repo (every PR
+#     open / synchronize / reopen / ready_for_review), and tokens add up;
+#     M2 is ~10x cheaper than Sonnet at comparable critique quality.
+#   - review is text-out only, so the OpenAI-compat endpoint covers fine.
 #
-# `@claude` mentions in `claude.yml` stay on Anthropic — those need
-# Claude Code's tool-using session to actually edit/commit/push, which
-# OpenAI-compat M2 has no equivalent for.
+# Coding (the actual edits) stays on Claude Code via `claude.yml`'s
+# `@claude` mention handler — quality matters more than cost there.
 
 on:
   pull_request:
@@ -26,15 +24,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  # `contents: write` is needed for the auto-merge step at the bottom of
-  # this workflow — `gh pr merge --auto --squash` uses the GraphQL
-  # `enableAutoMerge` mutation, which then asks GitHub itself to push
-  # the merge commit using the workflow's GITHUB_TOKEN. Without write,
-  # the merge silently fails after auto-merge "enables". Same for the
-  # direct-merge fallback.
-  contents: write
-  pull-requests: write
-  issues: write   # used by auto_summon_claude.sh to open escalation issues
+  contents: read
+  pull-requests: write   # post the review comment
 
 jobs:
   review:
@@ -294,67 +285,7 @@ jobs:
             cat review.md
             echo
             echo "---"
-            echo "_Automated review. \`request-changes\` triggers an auto-fix loop (cap 5); \`approve\` / \`comment\` triggers GitHub auto-merge once required CI checks are green._"
+            echo "_Advisory review by MiniMax M2 — the maintainer (via Claude Code) reads this and decides whether to push fixes or merge. Decision values are informational only; this workflow does **not** auto-merge or auto-summon @claude. To request a code change, mention \`@claude\` in a comment._"
           } > final.md
 
           gh pr comment "$PR_NUM" --body-file final.md
-
-      # ─── Post-review action: auto-fix loop OR auto-merge ───
-      - name: Auto-summon @claude (decision = request-changes)
-        if: steps.parse.outputs.decision == 'request-changes'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR_NUM: ${{ github.event.pull_request.number }}
-          REASON: "MiniMax review"
-          BODY_FILE: review.md
-        run: bash .github/scripts/auto_summon_claude.sh
-
-      - name: Enable auto-merge → fall back to direct merge (decision = approve | comment)
-        if: steps.parse.outputs.decision == 'approve' || steps.parse.outputs.decision == 'comment'
-        env:
-          # IMPORTANT: prefer MERGE_PAT over GITHUB_TOKEN for the merge.
-          #
-          # GitHub's anti-loop protection: pushes (and tag pushes) made by
-          # GITHUB_TOKEN do NOT trigger downstream workflows. So when this
-          # step uses GITHUB_TOKEN to merge, the resulting push to `main`
-          # is invisible to publish.yml — the new release never ships.
-          #
-          # MERGE_PAT (a fine-grained Personal Access Token with
-          # contents:write + pull_requests:write on this repo) bypasses
-          # that limit: PAT-initiated pushes DO cascade to publish.yml +
-          # docs.yml + ci.yml as expected.
-          #
-          # If the secret isn't set, fall back to GITHUB_TOKEN — merge
-          # still happens, just no downstream cascade. The maintainer
-          # would have to trigger publish.yml manually each release.
-          GH_TOKEN: ${{ secrets.MERGE_PAT || secrets.GITHUB_TOKEN }}
-          PR_NUM: ${{ github.event.pull_request.number }}
-        run: |
-          # GitHub's `--auto` flag only enables auto-merge if the PR has at
-          # least one *pending* required check (i.e. branch protection has
-          # required statuses configured AND at least one isn't green yet).
-          # When a repo has no branch protection (or no required statuses),
-          # `--auto` rejects with "Pull Request is in clean status" — there's
-          # nothing for it to wait on. In that case we fall back to a direct
-          # merge: if the PR is mergeable right now, just merge it.
-          #
-          # Both paths skip / warn instead of failing the workflow, since
-          # auto-merge is best-effort.
-          if [ -z "${{ secrets.MERGE_PAT }}" ]; then
-            echo "::warning::MERGE_PAT not set; falling back to GITHUB_TOKEN. Downstream workflows (publish.yml / docs.yml) will NOT auto-trigger after merge — releases require a manual workflow_dispatch. See README for the one-time PAT setup."
-          fi
-
-          if gh pr merge --auto --squash --delete-branch "$PR_NUM" 2>&1; then
-            echo "Auto-merge enabled — GitHub will merge once required checks pass."
-            exit 0
-          fi
-
-          echo "::notice::Auto-merge enable refused (likely: no pending required checks). Trying direct merge."
-
-          if gh pr merge --squash --delete-branch "$PR_NUM" 2>&1; then
-            echo "Direct merge succeeded — PR is now closed."
-            exit 0
-          fi
-
-          echo "::warning::Both auto-merge enable and direct merge failed. PR stays open for manual handling. Likely causes: (a) 'Allow auto-merge' disabled in repo Settings → General; (b) branch protection requires reviewers; (c) PR has merge conflicts."
