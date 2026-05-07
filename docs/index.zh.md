@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.28 新增
+
+- **List 工具稳定性** — `get_list` / `get_list_tweets` / `get_list_members` / `get_list_subscribers` 在 burner 受 X 限流时不再崩(`KeyError: 'created_at'` / `IndexError` / `Invalid list id`)。`_vendor/twikit/list.py` + `client.py` 全面 `.get()` 防御化:字段缺失 → `None`/`""`/`0`,entries 为空 → 空 `Result`。live-smoke 的 `T_LIST` 也拆掉了 `T_DRIFT` 兜底,这一类 bug 真出现会立刻红 CI。(issue #76 part 1)
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.27 新增
 
 - **下载推文视频(yt-dlp)** — 新增 `download_tweet_video` MCP 工具 + `twikit-mcp video <id>` 人用 CLI。默认保存到 `~/Downloads/twikit-mcp/`,通过你现有的 `cookies.json` 认证。需要 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) 在 PATH 里(`uv tool install yt-dlp`);`ffmpeg` 只在你传 `bestvideo+bestaudio` 这类需要 mux 的 format 时才需要。(closes #84)
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.26 新增
 

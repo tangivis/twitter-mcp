@@ -337,7 +337,11 @@ jobs:
               "KeyError: 'rest_id'",      # Community model expects field X dropped
               "Invalid list id",          # twikit's list-id validator too strict
           )
-          T_LIST = ("List not found", "not found") + T_DRIFT
+          # T_LIST no longer includes T_DRIFT — list.py + _get_list_users +
+          # get_list_tweets are now defensively parsed (issue #76 list patch
+          # in 0.1.28). If `IndexError` / `KeyError 'created_at'` reappears
+          # on a list tool, that's a real regression we want to see.
+          T_LIST = ("List not found", "not found")
           T_COMM = ("Community not found", "not found", "not authorized") + T_DRIFT
           T_DM = ("Cannot send messages", "User not found", "no DM")
           T_SEARCH = T_DRIFT  # community/user search hits the same parser
