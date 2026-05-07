@@ -268,7 +268,9 @@ async def test_ytdlp_download_filepath_fallback_from_id_ext(tmp_path, monkeypatc
         output_dir=tmp_path / "out",
         format_spec="best[ext=mp4]",
     )
-    assert info["path"].endswith("out/555.mp4")
+    p = Path(info["path"])
+    assert p.name == "555.mp4"
+    assert p.parent.name == "out"
 
 
 # ── download_tweet_video (the MCP tool) ─────────────────────────
