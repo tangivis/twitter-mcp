@@ -311,3 +311,39 @@ async def test_search_community_tweet_returns_empty_when_entries_empty():
         client, "C", "ai", count=5, cursor=None
     )
     assert list(result) == []
+
+
+# ── get_community: missing-result / no-rest_id paths ─────
+
+
+async def test_get_community_raises_not_found_when_no_result():
+    """find_dict returns [] (X gates burner entirely) → NotFound, not
+    IndexError. PR #88 hotfix follow-up."""
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    client = object.__new__(Client)
+
+    async def fake_community_query(community_id):
+        return {"data": {}}, None
+
+    client.gql = type("FakeGQL", (), {})()
+    client.gql.community_query = fake_community_query
+    with pytest.raises(NotFound, match="not found"):
+        await Client.get_community(client, "C")
+
+
+async def test_get_community_raises_not_found_when_result_missing_rest_id():
+    """find_dict returns a dict without `rest_id` (X truncated shape) →
+    NotFound, not KeyError on Community.__init__."""
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    client = object.__new__(Client)
+
+    async def fake_community_query(community_id):
+        # Has `result` key but not `rest_id` inside it.
+        return {"data": {"communityResults": {"result": {"some_other": "x"}}}}, None
+
+    client.gql = type("FakeGQL", (), {})()
+    client.gql.community_query = fake_community_query
+    with pytest.raises(NotFound, match="not found"):
+        await Client.get_community(client, "C")

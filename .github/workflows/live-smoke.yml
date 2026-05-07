@@ -293,24 +293,27 @@ jobs:
               return f"{len(o['communities'])} community hits (empty OK — X gates)"
 
           def v_search_community_tweet(o):
-              assert isinstance(o, list), "not a list"
-              return f"{len(o)} community-tweet hits (empty OK — X gates)"
+              assert isinstance(o.get("tweets"), list), "missing 'tweets' key"
+              return f"{len(o['tweets'])} community-tweet hits (empty OK — X gates)"
 
           def v_communities_timeline(o):
               assert isinstance(o.get("tweets"), list), "missing 'tweets' key"
               return f"{len(o['tweets'])} community-timeline tweets (empty OK)"
 
           def v_community_tweets(o):
-              assert isinstance(o, list), "not a list"
-              return f"{len(o)} community tweets (empty OK)"
+              assert isinstance(o.get("tweets"), list), "missing 'tweets' key"
+              return f"{len(o['tweets'])} community tweets (empty OK)"
 
           def v_community_members(o):
-              assert isinstance(o.get("users"), list), "missing 'users' key"
-              return f"{len(o['users'])} community members (empty OK)"
+              # server.py wraps as {"members": [...]}, not "users"
+              assert isinstance(o.get("members"), list), "missing 'members' key"
+              return f"{len(o['members'])} community members (empty OK)"
 
           def v_community_moderators(o):
-              assert isinstance(o.get("users"), list), "missing 'users' key"
-              return f"{len(o['users'])} community moderators (empty OK)"
+              assert isinstance(o.get("moderators"), list), (
+                  "missing 'moderators' key"
+              )
+              return f"{len(o['moderators'])} community moderators (empty OK)"
 
           def v_search_user(o):
               assert isinstance(o.get("users"), list), "missing 'users' key"
