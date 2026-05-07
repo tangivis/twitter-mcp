@@ -3941,8 +3941,16 @@ class Client:
             Community object.
         """
         response, _ = await self.gql.community_query(community_id)
-        community_data = find_dict(response, "result", find_one=True)[0]
-        return Community(self, community_data)
+        # Defensive: when X gates the burner, `find_dict` may return []
+        # (no `result`) or return a result dict without `rest_id`
+        # (truncated / error shape). Both used to raise IndexError or
+        # KeyError; surface as `Community not found` instead — live-smoke
+        # already tolerates that string under T_COMM.
+        # twitter-mcp patch (issue #76)
+        results = find_dict(response, "result", find_one=True)
+        if not results or "rest_id" not in (results[0] or {}):
+            raise NotFound(f"Community {community_id} not found.")
+        return Community(self, results[0])
 
     async def get_community_tweets(
         self,
