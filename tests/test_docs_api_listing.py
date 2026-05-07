@@ -28,12 +28,14 @@ _LOCALE_TITLES = {
 @pytest.fixture(scope="module", autouse=True)
 def _regen_docs():
     """Run the generator once per module so tests see fresh files.
-    The script is mock-free (reads `mcp._tool_manager._tools`) and idempotent.
-    """
+    The script is mock-free (reads `mcp._tool_manager._tools`) and
+    idempotent. Use `sys.executable` so Windows runners (where
+    `python` may not be on PATH the same way) work the same."""
     import subprocess
+    import sys
 
     subprocess.run(
-        ["python", str(_REPO_ROOT / "scripts" / "gen_api_docs.py")],
+        [sys.executable, str(_REPO_ROOT / "scripts" / "gen_api_docs.py")],
         check=True,
         cwd=_REPO_ROOT,
     )
