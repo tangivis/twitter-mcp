@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.28 の新機能
+
+- **List ツールの信頼性向上** — `get_list` / `get_list_tweets` / `get_list_members` / `get_list_subscribers` がバーナー識別子で X にゲートされたレスポンス上で `KeyError: 'created_at'` / `IndexError` / `Invalid list id` でクラッシュしなくなりました。`_vendor/twikit/list.py` + `client.py` の全面 `.get()` 防御化:欠損フィールドは `None`/`""`/`0`、空 entries は空の `Result` を返します。live-smoke の `T_LIST` から `T_DRIFT` フォールバックも除去 — このクラスの再発を即座に検知できます。(issue #76 part 1)
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.27 の新機能
 
 - **ツイート動画のダウンロード(yt-dlp)** — 新規 MCP ツール `download_tweet_video` と人間向け CLI `twikit-mcp video <id>` を追加。デフォルトでは `~/Downloads/twikit-mcp/` に保存し、既存の `cookies.json` で認証します。PATH に [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) が必要(`uv tool install yt-dlp`)。`ffmpeg` は `bestvideo+bestaudio` のような複数ストリームのマージが必要な format を渡したときだけ必要です。(closes #84)
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.26 の新機能
 

@@ -3617,11 +3617,24 @@ class Client:
         if not items_:
             raise ValueError(f"Invalid list id: {list_id}")
         items = items_[0]
-        next_cursor = items[-1]["content"]["value"]
+
+        # Defensive: when the list has 0 tweets visible to the burner,
+        # `entries` is `[]`; legacy code then crashed on `items[-1]`.
+        # Now empty entries → empty Result with no next_cursor —
+        # issue #76 / live-smoke saw IndexError on get_list_tweets.
+        # twitter-mcp patch (issue #76)
+        if not items:
+            return Result(
+                [],
+                partial(self.get_list_tweets, list_id, count, None),
+                None,
+            )
+        last_content = items[-1].get("content") or {}
+        next_cursor = last_content.get("value")
 
         results = []
         for item in items:
-            if not item["entryId"].startswith("tweet"):
+            if not item.get("entryId", "").startswith("tweet"):
                 continue
 
             tweet = tweet_from_data(self, item)
@@ -3642,15 +3655,25 @@ class Client:
         """
         response, _ = await f(list_id, count, cursor)
 
-        items = find_dict(response, "entries", find_one=True)[0]
-        results = []
+        # Defensive: when X gates the burner identity entirely (no
+        # `entries` in response), `find_dict` returns []; legacy code
+        # then crashed on `[0]` indexing. Same for individual entries
+        # that lack a `result` payload (truncated by X). Now both
+        # degrade to "empty Result" — issue #76 / live-smoke saw
+        # IndexError on get_list_members + get_list_subscribers.
+        # twitter-mcp patch (issue #76)
+        entries_results = find_dict(response, "entries", find_one=True)
+        items = entries_results[0] if entries_results else []
+        results: list[User] = []
+        next_cursor: str | None = None
         for item in items:
-            entry_id = item["entryId"]
+            entry_id = item.get("entryId", "")
             if entry_id.startswith("user"):
-                user_info = find_dict(item, "result", find_one=True)[0]
-                results.append(User(self, user_info))
+                user_results = find_dict(item, "result", find_one=True)
+                if user_results:
+                    results.append(User(self, user_results[0]))
             elif entry_id.startswith("cursor-bottom"):
-                next_cursor = item["content"]["value"]
+                next_cursor = (item.get("content") or {}).get("value")
                 break
 
         return Result(

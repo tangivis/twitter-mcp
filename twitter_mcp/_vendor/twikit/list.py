@@ -52,24 +52,35 @@ class List:
     def __init__(self, client: Client, data: dict) -> None:
         self._client = client
 
+        # `id_str` stays strict — it's the core identifier; missing it is a
+        # real parse error, not a tolerable X-side gating mode.
         self.id: str = data["id_str"]
-        self.created_at: int = data["created_at"]
-        self.default_banner: dict = data["default_banner_media"]["media_info"]
 
-        if "custom_banner_media" in data:
-            self.banner: dict = data["custom_banner_media"]["media_info"]
+        # Everything else uses `.get(...)` with type-appropriate defaults
+        # so X-side field omissions return shape-stable empty values
+        # instead of crashing the whole tool. (issue #76 / live-smoke
+        # `KeyError: 'created_at'` was the bug that motivated this.)
+        # twitter-mcp patch (issue #76)
+        self.created_at: int | None = data.get("created_at")
+
+        default_banner_media = data.get("default_banner_media") or {}
+        self.default_banner: dict = default_banner_media.get("media_info", {})
+
+        custom_banner_media = data.get("custom_banner_media")
+        if custom_banner_media:
+            self.banner: dict = custom_banner_media.get("media_info", {})
         else:
             self.banner: dict = self.default_banner
 
-        self.description: str = data["description"]
-        self.following: bool = data["following"]
-        self.is_member: bool = data["is_member"]
-        self.member_count: bool = data["member_count"]
-        self.mode: Literal["Private", "Public"] = data["mode"]
-        self.muting: bool = data["muting"]
-        self.name: str = data["name"]
-        self.pinning: bool = data["pinning"]
-        self.subscriber_count: int = data["subscriber_count"]
+        self.description: str = data.get("description", "")
+        self.following: bool = data.get("following", False)
+        self.is_member: bool = data.get("is_member", False)
+        self.member_count: int = data.get("member_count", 0)
+        self.mode: Literal["Private", "Public"] = data.get("mode", "Public")
+        self.muting: bool = data.get("muting", False)
+        self.name: str = data.get("name", "")
+        self.pinning: bool = data.get("pinning", False)
+        self.subscriber_count: int = data.get("subscriber_count", 0)
 
     @property
     def created_at_datetime(self) -> datetime:

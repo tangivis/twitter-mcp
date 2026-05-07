@@ -8,11 +8,15 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.28
+
+- **List-tool reliability** — `get_list` / `get_list_tweets` / `get_list_members` / `get_list_subscribers` no longer crash with `KeyError: 'created_at'` / `IndexError` / `Invalid list id` on burner-gated responses. Defensive parsing in `_vendor/twikit/list.py` + `client.py`: missing fields return `None`/`""`/`0`, empty entries return empty `Result`. Live-smoke now catches future regressions of these classes (no more `T_DRIFT` tolerance for the list path). (issue #76 part 1)
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.27
 
 - **Download tweet videos via yt-dlp** — new `download_tweet_video` MCP tool + `twikit-mcp video <id>` CLI subcommand. Saves to `~/Downloads/twikit-mcp/` by default. Authenticated via your existing `cookies.json`. Requires [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on PATH (`uv tool install yt-dlp`); `ffmpeg` only needed if you pass a separate-stream format like `bestvideo+bestaudio`. (closes #84)
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.26
 
