@@ -1,8 +1,13 @@
-"""Generate docs/api.md from `mcp._tool_manager._tools`.
+"""Generate `docs/api.{en,zh,ja}.md` from `mcp._tool_manager._tools`.
 
 Run this script BEFORE `mkdocs build` (the docs.yml CI workflow does
-this automatically). The output `docs/api.md` is gitignored — generated
-fresh on every build, so it can never drift from the live tool registry.
+this automatically). The outputs are gitignored — generated fresh on
+every build, so they can never drift from the live tool registry.
+
+Per-locale chrome (title / intro / table / section headers) is
+translated via `_LOCALES`; tool docstrings stay native (Python source).
+mkdocs-static-i18n serves the locale-appropriate file at
+/<locale>/api/ (issue #90).
 
 Why a standalone script + gitignore instead of `mkdocs-gen-files`:
 the i18n plugin (`mkdocs-static-i18n`) doesn't reliably pick up virtual
@@ -262,17 +267,16 @@ _LOCALES = {
 }
 
 
-def _write_api_page() -> None:
-    """Emit a single English `docs/api.md`.
+def _write_api_page(locale: str) -> None:
+    """Emit `docs/api.<locale>.md` with localized chrome.
 
-    The api page content is Python signatures + types + CLI examples —
-    language-neutral, so localizing it would create maintenance churn
-    without meaningful UX gain. Readers in zh/ja locale see this page
-    in English (acceptable tradeoff for API ref since types and arg
-    names are English regardless).
+    Tool docstrings stay native (Python source) — translating 57
+    docstrings would create maintenance drift. Title / intro / table /
+    section headers are translated per `_LOCALES[locale]`. mkdocs-static-i18n
+    serves the locale-appropriate file at /<locale>/api/.
     """
-    L = _LOCALES["en"]
-    out_path = _REPO_ROOT / "docs" / "api.md"
+    L = _LOCALES[locale]
+    out_path = _REPO_ROOT / "docs" / f"api.{locale}.md"
     with out_path.open("w", encoding="utf-8") as f:
         f.write(f"# {L['title']}\n\n")
         f.write(L["intro"])
@@ -416,6 +420,11 @@ def _write_cli_tools_page(locale: str) -> None:
 
 for _loc in ("en", "zh", "ja"):
     _write_cli_tools_page(_loc)
+    _write_api_page(_loc)
 
 
-_write_api_page()
+# Clean up the legacy single-file `api.md` if a previous build left
+# one — mkdocs-static-i18n now serves `api.{en,zh,ja}.md` per locale.
+_legacy = _REPO_ROOT / "docs" / "api.md"
+if _legacy.exists():
+    _legacy.unlink()
