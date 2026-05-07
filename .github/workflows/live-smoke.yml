@@ -341,7 +341,13 @@ jobs:
           # get_list_tweets are now defensively parsed (issue #76 list patch
           # in 0.1.28). If `IndexError` / `KeyError 'created_at'` reappears
           # on a list tool, that's a real regression we want to see.
-          T_LIST = ("List not found", "not found")
+          #
+          # `Invalid list id` IS retained as X-gating tolerance (not a
+          # parser bug): twikit raises this when the response has no
+          # `entries` key at all — i.e. X completely gated the list
+          # timeline for the burner. Same class as `User not found` on
+          # follower lists (#37).
+          T_LIST = ("List not found", "not found", "Invalid list id")
           T_COMM = ("Community not found", "not found", "not authorized") + T_DRIFT
           T_DM = ("Cannot send messages", "User not found", "no DM")
           T_SEARCH = T_DRIFT  # community/user search hits the same parser
