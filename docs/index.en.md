@@ -8,11 +8,15 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.26
+
+- **Quote tweet visibility on `get_tweet`** — the response now includes `is_quote_status`, `quoted_id`, `quoted_author`, and `quoted_text` when the tweet quote-retweets another. Agents can now show the quoted text inline without an extra `get_tweet` round-trip — the data is already in the same GraphQL response, we just expose it. (closes #82)
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.25
 
 - **Conversation context on `get_tweet`** — the response now includes `in_reply_to` (parent tweet ID when the tweet is a reply) and `conversation_id` (root tweet ID of the thread). Agents can now reconstruct thread context from a single tweet without needing the user to paste the parent link. (closes #77)
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.24
 

@@ -490,6 +490,8 @@ async def test_tool_output_preserves_unicode_raw(monkeypatch):
         created_at="Sat Feb 21 16:55:22 +0000 2009",
         in_reply_to=None,
         conversation_id=None,
+        is_quote_status=False,
+        quote=None,
     )
     fake_client = AsyncMock()
     fake_client.get_tweets_by_ids = AsyncMock(return_value=[fake_tweet])

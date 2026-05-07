@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.26 の新機能
+
+- **`get_tweet` で引用ツイートを公開** — レスポンスに `is_quote_status` / `quoted_id` / `quoted_author` / `quoted_text` が含まれるようになりました。引用リツイートの場合、引用元の作者と本文を即座に確認でき、エージェントが追加で `get_tweet` を呼ぶ必要がありません。これらは元から同じ GraphQL レスポンスに含まれていたものを取り出して公開しただけ。(closes #82)
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.25 の新機能
 
 - **`get_tweet` に会話コンテキストを追加** — レスポンスに `in_reply_to`(リプライ元ツイートID)と `conversation_id`(スレッドのルートツイートID)が含まれるようになりました。エージェントは1つのリプライから親リンクをユーザーに尋ねることなくスレッド全体を遡れます。(closes #77)
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.24 の新機能
 
