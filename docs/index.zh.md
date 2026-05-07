@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.26 新增
+
+- **`get_tweet` 暴露引用推文** — 响应里现在多了 `is_quote_status`、`quoted_id`、`quoted_author`、`quoted_text`。如果当前推是 quote retweet,直接能看到引用了谁说啥,不用 agent 再 call 一次。这些字段本来就在同一次 GraphQL 响应里,我们只是没抽出来给 agent。(closes #82)
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.25 新增
 
 - **`get_tweet` 返回会话上下文** — 响应里现在多了 `in_reply_to`(回复时的父推 ID)和 `conversation_id`(整条 thread 的根推 ID)。Agent 拿到一条回复推文不再需要让用户手动贴父推链接,直接能溯源到根。(closes #77)
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.24 新增
 

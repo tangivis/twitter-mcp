@@ -29,6 +29,8 @@ def _fake_tweet(
     created_at="Mon Jan 01 00:00:00 +0000 2026",
     in_reply_to=None,
     conversation_id=None,
+    is_quote_status=False,
+    quote=None,
 ):
     return SimpleNamespace(
         id=tid,
@@ -39,6 +41,8 @@ def _fake_tweet(
         created_at=created_at,
         in_reply_to=in_reply_to,
         conversation_id=conversation_id,
+        is_quote_status=is_quote_status,
+        quote=quote,
     )
 
 
@@ -95,6 +99,10 @@ async def test_get_tweet_returns_full_shape(fake_client):
         "retweets": 3,
         "in_reply_to": None,
         "conversation_id": None,
+        "is_quote_status": False,
+        "quoted_id": None,
+        "quoted_author": None,
+        "quoted_text": None,
     }
 
 
@@ -108,6 +116,40 @@ async def test_get_tweet_includes_reply_context(fake_client):
     out = json.loads(await server.get_tweet("99999"))
     assert out["in_reply_to"] == "88888"
     assert out["conversation_id"] == "77777"
+
+
+async def test_get_tweet_includes_quote_context(fake_client):
+    """Issue #82: when the tweet is a quote retweet, the response carries
+    the quoted tweet's id / author / text — extracted from the SAME
+    GraphQL response, no extra network call."""
+    quoted = _fake_tweet(
+        tid="20",
+        text="just setting up my twttr",
+        user=_fake_user(screen_name="jack", name="jack"),
+    )
+    quoter = _fake_tweet(
+        tid="55555",
+        text="historic moment",
+        is_quote_status=True,
+        quote=quoted,
+    )
+    fake_client.get_tweets_by_ids = AsyncMock(return_value=[quoter])
+    out = json.loads(await server.get_tweet("55555"))
+    assert out["is_quote_status"] is True
+    assert out["quoted_id"] == "20"
+    assert out["quoted_author"] == "jack"
+    assert out["quoted_text"] == "just setting up my twttr"
+
+
+async def test_get_tweet_quote_fields_default_when_not_quote(fake_client):
+    """Non-quote tweet: all 4 quote keys present with stable defaults
+    (no key-not-present surprises)."""
+    fake_client.get_tweets_by_ids = AsyncMock(return_value=[_fake_tweet(tid="1")])
+    out = json.loads(await server.get_tweet("1"))
+    assert out["is_quote_status"] is False
+    assert out["quoted_id"] is None
+    assert out["quoted_author"] is None
+    assert out["quoted_text"] is None
 
 
 @pytest.mark.parametrize(

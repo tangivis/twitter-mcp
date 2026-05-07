@@ -138,6 +138,7 @@ async def get_tweet(tweet_id: str) -> str:
             f"use get_article instead."
         )
     t = tweets[0]
+    q = t.quote  # Tweet | None — sync, uses already-fetched response (issue #82)
     return _dumps(
         {
             "id": t.id,
@@ -149,6 +150,10 @@ async def get_tweet(tweet_id: str) -> str:
             "retweets": t.retweet_count,
             "in_reply_to": t.in_reply_to,
             "conversation_id": t.conversation_id,
+            "is_quote_status": t.is_quote_status,
+            "quoted_id": q.id if q else None,
+            "quoted_author": q.user.screen_name if q else None,
+            "quoted_text": q.text if q else None,
         }
     )
 
