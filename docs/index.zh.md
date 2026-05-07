@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.30 新增
+
+- **API 文档页面本地化** — `/zh/api/` 和 `/ja/api/` 现在显示中文 / 日文 chrome(标题、引言、表头、节标题),不再 fallback 到英文。工具 docstring 保持原文(从 Python 源码读),与 `mkdocstrings` 同套权衡。(closes #90)
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.29 新增
 
 - **Community + article-preview 稳定性** — `get_community` / `get_community_tweets` / `get_community_members` / `get_community_moderators` / `search_community_tweet` 不再因 `KeyError: 'rest_id'` 或 `IndexError` 崩。`get_article_preview` 在 syndication 端点 404(X 删了旧文章)时返回干净的 `ToolError`,不再泄露 `HTTPStatusError` 堆栈。`_vendor/twikit/community.py` + `client.py` 全面 `.get()` 防御化。**Issue #76 全部完成** — `T_DRIFT` 现在是空集了。(issue #76 parts 2 + 3)
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.28 新增
 

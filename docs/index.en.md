@@ -8,11 +8,15 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.30
+
+- **Localized API docs page** — `/zh/api/` and `/ja/api/` now show Chinese / Japanese chrome (title, intro, table headers, section labels) instead of falling back to English. Tool docstrings stay native (Python source) — same trade-off `mkdocstrings` makes. (closes #90)
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.29
 
 - **Community + article-preview reliability** — `get_community` / `get_community_tweets` / `get_community_members` / `get_community_moderators` / `search_community_tweet` no longer crash with `KeyError: 'rest_id'` / `IndexError`. `get_article_preview` now surfaces a clean `ToolError` instead of leaking `HTTPStatusError` when the syndication endpoint returns 404 for a stale article. Defensive `.get()` parsing in `_vendor/twikit/community.py` + `client.py`. Closes issue #76 — `T_DRIFT` is now empty in `live-smoke.yml`. (issue #76 parts 2 + 3)
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.28
 
