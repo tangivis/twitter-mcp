@@ -21,7 +21,18 @@ twikit-mcp user elonmusk                  # 1 プロフィール
 twikit-mcp tl 10                          # 自分のホームタイムライン直近 10 件
 twikit-mcp search "AI" 5                  # "AI" のトップ 5 検索結果
 twikit-mcp trends 20                      # トップ 20 トレンド
+twikit-mcp video 1234567890               # 動画を ~/Downloads/twikit-mcp/ にダウンロード
+twikit-mcp video <url> -o ~/Movies        # 出力ディレクトリを指定
 ```
+
+`video` サブコマンドは PATH に [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) が必要:
+
+```bash
+uv tool install yt-dlp           # 推奨(独立環境)
+# または:pipx install yt-dlp / pip install --user yt-dlp
+```
+
+`ffmpeg` は `format=bestvideo+bestaudio` のような複数ストリームのマージが必要な format を渡したときだけ必要です。デフォルトの `best[ext=mp4]` は X が直接配信する単一ファイル mp4(マージ済み)なので、ffmpeg なしで動作します。
 
 ターミナルでの出力例(0.1.24+ Rich レンダリングのカード + クリック可能リンク):
 

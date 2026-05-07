@@ -8,11 +8,15 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.27
+
+- **Download tweet videos via yt-dlp** — new `download_tweet_video` MCP tool + `twikit-mcp video <id>` CLI subcommand. Saves to `~/Downloads/twikit-mcp/` by default. Authenticated via your existing `cookies.json`. Requires [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on PATH (`uv tool install yt-dlp`); `ffmpeg` only needed if you pass a separate-stream format like `bestvideo+bestaudio`. (closes #84)
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.26
 
 - **Quote tweet visibility on `get_tweet`** — the response now includes `is_quote_status`, `quoted_id`, `quoted_author`, and `quoted_text` when the tweet quote-retweets another. Agents can now show the quoted text inline without an extra `get_tweet` round-trip — the data is already in the same GraphQL response, we just expose it. (closes #82)
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.25
 
