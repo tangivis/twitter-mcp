@@ -161,6 +161,36 @@ async def test_get_article_preview_raises_when_no_article(monkeypatch):
     assert "article" in str(exc.value).lower()
 
 
+async def test_get_article_preview_404_becomes_clean_tool_error(monkeypatch):
+    """Issue #76 part 3: syndication endpoint may return 404 when X
+    drops a stale article. Convert raw HTTPStatusError into a clean
+    ToolError so MCP clients see actionable text instead of stack
+    trace."""
+    import httpx
+
+    response = MagicMock()
+    response.status_code = 404
+    response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "404 Not Found",
+            request=MagicMock(),
+            response=MagicMock(status_code=404),
+        )
+    )
+    instance = MagicMock()
+    instance.get = AsyncMock(return_value=response)
+    instance.__aenter__ = AsyncMock(return_value=instance)
+    instance.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(server.httpx, "AsyncClient", MagicMock(return_value=instance))
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_article_preview("999")
+    assert (
+        "preview unavailable" in str(exc.value).lower()
+        or "not found" in str(exc.value).lower()
+    )
+
+
 # ── get_article: two-hop reader flow (issue #10) ─────
 
 

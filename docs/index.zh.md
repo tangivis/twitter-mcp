@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.29 新增
+
+- **Community + article-preview 稳定性** — `get_community` / `get_community_tweets` / `get_community_members` / `get_community_moderators` / `search_community_tweet` 不再因 `KeyError: 'rest_id'` 或 `IndexError` 崩。`get_article_preview` 在 syndication 端点 404(X 删了旧文章)时返回干净的 `ToolError`,不再泄露 `HTTPStatusError` 堆栈。`_vendor/twikit/community.py` + `client.py` 全面 `.get()` 防御化。**Issue #76 全部完成** — `T_DRIFT` 现在是空集了。(issue #76 parts 2 + 3)
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.28 新增
 
 - **List 工具稳定性** — `get_list` / `get_list_tweets` / `get_list_members` / `get_list_subscribers` 在 burner 受 X 限流时不再崩(`KeyError: 'created_at'` / `IndexError` / `Invalid list id`)。`_vendor/twikit/list.py` + `client.py` 全面 `.get()` 防御化:字段缺失 → `None`/`""`/`0`,entries 为空 → 空 `Result`。live-smoke 的 `T_LIST` 也拆掉了 `T_DRIFT` 兜底,这一类 bug 真出现会立刻红 CI。(issue #76 part 1)
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.27 新增
 

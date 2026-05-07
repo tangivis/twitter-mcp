@@ -924,7 +924,16 @@ async def get_article_preview(tweet_id: str) -> str:
             params={"id": tweet_id, "token": "a"},
             timeout=15,
         )
-    resp.raise_for_status()
+    # Defensive: syndication endpoint may 404 when X drops a stale
+    # article (issue #76 part 3). Surface as clean ToolError instead
+    # of leaking httpx stack trace to the MCP client.
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise ToolError(
+            f"Article preview unavailable for tweet {tweet_id} "
+            f"(syndication endpoint returned {e.response.status_code})."
+        ) from e
     data = resp.json()
     article = data.get("article")
     if not article:
@@ -932,7 +941,7 @@ async def get_article_preview(tweet_id: str) -> str:
     cover = article.get("cover_media", {}).get("media_info", {}).get("original_img_url")
     return _dumps(
         {
-            "rest_id": article["rest_id"],
+            "rest_id": article.get("rest_id", ""),
             "title": article.get("title", ""),
             "preview_text": article.get("preview_text", ""),
             "cover_image": cover,
