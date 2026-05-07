@@ -24,25 +24,28 @@ class CommunityRule(NamedTuple):
 class CommunityMember:
     def __init__(self, client: Client, data: dict) -> None:
         self._client = client
+        # `rest_id` stays strict — core ID. Everything else uses
+        # `.get(default)` so X-side field omissions return shape-stable
+        # empty values (issue #76 part 2). twitter-mcp patch (issue #76)
         self.id: str = data["rest_id"]
 
-        self.community_role: str = data["community_role"]
-        self.super_following: bool = data["super_following"]
-        self.super_follow_eligible: bool = data["super_follow_eligible"]
-        self.super_followed_by: bool = data["super_followed_by"]
-        self.smart_blocking: bool = data["smart_blocking"]
-        self.is_blue_verified: bool = data["is_blue_verified"]
+        self.community_role: str = data.get("community_role", "")
+        self.super_following: bool = data.get("super_following", False)
+        self.super_follow_eligible: bool = data.get("super_follow_eligible", False)
+        self.super_followed_by: bool = data.get("super_followed_by", False)
+        self.smart_blocking: bool = data.get("smart_blocking", False)
+        self.is_blue_verified: bool = data.get("is_blue_verified", False)
 
-        legacy = data["legacy"]
-        self.screen_name: str = legacy["screen_name"]
-        self.name: str = legacy["name"]
-        self.follow_request_sent: bool = legacy["follow_request_sent"]
-        self.protected: bool = legacy["protected"]
-        self.following: bool = legacy["following"]
-        self.followed_by: bool = legacy["followed_by"]
-        self.blocking: bool = legacy["blocking"]
-        self.profile_image_url_https: str = legacy["profile_image_url_https"]
-        self.verified: bool = legacy["verified"]
+        legacy = data.get("legacy") or {}
+        self.screen_name: str = legacy.get("screen_name", "")
+        self.name: str = legacy.get("name", "")
+        self.follow_request_sent: bool = legacy.get("follow_request_sent", False)
+        self.protected: bool = legacy.get("protected", False)
+        self.following: bool = legacy.get("following", False)
+        self.followed_by: bool = legacy.get("followed_by", False)
+        self.blocking: bool = legacy.get("blocking", False)
+        self.profile_image_url_https: str = legacy.get("profile_image_url_https", "")
+        self.verified: bool = legacy.get("verified", False)
 
     def __eq__(self, __value: object) -> bool:
         return isinstance(__value, CommunityMember) and self.id == __value.id
@@ -94,17 +97,29 @@ class Community:
 
     def __init__(self, client: Client, data: dict) -> None:
         self._client = client
+        # `rest_id` stays strict — core ID; everything else uses
+        # `.get(default)` so X-side field omissions return shape-stable
+        # empty values instead of crashing (issue #76 part 2).
+        # twitter-mcp patch (issue #76)
         self.id: str = data["rest_id"]
 
-        self.name: str = data["name"]
-        self.member_count: int = data["member_count"]
-        self.is_nsfw: bool = data["is_nsfw"]
+        self.name: str = data.get("name", "")
+        self.member_count: int = data.get("member_count", 0)
+        self.is_nsfw: bool = data.get("is_nsfw", False)
 
-        self.members_facepile_results: list[str] = [
-            i["result"]["legacy"]["profile_image_url_https"]
-            for i in data["members_facepile_results"]
-        ]
-        self.banner: dict = data["default_banner_media"]["media_info"]
+        # facepile entries can drop nested levels (X truncation); skip
+        # any entry that doesn't carry the full nested chain.
+        facepile = data.get("members_facepile_results") or []
+        self.members_facepile_results: list[str] = []
+        for i in facepile:
+            url = ((i.get("result") or {}).get("legacy") or {}).get(
+                "profile_image_url_https"
+            )
+            if url:
+                self.members_facepile_results.append(url)
+
+        default_banner_media = data.get("default_banner_media") or {}
+        self.banner: dict = default_banner_media.get("media_info", {})
 
         self.is_member: bool = data.get("is_member")
         self.role: str = data.get("role")

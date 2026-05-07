@@ -348,12 +348,22 @@ jobs:
           # timeline for the burner. Same class as `User not found` on
           # follower lists (#37).
           T_LIST = ("List not found", "not found", "Invalid list id")
-          T_COMM = ("Community not found", "not found", "not authorized") + T_DRIFT
+          # T_COMM no longer pulls T_DRIFT — community.py + community
+          # client helpers are now defensively parsed (issue #76 part 2).
+          # `Community not found` / `not authorized` retained as
+          # legitimate X-gating signals (path b).
+          T_COMM = ("Community not found", "not found", "not authorized")
           T_DM = ("Cannot send messages", "User not found", "no DM")
-          T_SEARCH = T_DRIFT  # community/user search hits the same parser
+          # T_SEARCH no longer == T_DRIFT — community search now defensively
+          # parses; user-search side effectively never raises (returns
+          # `[]`/empty users array). Retain `not authorized` for X gating.
+          T_SEARCH = ("not authorized",)
+          # T_ARTICLE_PREVIEW now has only the explicit ToolError text our
+          # server.py raises on 404; raw HTTPStatusError no longer leaks
+          # (issue #76 part 3).
           T_ARTICLE_PREVIEW = (
-              "404 Not Found",  # syndication endpoint may lose old articles
-              "not authorized",
+              "Article preview unavailable",
+              "does not embed an article",
           )
 
           async def main():

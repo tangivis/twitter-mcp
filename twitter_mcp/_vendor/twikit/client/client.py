@@ -3994,24 +3994,48 @@ class Client:
         else:
             raise ValueError(f"Invalid tweet_type: {tweet_type}")
 
-        entries = find_dict(response, "entries", find_one=True)[0]
+        # Defensive: X may gate community timeline entirely (no `entries`
+        # key) or return empty entries (no tweets visible to burner).
+        # Both used to crash on `[0]` / `entries[-1]` / `items[-1]`.
+        # twitter-mcp patch (issue #76)
+        entries_ = find_dict(response, "entries", find_one=True)
+        entries = entries_[0] if entries_ else []
+        if not entries:
+            return Result(
+                [],
+                partial(
+                    self.get_community_tweets, community_id, tweet_type, count, None
+                ),
+                None,
+                partial(
+                    self.get_community_tweets, community_id, tweet_type, count, None
+                ),
+                None,
+            )
         if tweet_type == "Media":
             if cursor is None:
-                items = entries[0]["content"]["items"]
-                next_cursor = entries[-1]["content"]["value"]
-                previous_cursor = entries[-2]["content"]["value"]
+                items = (entries[0].get("content") or {}).get("items", [])
             else:
-                items = find_dict(response, "moduleItems", find_one=True)[0]
-                next_cursor = entries[-1]["content"]["value"]
-                previous_cursor = entries[-2]["content"]["value"]
+                module_items = find_dict(response, "moduleItems", find_one=True)
+                items = module_items[0] if module_items else []
+            next_cursor = (entries[-1].get("content") or {}).get("value")
+            previous_cursor = (
+                (entries[-2].get("content") or {}).get("value")
+                if len(entries) >= 2
+                else None
+            )
         else:
             items = entries
-            next_cursor = items[-1]["content"]["value"]
-            previous_cursor = items[-2]["content"]["value"]
+            next_cursor = (items[-1].get("content") or {}).get("value")
+            previous_cursor = (
+                (items[-2].get("content") or {}).get("value")
+                if len(items) >= 2
+                else None
+            )
 
         tweets = []
         for item in items:
-            if not item["entryId"].startswith(("tweet", "communities-grid")):
+            if not item.get("entryId", "").startswith(("tweet", "communities-grid")):
                 continue
 
             tweet = tweet_from_data(self, item)
@@ -4157,7 +4181,11 @@ class Client:
         """
         response, _ = await f(community_id, count, cursor)
 
-        items = find_dict(response, "items_results", find_one=True)[0]
+        # Defensive: when X gates the burner, `items_results` is absent
+        # → `find_dict` returns []; legacy code crashed on `[0]`.
+        # twitter-mcp patch (issue #76)
+        items_results = find_dict(response, "items_results", find_one=True)
+        items = items_results[0] if items_results else []
         users = []
         for item in items:
             if "result" not in item:
@@ -4244,18 +4272,32 @@ class Client:
             community_id, query, count, cursor
         )
 
-        items = find_dict(response, "entries", find_one=True)[0]
+        # Defensive: X may gate community search entirely or return
+        # empty entries. Both used to crash on `[0]` / `items[-1]`.
+        # twitter-mcp patch (issue #76)
+        items_ = find_dict(response, "entries", find_one=True)
+        items = items_[0] if items_ else []
+        if not items:
+            return Result(
+                [],
+                partial(self.search_community_tweet, community_id, query, count, None),
+                None,
+                partial(self.search_community_tweet, community_id, query, count, None),
+                None,
+            )
         tweets = []
         for item in items:
-            if not item["entryId"].startswith("tweet"):
+            if not item.get("entryId", "").startswith("tweet"):
                 continue
 
             tweet = tweet_from_data(self, item)
             if tweet is not None:
                 tweets.append(tweet)
 
-        next_cursor = items[-1]["content"]["value"]
-        previous_cursor = items[-2]["content"]["value"]
+        next_cursor = (items[-1].get("content") or {}).get("value")
+        previous_cursor = (
+            (items[-2].get("content") or {}).get("value") if len(items) >= 2 else None
+        )
 
         return Result(
             tweets,

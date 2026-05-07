@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.29 の新機能
+
+- **Community と article-preview の信頼性向上** — `get_community` / `get_community_tweets` / `get_community_members` / `get_community_moderators` / `search_community_tweet` が `KeyError: 'rest_id'` / `IndexError` でクラッシュしなくなりました。`get_article_preview` は syndication エンドポイントが 404(X が古い記事を削除)を返した場合、`HTTPStatusError` のスタックトレースを漏らさずクリーンな `ToolError` を返します。`_vendor/twikit/community.py` + `client.py` の全面 `.get()` 防御化。**Issue #76 完了** — `T_DRIFT` は空集合になりました。(issue #76 parts 2 + 3)
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.28 の新機能
 
 - **List ツールの信頼性向上** — `get_list` / `get_list_tweets` / `get_list_members` / `get_list_subscribers` がバーナー識別子で X にゲートされたレスポンス上で `KeyError: 'created_at'` / `IndexError` / `Invalid list id` でクラッシュしなくなりました。`_vendor/twikit/list.py` + `client.py` の全面 `.get()` 防御化:欠損フィールドは `None`/`""`/`0`、空 entries は空の `Result` を返します。live-smoke の `T_LIST` から `T_DRIFT` フォールバックも除去 — このクラスの再発を即座に検知できます。(issue #76 part 1)
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.27 の新機能
 
