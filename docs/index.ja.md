@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.27 の新機能
+
+- **ツイート動画のダウンロード(yt-dlp)** — 新規 MCP ツール `download_tweet_video` と人間向け CLI `twikit-mcp video <id>` を追加。デフォルトでは `~/Downloads/twikit-mcp/` に保存し、既存の `cookies.json` で認証します。PATH に [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) が必要(`uv tool install yt-dlp`)。`ffmpeg` は `bestvideo+bestaudio` のような複数ストリームのマージが必要な format を渡したときだけ必要です。(closes #84)
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.26 の新機能
 
 - **`get_tweet` で引用ツイートを公開** — レスポンスに `is_quote_status` / `quoted_id` / `quoted_author` / `quoted_text` が含まれるようになりました。引用リツイートの場合、引用元の作者と本文を即座に確認でき、エージェントが追加で `get_tweet` を呼ぶ必要がありません。これらは元から同じ GraphQL レスポンスに含まれていたものを取り出して公開しただけ。(closes #82)
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.25 の新機能
 

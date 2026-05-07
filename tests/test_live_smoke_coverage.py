@@ -58,6 +58,8 @@ _MUTATING = {
     "join_community",
     "leave_community",
     "request_to_join_community",
+    # Side-effecting (writes to disk via yt-dlp subprocess)
+    "download_tweet_video",
 }
 
 

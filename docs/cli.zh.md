@@ -21,7 +21,18 @@ twikit-mcp user elonmusk                  # 一个用户的 profile
 twikit-mcp tl 10                          # 自己 home timeline 最近 10 条
 twikit-mcp search "AI" 5                  # "AI" 的 top 5 搜索结果
 twikit-mcp trends 20                      # top 20 热门话题
+twikit-mcp video 1234567890               # 下载视频到 ~/Downloads/twikit-mcp/
+twikit-mcp video <url> -o ~/Movies        # 自定义输出目录
 ```
+
+`video` 子命令需要 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) 在 `PATH` 里:
+
+```bash
+uv tool install yt-dlp           # 推荐(独立环境)
+# 或:pipx install yt-dlp / pip install --user yt-dlp
+```
+
+`ffmpeg` 只在你传 `format=bestvideo+bestaudio` 这类需要 mux 多流的 format 时才需要;默认的 `best[ext=mp4]` 是 X 直接给的单文件 mp4(已 mux 好),无需 ffmpeg。
 
 终端样例输出(0.1.24+ Rich 渲染卡片 + 可点链接):
 

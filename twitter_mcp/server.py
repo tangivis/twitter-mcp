@@ -158,6 +158,168 @@ async def get_tweet(tweet_id: str) -> str:
     )
 
 
+# ── download_tweet_video helpers (issue #84) ─────────
+#
+# yt-dlp + ffmpeg are NOT bundled as Python deps. Users install them
+# out-of-band (`uv tool install yt-dlp`, system package manager for
+# ffmpeg). We shell out via subprocess; subprocess crash can't take
+# down the MCP server.
+
+_DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads" / "twikit-mcp"
+
+
+def _resolve_download_dir(arg: str | None) -> Path:
+    """arg → $TWIKIT_DOWNLOAD_DIR → ~/Downloads/twikit-mcp/."""
+    if arg:
+        return Path(arg).expanduser()
+    env = os.environ.get("TWIKIT_DOWNLOAD_DIR")
+    if env:
+        return Path(env).expanduser()
+    return _DEFAULT_DOWNLOAD_DIR
+
+
+def _cookies_json_to_netscape(json_path: Path) -> Path:
+    """Convert our cookies.json → Netscape cookies.txt for yt-dlp.
+
+    Returns a temp file path; caller must `unlink(missing_ok=True)`.
+    """
+    import tempfile
+
+    cookies = json.loads(Path(json_path).read_text(encoding="utf-8"))
+    ct0 = cookies.get("ct0")
+    auth = cookies.get("auth_token")
+    if not ct0 or not auth:
+        raise ToolError(
+            f"cookies.json missing ct0 or auth_token "
+            f"(found keys: {sorted(cookies.keys())!r})"
+        )
+    fd, p = tempfile.mkstemp(suffix=".txt", prefix="twikit-mcp-cookies-")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write("# Netscape HTTP Cookie File\n")
+        f.write(f".x.com\tTRUE\t/\tTRUE\t9999999999\tct0\t{ct0}\n")
+        f.write(f".x.com\tTRUE\t/\tTRUE\t9999999999\tauth_token\t{auth}\n")
+    return Path(p)
+
+
+def _ytdlp_classify_error(returncode: int, stderr: str) -> ToolError:
+    """Map yt-dlp exit code + stderr → user-facing ToolError with hint."""
+    s = stderr.lower()
+    if returncode == 127 or "yt-dlp" in s and "not found" in s:
+        return ToolError("yt-dlp not found. Install with: uv tool install yt-dlp")
+    if "ffmpeg" in s and ("not installed" in s or "not found" in s):
+        return ToolError(
+            "ffmpeg required for this format. Install with: "
+            "brew install ffmpeg (macOS) / apt install ffmpeg (Ubuntu)"
+        )
+    if "no video" in s or "unsupported url" in s:
+        return ToolError("Tweet has no video attachment")
+    return ToolError(
+        f"yt-dlp failed (exit {returncode}): {stderr.strip() or '<no stderr>'}"
+    )
+
+
+async def _ytdlp_download(
+    url: str,
+    cookies_path: Path,
+    output_dir: Path,
+    format_spec: str,
+) -> dict:
+    """Spawn yt-dlp, parse --print-json output, return relevant subset."""
+    cmd = [
+        "yt-dlp",
+        "--print-json",
+        "--no-progress",
+        "--cookies",
+        str(cookies_path),
+        "-f",
+        format_spec,
+        "-o",
+        str(output_dir / "%(id)s.%(ext)s"),
+        url,
+    ]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError as e:
+        raise ToolError("yt-dlp not found. Install with: uv tool install yt-dlp") from e
+
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise _ytdlp_classify_error(
+            proc.returncode, stderr.decode("utf-8", errors="replace")
+        )
+
+    last_json_line = None
+    for line in stdout.decode("utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            last_json_line = line
+    if not last_json_line:
+        raise ToolError(
+            f"yt-dlp produced no JSON output. stderr: "
+            f"{stderr.decode('utf-8', errors='replace').strip()}"
+        )
+
+    data = json.loads(last_json_line)
+    filepath = data.get("filepath") or data.get("_filename")
+    if not filepath:
+        filepath = str(output_dir / f"{data['id']}.{data['ext']}")
+    p = Path(filepath)
+    return {
+        "path": str(p.absolute()),
+        "size_bytes": p.stat().st_size if p.exists() else None,
+        "duration_sec": data.get("duration"),
+        "format": f"video/{data['ext']}" if data.get("ext") else None,
+        "width": data.get("width"),
+        "height": data.get("height"),
+        "url": data.get("webpage_url") or url,
+        "tweet_id": data.get("id"),
+    }
+
+
+@mcp.tool()
+async def download_tweet_video(
+    tweet_id: str,
+    output_dir: str | None = None,
+    format: str = "best[ext=mp4]",
+) -> str:
+    """Download video(s) attached to a tweet via yt-dlp.
+
+    Args:
+        tweet_id: Tweet ID (numeric string) or full URL.
+        output_dir: Where to save. Default: $TWIKIT_DOWNLOAD_DIR or
+                    ~/Downloads/twikit-mcp/.
+        format: yt-dlp format selector. Default "best[ext=mp4]" (single
+                muxed mp4, no ffmpeg required). Pass
+                "bestvideo+bestaudio" for separate-stream max-quality
+                merge (requires ffmpeg).
+
+    Returns:
+        JSON with path, size_bytes, duration_sec, format, width,
+        height, url, tweet_id. Raises ToolError if yt-dlp / ffmpeg
+        is missing, the tweet has no video, or download fails.
+    """
+    tid = _extract_tweet_id(tweet_id)
+    out_dir = _resolve_download_dir(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    cookies_txt = _cookies_json_to_netscape(COOKIES_PATH)
+    try:
+        info = await _ytdlp_download(
+            url=f"https://x.com/i/status/{tid}",
+            cookies_path=cookies_txt,
+            output_dir=out_dir,
+            format_spec=format,
+        )
+    finally:
+        cookies_txt.unlink(missing_ok=True)
+
+    return _dumps(info)
+
+
 @mcp.tool()
 async def get_timeline(count: int = 20) -> str:
     """Fetch home timeline tweets.
@@ -2398,7 +2560,22 @@ async def _human_trends(count: int) -> str:
     return _format_trends(_stdlib_json.loads(raw))
 
 
-def main():
+async def _human_video(tweet_id: str, output_dir: str | None) -> str:
+    """CLI dispatch for `twikit-mcp video <id>`. Calls the tool, formats
+    a one-line summary: 'Saved 5.0 MB / 23s mp4 → /path/to/file'."""
+    raw = await download_tweet_video(tweet_id=tweet_id, output_dir=output_dir)
+    import json as _stdlib_json
+
+    info = _stdlib_json.loads(raw)
+    size = info.get("size_bytes") or 0
+    mb = size / (1024 * 1024)
+    dur = info.get("duration_sec")
+    dur_str = f"{int(dur)}s" if dur else "—"
+    fmt = (info.get("format") or "").rsplit("/", 1)[-1] or "?"
+    return f"Saved {mb:.1f} MB / {dur_str} {fmt} → {info['path']}"
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="twikit-mcp",
         description=(
@@ -2486,11 +2663,30 @@ def main():
         "count", nargs="?", default=20, type=int, help="Number of trends (default 20)."
     )
 
-    args = parser.parse_args()
+    p_video = sub.add_parser(
+        "video",
+        help="Download video from a tweet via yt-dlp.",
+        description=(
+            "Download tweet video to disk. Requires `yt-dlp` on PATH "
+            "(install: `uv tool install yt-dlp`). Example: "
+            "twikit-mcp video 1234567890 -o ~/Movies"
+        ),
+    )
+    p_video.add_argument("tweet_id", help="Tweet ID (numeric) or full x.com URL.")
+    p_video.add_argument(
+        "-o",
+        "--output-dir",
+        default=None,
+        help=(
+            "Where to save (default: $TWIKIT_DOWNLOAD_DIR or ~/Downloads/twikit-mcp/)."
+        ),
+    )
+
+    args = parser.parse_args(argv)
 
     if args.cmd == "list":
         print(_list_tools_text())
-        return
+        return 0
 
     if args.cmd == "call":
         kwargs = _parse_kv_pairs(args.kwargs)
@@ -2500,7 +2696,7 @@ def main():
             print(f"Error: {e}", file=sys.stderr)
             raise SystemExit(2)
         print(out)
-        return
+        return 0
 
     # Human-friendly read paths. All share the same ToolError → stderr +
     # exit-2 handling as `call`.
@@ -2510,6 +2706,7 @@ def main():
         "tl": lambda a: _human_timeline(a.count),
         "search": lambda a: _human_search(a.query, a.count),
         "trends": lambda a: _human_trends(a.count),
+        "video": lambda a: _human_video(a.tweet_id, a.output_dir),
     }
     if args.cmd in _human_dispatch:
         try:
@@ -2518,10 +2715,11 @@ def main():
             print(f"Error: {e}", file=sys.stderr)
             raise SystemExit(2)
         print(out)
-        return
+        return 0
 
     # Default / `serve` → existing MCP server behavior.
     mcp.run(transport="stdio")
+    return 0
 
 
 if __name__ == "__main__":

@@ -21,7 +21,18 @@ twikit-mcp user elonmusk                  # one profile
 twikit-mcp tl 10                          # last 10 from your home timeline
 twikit-mcp search "AI" 5                  # 5 top search results
 twikit-mcp trends 20                      # top 20 trending topics
+twikit-mcp video 1234567890               # download video to ~/Downloads/twikit-mcp/
+twikit-mcp video <url> -o ~/Movies        # custom output dir
 ```
+
+The `video` subcommand requires [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on `PATH`:
+
+```bash
+uv tool install yt-dlp           # recommended (isolated)
+# or: pipx install yt-dlp / pip install --user yt-dlp
+```
+
+`ffmpeg` is only needed if you pass a separate-stream format like `format=bestvideo+bestaudio`; the default `best[ext=mp4]` is single-file muxed mp4 from X and works without ffmpeg.
 
 Sample output in a terminal (0.1.24+ Rich-rendered card with clickable links):
 
