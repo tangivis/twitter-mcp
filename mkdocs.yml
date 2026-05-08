@@ -65,6 +65,7 @@ plugins:
           build: true
           nav:
             - Home: index.md
+            - Install: install.md
             - CLI mode: cli.md
             - MCP Tools API: api.md
             - Internals:
@@ -76,6 +77,7 @@ plugins:
           build: true
           nav:
             - 首页: index.md
+            - 安装: install.md
             - CLI 模式: cli.md
             - MCP 工具 API: api.md
             - 内部实现:
@@ -87,6 +89,7 @@ plugins:
           build: true
           nav:
             - ホーム: index.md
+            - インストール: install.md
             - CLI モード: cli.md
             - MCP ツール API: api.md
             - 内部実装:
