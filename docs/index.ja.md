@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.31 の新機能
+
+- **クライアント別インストール手順を文書化** — 新規[インストールページ](install.md)で Claude Code / Claude Desktop / Cursor / Windsurf / Cline / opencode 6 クライアントへの登録手順を整理(クライアントあたり ≤ 12 行、設定ファイルパス + JSON スニペットのみ)。インストールコマンドは `uv tool install twikit-mcp` 統一、JSON の形はどのクライアントでも共通。(closes #92)
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.30 の新機能
 
 - **API ドキュメントページのローカライズ** — `/zh/api/` と `/ja/api/` で中国語 / 日本語の chrome(タイトル、イントロ、テーブルヘッダ、セクション名)を表示するようになりました。英語へフォールバックしません。ツールの docstring は Python ソースのまま(`mkdocstrings` と同じトレードオフ)。(closes #90)
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.29 の新機能
 
