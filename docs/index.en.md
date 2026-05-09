@@ -8,11 +8,16 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.33
+
+- **Drop the 200-char text truncation** — `get_timeline` / `search_tweets` / `get_user_tweets` / `get_bookmarks` / `get_list_tweets` / `get_scheduled_tweets` / `get_community_tweets` / `get_communities_timeline` / `search_community_tweet` no longer cut tweet text at 200 characters. `get_tweet` and `get_tweet_replies` also switch to `Tweet.full_text`, which returns the long-form text (up to 4000 chars) for X note tweets. Compact responses are user-controlled via `count`. (closes #97)
+- **`get_article_preview` distinguishes quote tweets** — when the input is a quote tweet, the error now says "this is a quote tweet, not an article. Use get_tweet to read the quoted tweet content" instead of the generic "does not embed an article".
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.32
 
 - **Read tweet replies** — new `get_tweet_replies(tweet_id, cursor=None)` tool fetches the comments / discussion under a tweet. Uses X's TweetDetail GraphQL via vendored twikit; one page per call with `next_cursor` for more. Returns the same compact reply shape as `get_user_tweets` / `get_timeline`. (closes #94)
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.31
 

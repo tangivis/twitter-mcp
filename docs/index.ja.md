@@ -8,11 +8,16 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.33 の新機能
+
+- **200 文字の切り捨てを廃止** — `get_timeline` / `search_tweets` / `get_user_tweets` / `get_bookmarks` / `get_list_tweets` / `get_scheduled_tweets` / `get_community_tweets` / `get_communities_timeline` / `search_community_tweet` がツイート本文を 200 文字でカットしなくなりました。`get_tweet` と `get_tweet_replies` も `Tweet.full_text` を使用し、X のノートツイート(長文投稿、最大 4000 文字)も完全に取得できます。レスポンスサイズは `count` 引数で制御。(closes #97)
+- **`get_article_preview` の引用ツイート対応** — 入力が引用リツイートの場合、エラーが「これは引用ツイートで、記事ではありません。引用内容は get_tweet で読んでください」に変わり、汎用の "does not embed an article" は出なくなりました。
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.32 の新機能
 
 - **ツイート返信の取得** — 新規 `get_tweet_replies(tweet_id, cursor=None)` ツールでツイートへのコメント / リプライを取得。vendored twikit 経由で X の TweetDetail GraphQL を使用、1 ページごとに `next_cursor` で次ページ。リプライアイテムは `get_user_tweets` / `get_timeline` と同じコンパクト形式。(closes #94)
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.31 の新機能
 
