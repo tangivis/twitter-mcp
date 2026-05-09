@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.32 新增
+
+- **读推文回复** — 新增 `get_tweet_replies(tweet_id, cursor=None)` 工具,拿一条推下面的评论 / 讨论。走 X 的 TweetDetail GraphQL 端点(vendored twikit),一次返回一页,带 `next_cursor` 翻下一页。回复条目用和 `get_user_tweets` / `get_timeline` 同款紧凑形状。(closes #94)
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.31 新增
 
 - **各客户端安装矩阵文档** — 新增[安装页](install.md),走过 Claude Code / Claude Desktop / Cursor / Windsurf / Cline / opencode 6 个客户端的注册步骤(每个 ≤ 12 行,只列配置文件路径 + JSON 片段)。统一安装命令(`uv tool install twikit-mcp`),JSON 形状跨客户端通用。(closes #92)
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.30 新增
 

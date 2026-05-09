@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   smoke:
-    name: 25 idempotent reads (live)
+    name: 26 idempotent reads (live)
     if: github.repository == 'tangivis/twitter-mcp'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -73,7 +73,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Smoke 25 idempotent reads against real X
+      - name: Smoke 26 idempotent reads against real X
         # Each block hits a different twikit code path. If X rotates a
         # GraphQL queryId, changes a field, or moves an endpoint, this
         # surfaces it within 7 days (cron) instead of when the next
@@ -110,7 +110,7 @@ jobs:
               get_trends,
               get_user_followers,
               get_lists,
-              # Issue #73: extend to all 25 idempotent reads.
+              # Issue #73: extend to all 26 idempotent reads.
               get_article_preview,
               get_bookmarks,
               get_communities_timeline,
@@ -132,6 +132,7 @@ jobs:
               search_community,
               search_community_tweet,
               search_user,
+              get_tweet_replies,
           )
 
           # Issue #73 stable target IDs (last verified 2026-05-06):
@@ -319,6 +320,13 @@ jobs:
               assert isinstance(o.get("users"), list), "missing 'users' key"
               return f"{len(o['users'])} user hits (empty OK — X gates user search)"
 
+          def v_replies(o):
+              # `get_tweet_replies` returns {"tweet_id": ..., "replies": [...],
+              # "next_cursor": ..., "count": ...}. Empty replies OK — burner
+              # may not see all comments due to X gating.
+              assert isinstance(o.get("replies"), list), "missing 'replies' key"
+              return f"{len(o['replies'])} replies (empty OK — X gates conversation visibility)"
+
           def v_article_preview(o):
               # `get_article_preview` returns a JSON object with article
               # metadata. Shape varies; only assert it's a dict.
@@ -417,24 +425,28 @@ jobs:
               # Article preview (uses an article-bearing tweet's id; if X
               # changes the article system, tolerate via T_TWEET).
               await check("get_article_preview", get_article_preview(tweet_id="2048420352397864960"), v_article_preview, tolerate_substr=T_ARTICLE_PREVIEW)
+              # Tweet replies (issue #94, 0.1.32) — TweetDetail endpoint;
+              # may return empty for X-gated burners. T_TWEET covers
+              # `Tweet not found` / `not authorized` if X drops the target.
+              await check("get_tweet_replies", get_tweet_replies(tweet_id="20"), v_replies, tolerate_substr=T_TWEET)
 
               print("\n".join(successes))
               if failures:
                   print("\n".join(failures))
-                  raise SystemExit(f"\n{len(failures)} of 25 checks failed against live X")
-              print(f"\nAll 25 reads passed against live X.")
+                  raise SystemExit(f"\n{len(failures)} of 26 checks failed against live X")
+              print(f"\nAll 26 reads passed against live X.")
 
           asyncio.run(main())
           PY
 
       # If smoke.log exists, mirror its tail to the run summary so the failure
       # is visible from the workflow page without expanding the step. Always
-      # runs (even on success) — successes show "All 25 reads passed".
+      # runs (even on success) — successes show "All 26 reads passed".
       - name: Render summary
         if: always() && hashFiles('smoke.log') != ''
         run: |
           {
-            echo "### live-smoke (25 idempotent reads)"
+            echo "### live-smoke (26 idempotent reads)"
             echo
             echo '```'
             tail -n 40 smoke.log

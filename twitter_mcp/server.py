@@ -158,6 +158,48 @@ async def get_tweet(tweet_id: str) -> str:
     )
 
 
+@mcp.tool()
+async def get_tweet_replies(tweet_id: str, cursor: str | None = None) -> str:
+    """Fetch replies (comments) to a tweet (issue #94).
+
+    Uses X's TweetDetail GraphQL endpoint via vendored twikit's
+    `Client.get_tweet_by_id`, which populates `tweet.replies` as a
+    paginated `Result[Tweet]`. One page per call; pass the returned
+    `next_cursor` to fetch more.
+
+    Args:
+        tweet_id: The tweet ID (numeric string) or full URL.
+        cursor: Pagination cursor from a previous response's
+            `next_cursor`; omit for the first page.
+
+    Returns:
+        JSON with tweet_id, replies (compact list — id/author/text/
+        created_at/likes/retweets), next_cursor, count.
+    """
+    tid = _extract_tweet_id(tweet_id)
+    client = await _get_client()
+    parent = await client.get_tweet_by_id(tid, cursor=cursor)
+    replies = list(getattr(parent, "replies", []) or [])
+    return _dumps(
+        {
+            "tweet_id": tid,
+            "replies": [
+                {
+                    "id": r.id,
+                    "author": r.user.screen_name,
+                    "text": r.text,
+                    "created_at": str(r.created_at),
+                    "likes": r.favorite_count,
+                    "retweets": r.retweet_count,
+                }
+                for r in replies
+            ],
+            "next_cursor": getattr(parent.replies, "next_cursor", None),
+            "count": len(replies),
+        }
+    )
+
+
 # ── download_tweet_video helpers (issue #84) ─────────
 #
 # yt-dlp + ffmpeg are NOT bundled as Python deps. Users install them
