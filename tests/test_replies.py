@@ -158,6 +158,61 @@ async def test_get_tweet_replies_extracts_id_from_url(fake_client, url, expected
 # ── reply with quoted/in_reply_to fields propagates ──
 
 
+async def test_get_tweet_by_id_handles_cursor_entry_without_itemcontent():
+    """live-smoke regression on `5a1cd35`: X gated burner-side, returned
+    a cursor entry whose `content.itemContent` was absent → KeyError.
+
+    Patched `Client.get_tweet_by_id` defensifies both `entries[-1]
+    .content.itemContent.value` and the inner `reply.item.itemContent
+    .value` reads. Truncated cursor → no next-page partial, no crash.
+    """
+    from twitter_mcp._vendor.twikit.client.client import Client
+
+    # Response shape: tweet entry + cursor entry that has `content` but
+    # no `itemContent` inside. Pre-patch this raised KeyError on the
+    # `entries[-1]["content"]["itemContent"]["value"]` access.
+    fake_response = {
+        "data": {
+            "threaded_conversation_with_injections_v2": {
+                "instructions": [
+                    {
+                        "type": "TimelineAddEntries",
+                        "entries": [
+                            {"entryId": "tweet-20", "content": {}},
+                            # Cursor entry truncated — no itemContent
+                            {
+                                "entryId": "cursor-bottom-0",
+                                "content": {"some_other_key": "x"},
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+    }
+
+    client = Client.__new__(Client)
+    from unittest.mock import AsyncMock as _AM
+
+    client.gql = SimpleNamespace(tweet_detail=_AM(return_value=(fake_response, None)))
+
+    # Prevent tweet_from_data from constructing a real Tweet for the
+    # `tweet-20` entry — return None so we exercise just the post-loop
+    # cursor-handling code path.
+    from unittest.mock import patch as _patch
+
+    import twitter_mcp._vendor.twikit.client.client as _clientmod
+
+    with _patch.object(_clientmod, "tweet_from_data", return_value=None):
+        # tweet=None after the loop → can still raise on cursor reading
+        # if the patch is wrong. With the fix, we hit the
+        # `tweet.replies = ...` line where tweet is None, that line
+        # would AttributeError. So we expect AttributeError, not
+        # KeyError — proves the cursor read path is safe.
+        with pytest.raises((AttributeError, TypeError)):
+            await Client.get_tweet_by_id(client, "20")
+
+
 async def test_get_tweet_replies_reply_shape_does_not_carry_quoted_or_inreplyto(
     fake_client,
 ):
