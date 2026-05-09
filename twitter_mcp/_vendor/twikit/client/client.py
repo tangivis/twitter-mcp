@@ -1615,19 +1615,26 @@ class Client:
                     sr_cursor = None
                     show_replies = None
 
-                    for reply in entry["content"]["items"][1:]:
-                        if "tweetcomposer" in reply["entryId"]:
+                    # Defensive: X may truncate the cursor entry's shape
+                    # (no `item` / `itemContent` / `value`) when gating
+                    # the burner. Skip cursor entry rather than KeyError.
+                    # twitter-mcp patch (issue #94)
+                    for reply in (entry.get("content") or {}).get("items", [])[1:]:
+                        if "tweetcomposer" in reply.get("entryId", ""):
                             continue
-                        if "tweet" in reply.get("entryId"):
+                        if "tweet" in reply.get("entryId", ""):
                             rpl = tweet_from_data(self, reply)
                             if rpl is None:
                                 continue
                             replies.append(rpl)
-                        if "cursor" in reply.get("entryId"):
-                            sr_cursor = reply["item"]["itemContent"]["value"]
-                            show_replies = partial(
-                                self._show_more_replies, tweet_id, sr_cursor
-                            )
+                        if "cursor" in reply.get("entryId", ""):
+                            sr_cursor = (
+                                (reply.get("item") or {}).get("itemContent") or {}
+                            ).get("value")
+                            if sr_cursor:
+                                show_replies = partial(
+                                    self._show_more_replies, tweet_id, sr_cursor
+                                )
                     tweet_object.replies = Result(replies, show_replies, sr_cursor)
                     replies_list.append(tweet_object)
 
@@ -1635,12 +1642,20 @@ class Client:
                     if display_type and display_type[0] == "SelfThread":
                         tweet.thread = [tweet_object, *replies]
 
-        if entries[-1]["entryId"].startswith("cursor"):
-            # if has more replies
-            reply_next_cursor = entries[-1]["content"]["itemContent"]["value"]
-            _fetch_more_replies = partial(
-                self._get_more_replies, tweet_id, reply_next_cursor
-            )
+        # Defensive: cursor entry's `content.itemContent.value` may be
+        # missing when X truncates the response for burner-gated
+        # accounts. Treat that as "no more pages" rather than KeyError.
+        # twitter-mcp patch (issue #94)
+        if entries and entries[-1].get("entryId", "").startswith("cursor"):
+            reply_next_cursor = (
+                (entries[-1].get("content") or {}).get("itemContent") or {}
+            ).get("value")
+            if reply_next_cursor:
+                _fetch_more_replies = partial(
+                    self._get_more_replies, tweet_id, reply_next_cursor
+                )
+            else:
+                _fetch_more_replies = None
         else:
             reply_next_cursor = None
             _fetch_more_replies = None
