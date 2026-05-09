@@ -21,14 +21,17 @@ def _fake_user(screen_name="alice", name="Alice"):
 def _fake_reply_tweet(
     tid="100",
     text="reply text",
+    full_text=None,
     user=None,
     favorite_count=1,
     retweet_count=0,
     created_at="Mon Jan 01 00:00:00 +0000 2026",
 ):
+    """Mirrors twikit Tweet — `full_text` falls back to `text` if not given."""
     return SimpleNamespace(
         id=tid,
         text=text,
+        full_text=full_text if full_text is not None else text,
         user=user or _fake_user(),
         favorite_count=favorite_count,
         retweet_count=retweet_count,

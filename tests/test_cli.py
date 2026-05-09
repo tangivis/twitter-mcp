@@ -484,6 +484,7 @@ async def test_tool_output_preserves_unicode_raw(monkeypatch):
     fake_tweet = SimpleNamespace(
         id="1234567890",
         text="Άρσεναλ - Σάντερλαντ: (X) 0-0 τελικό",
+        full_text="Άρσεναλ - Σάντερλαντ: (X) 0-0 τελικό",
         user=SimpleNamespace(screen_name="pathfinderSport", name="Pathfinder Sports"),
         favorite_count=7269,
         retweet_count=5473,

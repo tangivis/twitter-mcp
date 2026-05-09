@@ -23,6 +23,7 @@ def _fake_user(screen_name="alice", name="Alice", user_id="42"):
 def _fake_tweet(
     tid="100",
     text="hello world",
+    full_text=None,
     user=None,
     favorite_count=5,
     retweet_count=2,
@@ -32,9 +33,13 @@ def _fake_tweet(
     is_quote_status=False,
     quote=None,
 ):
+    """Mirrors twikit's `Tweet` model. `full_text` falls back to `text`
+    when not given — same fallback behavior as `Tweet.full_text` for
+    non-note tweets (issue #97)."""
     return SimpleNamespace(
         id=tid,
         text=text,
+        full_text=full_text if full_text is not None else text,
         user=user or _fake_user(),
         favorite_count=favorite_count,
         retweet_count=retweet_count,
@@ -172,7 +177,8 @@ async def test_get_tweet_parses_urls(fake_client, url, expected_id):
 # ── get_timeline ─────────────────────────────────────
 
 
-async def test_get_timeline_returns_list_with_truncated_text(fake_client):
+async def test_get_timeline_returns_list_with_full_text(fake_client):
+    """Issue #97: text is no longer truncated to 200; full text comes through."""
     long_text = "x" * 500
     fake_client.get_timeline = AsyncMock(
         return_value=[_fake_tweet(tid="1", text=long_text)]
@@ -180,7 +186,7 @@ async def test_get_timeline_returns_list_with_truncated_text(fake_client):
     out = json.loads(await server.get_timeline(count=5))
     assert len(out) == 1
     assert out[0]["id"] == "1"
-    assert len(out[0]["text"]) == 200  # truncated to 200 chars
+    assert out[0]["text"] == long_text  # full text, no truncation
 
 
 async def test_get_timeline_default_count(fake_client):
@@ -228,7 +234,7 @@ async def test_search_tweets_formats_results(fake_client):
     assert len(out) == 2
     assert out[0]["id"] == "a"
     assert out[0]["text"] == "short"
-    assert len(out[1]["text"]) == 200  # truncated
+    assert len(out[1]["text"]) == 300  # full text — issue #97 dropped 200 cap
 
 
 # ── like_tweet ───────────────────────────────────────
@@ -272,13 +278,14 @@ async def test_get_user_tweets_resolves_screen_name_then_fetches(fake_client):
     assert out[0]["text"] == "tweet one"
 
 
-async def test_get_user_tweets_truncates_long_text(fake_client):
+async def test_get_user_tweets_returns_full_text(fake_client):
+    """Issue #97: 200-char truncation removed."""
     fake_client.get_user_by_screen_name = AsyncMock(return_value=_fake_user())
     fake_client.get_user_tweets = AsyncMock(
         return_value=[_fake_tweet(tid="t", text="z" * 1000)]
     )
     out = json.loads(await server.get_user_tweets("alice"))
-    assert len(out[0]["text"]) == 200
+    assert len(out[0]["text"]) == 1000
 
 
 async def test_get_user_tweets_empty(fake_client):
@@ -903,13 +910,14 @@ async def test_get_bookmarks_returns_compact_tweet_list(fake_client):
     assert "retweets" in out["tweets"][0]
 
 
-async def test_get_bookmarks_truncates_text_to_200(fake_client):
+async def test_get_bookmarks_returns_full_text(fake_client):
+    """Issue #97: 200-char truncation removed."""
     long_text = "z" * 500
     fake_client.get_bookmarks = AsyncMock(
         return_value=_FakeTweetResult([_fake_bookmark_tweet(text=long_text)])
     )
     out = json.loads(await server.get_bookmarks())
-    assert len(out["tweets"][0]["text"]) == 200
+    assert len(out["tweets"][0]["text"]) == 500
 
 
 async def test_get_bookmarks_passes_count_and_cursor(fake_client):
@@ -1848,13 +1856,14 @@ async def test_get_list_tweets_returns_compact_tweet_list(fake_client):
     assert "retweets" in out["tweets"][0]
 
 
-async def test_get_list_tweets_truncates_text_to_200(fake_client):
+async def test_get_list_tweets_returns_full_text(fake_client):
+    """Issue #97: 200-char truncation removed."""
     long_text = "z" * 500
     fake_client.get_list_tweets = AsyncMock(
         return_value=_FakeTweetResult([_fake_tweet(text=long_text)])
     )
     out = json.loads(await server.get_list_tweets("lst-1"))
-    assert len(out["tweets"][0]["text"]) == 200
+    assert len(out["tweets"][0]["text"]) == 500
 
 
 async def test_get_list_tweets_passes_cursor(fake_client):
@@ -2239,10 +2248,12 @@ def _fake_scheduled_tweet(
     execute_at=9999999999,
     state="Scheduled",
     media=None,
+    full_text=None,
 ):
     return SimpleNamespace(
         id=tweet_id,
         text=text,
+        full_text=full_text if full_text is not None else text,
         execute_at=execute_at,
         state=state,
         media=media or [],
@@ -2341,12 +2352,13 @@ async def test_get_scheduled_tweets_returns_empty_list(fake_client):
     assert out["scheduled_tweets"] == []
 
 
-async def test_get_scheduled_tweets_truncates_text_to_200(fake_client):
+async def test_get_scheduled_tweets_returns_full_text(fake_client):
+    """Issue #97: 200-char truncation removed."""
     long_text = "x" * 300
     tweets = [_fake_scheduled_tweet("s1", long_text)]
     fake_client.get_scheduled_tweets = AsyncMock(return_value=tweets)
     out = json.loads(await server.get_scheduled_tweets())
-    assert len(out["scheduled_tweets"][0]["text"]) == 200
+    assert len(out["scheduled_tweets"][0]["text"]) == 300
 
 
 async def test_get_scheduled_tweets_includes_media_count(fake_client):
@@ -2354,6 +2366,7 @@ async def test_get_scheduled_tweets_includes_media_count(fake_client):
     tweet = SimpleNamespace(
         id="s1",
         text="with media",
+        full_text="with media",
         execute_at=9000000001,
         state="Scheduled",
         media=media,
@@ -2789,13 +2802,14 @@ async def test_get_community_tweets_passes_cursor(fake_client):
     fake_client.get_community_tweets.assert_awaited_once_with("comm-1", "Top", 5, "pg2")
 
 
-async def test_get_community_tweets_truncates_text_to_200(fake_client):
+async def test_get_community_tweets_returns_full_text(fake_client):
+    """Issue #97: 200-char truncation removed."""
     long_text = "z" * 500
     fake_client.get_community_tweets = AsyncMock(
         return_value=_FakeTweetResult([_fake_tweet(text=long_text)])
     )
     out = json.loads(await server.get_community_tweets("comm-1", "Latest"))
-    assert len(out["tweets"][0]["text"]) == 200
+    assert len(out["tweets"][0]["text"]) == 500
 
 
 async def test_get_community_tweets_rejects_invalid_tweet_type(fake_client):

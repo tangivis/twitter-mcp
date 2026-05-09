@@ -8,11 +8,16 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.33 新增
+
+- **去掉 200 字符截断** — `get_timeline` / `search_tweets` / `get_user_tweets` / `get_bookmarks` / `get_list_tweets` / `get_scheduled_tweets` / `get_community_tweets` / `get_communities_timeline` / `search_community_tweet` 不再把推文 text 截到 200 字符。`get_tweet` 和 `get_tweet_replies` 也切到 `Tweet.full_text`,X note tweet(长帖,4000 字)能完整返回。响应大小由用户的 `count` 参数控制。(closes #97)
+- **`get_article_preview` 引用推文报错优化** — 输入是 quote tweet 时,错误信息变成"这是引用推文,不是文章。用 get_tweet 读引用内容",不再扔通用的 "does not embed an article"。
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.32 新增
 
 - **读推文回复** — 新增 `get_tweet_replies(tweet_id, cursor=None)` 工具,拿一条推下面的评论 / 讨论。走 X 的 TweetDetail GraphQL 端点(vendored twikit),一次返回一页,带 `next_cursor` 翻下一页。回复条目用和 `get_user_tweets` / `get_timeline` 同款紧凑形状。(closes #94)
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.31 新增
 

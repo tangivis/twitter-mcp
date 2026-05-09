@@ -144,7 +144,7 @@ async def get_tweet(tweet_id: str) -> str:
             "id": t.id,
             "author": t.user.screen_name,
             "author_name": t.user.name,
-            "text": t.text,
+            "text": t.full_text,
             "created_at": str(t.created_at),
             "likes": t.favorite_count,
             "retweets": t.retweet_count,
@@ -187,7 +187,7 @@ async def get_tweet_replies(tweet_id: str, cursor: str | None = None) -> str:
                 {
                     "id": r.id,
                     "author": r.user.screen_name,
-                    "text": r.text,
+                    "text": r.full_text,
                     "created_at": str(r.created_at),
                     "likes": r.favorite_count,
                     "retweets": r.retweet_count,
@@ -377,7 +377,7 @@ async def get_timeline(count: int = 20) -> str:
             {
                 "id": t.id,
                 "author": t.user.screen_name,
-                "text": t.text[:200],
+                "text": t.full_text,
                 "likes": t.favorite_count,
                 "retweets": t.retweet_count,
             }
@@ -402,7 +402,7 @@ async def search_tweets(query: str, count: int = 20, product: str = "Latest") ->
             {
                 "id": t.id,
                 "author": t.user.screen_name,
-                "text": t.text[:200],
+                "text": t.full_text,
                 "likes": t.favorite_count,
                 "retweets": t.retweet_count,
             }
@@ -450,7 +450,7 @@ async def get_user_tweets(screen_name: str, count: int = 20) -> str:
         result.append(
             {
                 "id": t.id,
-                "text": t.text[:200],
+                "text": t.full_text,
                 "created_at": str(t.created_at),
                 "likes": t.favorite_count,
                 "retweets": t.retweet_count,
@@ -804,7 +804,7 @@ async def get_bookmarks(count: int = 20, cursor: str | None = None) -> str:
         {
             "id": t.id,
             "author": t.user.screen_name,
-            "text": t.text[:200],
+            "text": t.full_text,
             "likes": t.favorite_count,
             "retweets": t.retweet_count,
         }
@@ -979,6 +979,14 @@ async def get_article_preview(tweet_id: str) -> str:
     data = resp.json()
     article = data.get("article")
     if not article:
+        # X's syndication response carries `quoted_tweet` for quote
+        # retweets — distinguish that case so the user gets actionable
+        # guidance instead of "no article" (issue #97).
+        if data.get("quoted_tweet"):
+            raise ToolError(
+                f"Tweet {tweet_id} is a quote tweet, not an article. "
+                f"Use get_tweet to read the quoted tweet content."
+            )
         raise ToolError(f"Tweet {tweet_id} does not embed an article.")
     cover = article.get("cover_media", {}).get("media_info", {}).get("original_img_url")
     return _dumps(
@@ -1484,7 +1492,7 @@ async def get_list_tweets(
         {
             "id": t.id,
             "author": t.user.screen_name,
-            "text": t.text[:200],
+            "text": t.full_text,
             "likes": t.favorite_count,
             "retweets": t.retweet_count,
         }
@@ -1725,7 +1733,7 @@ async def get_scheduled_tweets() -> str:
     result = [
         {
             "id": t.id,
-            "text": t.text[:200],
+            "text": t.full_text,
             "scheduled_at": t.execute_at,
             "state": t.state,
             "media_count": len(t.media),
@@ -1916,7 +1924,7 @@ async def get_community_tweets(
         {
             "id": t.id,
             "author": t.user.screen_name,
-            "text": t.text[:200],
+            "text": t.full_text,
             "likes": t.favorite_count,
             "retweets": t.retweet_count,
         }
@@ -1954,7 +1962,7 @@ async def get_communities_timeline(count: int = 20, cursor: str | None = None) -
         {
             "id": t.id,
             "author": t.user.screen_name,
-            "text": t.text[:200],
+            "text": t.full_text,
             "likes": t.favorite_count,
             "retweets": t.retweet_count,
         }
@@ -2077,7 +2085,7 @@ async def search_community_tweet(
         {
             "id": t.id,
             "author": t.user.screen_name,
-            "text": t.text[:200],
+            "text": t.full_text,
             "likes": t.favorite_count,
             "retweets": t.retweet_count,
         }
