@@ -154,6 +154,34 @@ Edit `~/.config/opencode/config.json`:
 
 Some clients use `mcp.servers` instead of `mcpServers`, or wrap it under a different top-level key — check your client's docs. The `command` and `env` fields are universal.
 
+### OpenClaw
+
+OpenClaw can save `twikit-mcp` as an outbound MCP server for OpenClaw-managed agent runs:
+
+```bash
+openclaw mcp add twitter \
+  --command twikit-mcp \
+  --env "TWITTER_COOKIES=$HOME/.config/twitter-mcp/cookies.json"
+
+openclaw mcp doctor twitter --probe
+```
+
+Use a tool filter for read-only workflows:
+
+```bash
+openclaw mcp tools twitter \
+  --include 'get_tweet,search_tweets,get_user_info,get_user_tweets,get_tweet_replies,get_trends'
+```
+
+If the same OpenClaw workflow also needs API-backed TweetClaw jobs, install the TweetClaw plugin separately:
+
+```bash
+openclaw plugins install npm:@xquik/tweetclaw@1.6.31
+openclaw plugins inspect tweetclaw --runtime --json
+```
+
+Keep `twikit-mcp` responsible for cookie-backed MCP actions. Use TweetClaw for separate approval-reviewed workflows such as follower export, search tweet replies, media workflows, DMs, monitors, webhooks, giveaway draws, and post or reply jobs. Keep cookie paths and API keys in MCP or OpenClaw config, not prompts, docs, logs, or issue comments.
+
 ## Verify
 
 In your client, ask:

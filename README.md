@@ -141,6 +141,34 @@ Add to your MCP client config (e.g. `mcp.json`, `settings.json`):
 
 > Works with: Claude Code, Claude Desktop, Cursor, Windsurf, opencode, Cline, etc.
 
+#### OpenClaw
+
+OpenClaw can save `twikit-mcp` as an outbound MCP server for OpenClaw-managed agent runs. Keep the cookie file outside project repositories.
+
+```bash
+openclaw mcp add twitter \
+  --command twikit-mcp \
+  --env "TWITTER_COOKIES=$HOME/.config/twitter-mcp/cookies.json"
+
+openclaw mcp doctor twitter --probe
+```
+
+For read-only workflows, narrow the exposed tools before an agent run:
+
+```bash
+openclaw mcp tools twitter \
+  --include 'get_tweet,search_tweets,get_user_info,get_user_tweets,get_tweet_replies,get_trends'
+```
+
+If an OpenClaw workflow also needs the TweetClaw plugin's API-backed X/Twitter jobs, install it separately:
+
+```bash
+openclaw plugins install npm:@xquik/tweetclaw@1.6.31
+openclaw plugins inspect tweetclaw --runtime --json
+```
+
+Keep `twikit-mcp` responsible for cookie-backed MCP actions. Use TweetClaw for separate approval-reviewed workflows such as follower export, search tweet replies, media workflows, DMs, monitors, webhooks, giveaway draws, and post or reply jobs. Keep cookie paths and API keys in MCP or OpenClaw config, not prompts, docs, logs, or issue comments.
+
 That's it. Start talking:
 
 ```
@@ -295,7 +323,7 @@ claude mcp add twitter -s user ^
 
 ### Documentation
 
-- **[Technical Guide](docs/TECHNICAL.md)** — Architecture, MCP internals, configuration details
+- **[Technical Guide](docs/TECHNICAL.en.md)** - Architecture, MCP internals, configuration details
 - **[Contributing](CONTRIBUTING.md)** — Testing, CI/CD, how to add new tools
 
 ---
@@ -542,7 +570,7 @@ claude mcp add twitter -s user ^
 
 ### 文档
 
-- **[技术文档](docs/TECHNICAL.md)** — 架构、MCP 原理、配置详解、跨机器部署
+- **[技术文档](docs/TECHNICAL.zh.md)** - 架构、MCP 原理、配置详解、跨机器部署
 - **[贡献指南](CONTRIBUTING.md)** — 测试、CI/CD、如何添加新工具
 
 ---
@@ -789,7 +817,7 @@ claude mcp add twitter -s user ^
 
 ### ドキュメント
 
-- **[技術ドキュメント](docs/TECHNICAL.md)** — アーキテクチャ、MCP の仕組み、設定詳細
+- **[技術ドキュメント](docs/TECHNICAL.ja.md)** - アーキテクチャ、MCP の仕組み、設定詳細
 - **[コントリビューションガイド](CONTRIBUTING.md)** — テスト、CI/CD、新しいツールの追加方法
 
 ---
