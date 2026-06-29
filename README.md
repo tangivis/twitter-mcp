@@ -295,7 +295,7 @@ claude mcp add twitter -s user ^
 
 ### Documentation
 
-- **[Technical Guide](docs/TECHNICAL.md)** — Architecture, MCP internals, configuration details
+- **[Technical Guide](docs/TECHNICAL.en.md)** — Architecture, MCP internals, configuration details
 - **[Contributing](CONTRIBUTING.md)** — Testing, CI/CD, how to add new tools
 
 ---
@@ -542,7 +542,7 @@ claude mcp add twitter -s user ^
 
 ### 文档
 
-- **[技术文档](docs/TECHNICAL.md)** — 架构、MCP 原理、配置详解、跨机器部署
+- **[技术文档](docs/TECHNICAL.zh.md)** — 架构、MCP 原理、配置详解、跨机器部署
 - **[贡献指南](CONTRIBUTING.md)** — 测试、CI/CD、如何添加新工具
 
 ---
@@ -789,7 +789,7 @@ claude mcp add twitter -s user ^
 
 ### ドキュメント
 
-- **[技術ドキュメント](docs/TECHNICAL.md)** — アーキテクチャ、MCP の仕組み、設定詳細
+- **[技術ドキュメント](docs/TECHNICAL.ja.md)** — アーキテクチャ、MCP の仕組み、設定詳細
 - **[コントリビューションガイド](CONTRIBUTING.md)** — テスト、CI/CD、新しいツールの追加方法
 
 ---
