@@ -1566,6 +1566,27 @@ async def test_get_dm_history_raises_clean_on_rate_limit(fake_client):
     assert "rate limit" in str(exc.value).lower()
 
 
+async def test_get_dm_history_does_not_retry_conversation_rate_limit(
+    fake_client, monkeypatch
+):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(side_effect=TooManyRequests("rate"))
+    sleep = AsyncMock()
+    monkeypatch.setattr(server.asyncio, "sleep", sleep)
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_dm_history("alice")
+
+    assert "rate limit" in str(exc.value).lower()
+    fake_client.get_dm_history.assert_awaited_once_with("u-42", None)
+    sleep.assert_not_awaited()
+
+
 async def test_get_dm_history_raises_clean_on_not_found(fake_client):
     from mcp.server.fastmcp.exceptions import ToolError
 
@@ -1575,6 +1596,51 @@ async def test_get_dm_history_raises_clean_on_not_found(fake_client):
     with pytest.raises(ToolError) as exc:
         await server.get_dm_history("ghost")
     assert "not found" in str(exc.value).lower()
+
+
+async def test_get_dm_history_retries_transient_conversation_not_found(
+    fake_client, monkeypatch
+):
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    result = _FakeMessageResult([_fake_dm("m1")], next_cursor="m1")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(
+        side_effect=[NotFound("conversation not ready"), result]
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr(server.asyncio, "sleep", sleep)
+
+    out = json.loads(await server.get_dm_history("alice"))
+
+    assert out["messages"][0]["id"] == "m1"
+    assert fake_client.get_dm_history.await_count == 2
+    sleep.assert_awaited_once()
+
+
+async def test_get_dm_history_reports_persistent_conversation_not_found(
+    fake_client, monkeypatch
+):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(
+        side_effect=NotFound("conversation not ready")
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr(server.asyncio, "sleep", sleep)
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_dm_history("alice")
+
+    assert "conversation" in str(exc.value).lower()
+    assert "user not found" not in str(exc.value).lower()
+    assert fake_client.get_dm_history.await_count == server._DM_HISTORY_MAX_ATTEMPTS
+    assert sleep.await_count == server._DM_HISTORY_MAX_ATTEMPTS - 1
 
 
 # ── delete_dm ─────────────────────────────────────────────────────────────────
