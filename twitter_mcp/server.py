@@ -1341,6 +1341,13 @@ async def get_dm_history(screen_name: str, max_id: IdStr | None = None) -> str:
     Note: Retrieves PRIVATE messages. Do not bulk-call. X has aggressive
     anti-spam on DMs and may suspend the account.
 
+    Returns JSON with `messages` (id/text/sender_id/recipient_id/time),
+    `next_cursor` for pagination via `max_id`, and when present:
+    `timeline_events` (non-message entries such as `trust_conversation`)
+    and `warnings` (e.g. incomplete history for end-to-end encrypted /
+    X Chat conversations — legacy DM history does not return ciphertext
+    bodies after upgrade).
+
     Args:
         screen_name: Twitter username (without @).
         max_id: If specified, retrieves messages older than this ID (for pagination).
@@ -1372,19 +1379,33 @@ async def get_dm_history(screen_name: str, max_id: IdStr | None = None) -> str:
     messages = [
         {
             "id": m.id,
-            "text": m.text[:500],
+            "text": (m.text or "")[:500],
             "sender_id": m.sender_id,
             "recipient_id": m.recipient_id,
             "time": m.time,
         }
         for m in result
     ]
-    return _dumps(
-        {
-            "messages": messages,
-            "next_cursor": getattr(result, "next_cursor", None),
-        }
-    )
+    # Non-message timeline entries (trust_conversation, etc.) — issue #104.
+    timeline_events = list(getattr(result, "timeline_events", None) or [])
+    payload: dict = {
+        "messages": messages,
+        "next_cursor": getattr(result, "next_cursor", None),
+    }
+    if timeline_events:
+        payload["timeline_events"] = timeline_events
+        # Legacy 1.1 DM history does not return end-to-end encrypted
+        # (X Chat) message bodies after conversation upgrade. Surface a
+        # hard warning so agents don't falsely report "no reply sent".
+        event_types = {e.get("type") for e in timeline_events if isinstance(e, dict)}
+        if "trust_conversation" in event_types or event_types - {None}:
+            payload["warnings"] = [
+                "Legacy DM history omits end-to-end encrypted (X Chat) messages "
+                "after conversation upgrade. If the X UI shows more messages "
+                "than listed here, treat this history as incomplete and do not "
+                "assume the latest UI message is missing from the account."
+            ]
+    return _dumps(payload)
 
 
 @mcp.tool()
