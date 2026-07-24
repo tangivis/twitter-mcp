@@ -3170,23 +3170,58 @@ class Client:
             return Result([])
         items = response["conversation_timeline"]["entries"]
 
+        # twitter-mcp patch (issue #104): X injects non-message timeline
+        # entries (e.g. trust_conversation after accepting a message
+        # request / follow-trust). Upstream indexes item["message"] and
+        # KeyErrors on those. Skip non-message entries, record them on
+        # Result.timeline_events, and don't IndexError when only system
+        # events remain. Also: legacy DM history omits end-to-end
+        # encrypted (X Chat) ciphertext — agents must treat history as
+        # incomplete when the UI shows more messages than returned.
         messages = []
+        timeline_events: list[dict] = []
         for item in items:
-            message_info = item["message"]["message_data"]
+            if not isinstance(item, dict):
+                continue
+            message = item.get("message")
+            if not isinstance(message, dict):
+                event_type = next(iter(item.keys()), "unknown")
+                body = item.get(event_type)
+                body = body if isinstance(body, dict) else {}
+                timeline_events.append(
+                    {
+                        "type": event_type,
+                        "id": body.get("id"),
+                        "time": body.get("time"),
+                        "reason": body.get("reason"),
+                        "conversation_id": body.get("conversation_id"),
+                    }
+                )
+                continue
+            message_info = message.get("message_data")
+            if not isinstance(message_info, dict) or "id" not in message_info:
+                continue
             messages.append(
                 Message(
                     self,
                     message_info,
-                    message_info["sender_id"],
-                    message_info["recipient_id"],
+                    message_info.get("sender_id"),
+                    message_info.get("recipient_id"),
                 )
             )
 
-        return Result(
+        if not messages:
+            result = Result([])
+            result.timeline_events = timeline_events
+            return result
+
+        result = Result(
             messages,
             partial(self.get_dm_history, user_id, messages[-1].id),
             messages[-1].id,
         )
+        result.timeline_events = timeline_events
+        return result
 
     async def send_dm_to_group(
         self,
@@ -3280,14 +3315,31 @@ class Client:
             return Result([])
 
         items = response["conversation_timeline"]["entries"]
+        # twitter-mcp patch (issue #104): same non-message / empty-list
+        # guards as get_dm_history (group path already skipped missing
+        # "message" keys; still crashed on messages[-1] when only system
+        # events remained).
         messages = []
         for item in items:
-            if "message" not in item:
+            if not isinstance(item, dict):
                 continue
-            message_info = item["message"]["message_data"]
+            message = item.get("message")
+            if not isinstance(message, dict):
+                continue
+            message_info = message.get("message_data")
+            if not isinstance(message_info, dict) or "id" not in message_info:
+                continue
             messages.append(
-                GroupMessage(self, message_info, message_info["sender_id"], group_id)
+                GroupMessage(
+                    self,
+                    message_info,
+                    message_info.get("sender_id"),
+                    group_id,
+                )
             )
+
+        if not messages:
+            return Result([])
 
         return Result(
             messages,

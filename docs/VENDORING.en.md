@@ -19,6 +19,7 @@ Each entry below is a patch applied on top of upstream `twikit`. The Chinese pag
 | 0.1.5 | `_vendor/twikit/tweet.py` | `Tweet` properties + `entities.*` subtree fully defensive. |
 | 0.1.9 | `_vendor/twikit/client/gql.py` | `tweet_result_by_rest_id` flips `fieldToggles.withArticlePlainText` from `False` to `True` (issue #10 — without this, article body never populates). |
 | 0.1.21 | `_vendor/twikit/client/client.py` | `get_lists` uses `.get()` chain instead of bracket access (issue #37 — burner accounts with 0 lists got `KeyError: 'list'`). |
+| 0.1.34 | `_vendor/twikit/client/client.py` + `twitter_mcp/server.py` | `get_dm_history` skips non-message timeline entries like `trust_conversation` (issue #104 — was `KeyError: 'message'`), attaches `Result.timeline_events`, guards empty post-filter lists; MCP tool surfaces `timeline_events` + E2EE incompleteness `warnings`. |
 
 ## Exit strategy
 
