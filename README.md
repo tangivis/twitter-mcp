@@ -305,6 +305,24 @@ See the [XChat setup and security notes](docs/XCHAT.en.md), including the
 explicit cookie-bootstrap recovery path for a clean profile hit by X login
 rate limits.
 
+### Private bookmark export and categorization
+
+Bookmarks can be exported page by page with `get_bookmarks`, deduplicated by
+tweet ID, and organized into a private local archive. Store exports under
+`.private/twitter-bookmarks/`; this path is included in the repository's
+`.gitignore`, and export directories/files should use modes 700/600.
+
+The recommended workflow checkpoints the raw response after every page, follows
+`next_cursor` until X returns no new IDs, preserves expanded URLs and media
+references, assigns one primary category plus up to three tags, and creates a
+Markdown index with one file per category. It does not download media binaries
+unless explicitly extended to do so.
+
+See the [private bookmark export guide](docs/BOOKMARKS.en.md) for the exact
+pagination, sorting taxonomy, output layout, privacy checks, and safe refresh
+procedure. Never commit bookmark text, raw payloads, cookies, PINs, or OAuth
+tokens.
+
 ### Available Tools
 
 | Tool | Description |
