@@ -178,7 +178,7 @@ async def test_get_history_navigates_to_the_conversation():
 
     messages = await session.get_history("1-2", limit=50)
 
-    assert session._page.visited[-1] == "https://x.com/messages/1-2"
+    assert session._page.visited[-1] == "https://x.com/i/chat/1-2"
     assert [m["text"] for m in messages] == ["first", "second", "third"]
     # The layout guess must stay labelled as a guess.
     assert {m["direction_source"] for m in messages} == {"layout-heuristic"}
@@ -244,7 +244,7 @@ async def test_scroll_back_pages_until_history_stops_growing():
     await session._scroll_back(100)  # more than exists
 
     # Stops when a pass adds nothing rather than burning all 12 passes.
-    assert 0 < page.scrolled < 12
+    assert 0 < len(page.keys) < 12
 
 
 @pytest.mark.asyncio

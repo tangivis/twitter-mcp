@@ -467,9 +467,6 @@ _VALID_TREND_CATEGORIES = frozenset(
 
 _VALID_COMMUNITY_TWEET_TYPES = frozenset({"Top", "Latest", "Media"})
 
-_DM_HISTORY_MAX_ATTEMPTS = 3
-_DM_HISTORY_RETRY_DELAY_SECONDS = 0.5
-
 
 def _require_exactly_one(
     screen_name: str | None, user_id: str | None, *, op: str
@@ -1330,27 +1327,17 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
     except NotFound:
         raise ToolError(f"User not found: {screen_name}.")
 
-    for attempt in range(_DM_HISTORY_MAX_ATTEMPTS):
-        try:
-            result = await client.get_dm_history(user.id, max_id)
-            break
-        except TooManyRequests as e:
-            raise ToolError(f"X rate limit exceeded; retry later. ({e})")
-        except NotFound:
-            if attempt == _DM_HISTORY_MAX_ATTEMPTS - 1:
-                # A permanently-encrypted conversation looks identical to a
-                # transient miss here, so name the likely cause instead of
-                # implying a retry will help.
-                raise ToolError(
-                    f"DM conversation with {screen_name} is not available via the "
-                    "legacy DM endpoint. This is expected if the conversation has "
-                    "been upgraded to XChat (end-to-end encrypted) — encrypted "
-                    "messages are not retrievable this way, by X's design. Use "
-                    "`xchat_list_conversations` / `xchat_get_history` instead "
-                    "(one-time setup: `twikit-mcp xchat login`). Otherwise the "
-                    "conversation may not exist yet; retry later."
-                )
-            await asyncio.sleep(_DM_HISTORY_RETRY_DELAY_SECONDS * (attempt + 1))
+    try:
+        result = await client.get_dm_history(user.id, max_id)
+    except TooManyRequests as e:
+        raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+    except NotFound:
+        await _raise_legacy_dm_unavailable(user.id, screen_name)
+
+    # Initial empty results can be XChat upgrades. Empty pagination is simply
+    # end-of-history and must remain a valid result.
+    if not result and max_id is None:
+        await _raise_legacy_dm_unavailable(user.id, screen_name)
 
     messages = [
         {
@@ -1367,6 +1354,53 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
             "messages": messages,
             "next_cursor": getattr(result, "next_cursor", None),
         }
+    )
+
+
+async def _is_xchat_user_id(user_id: str) -> bool | None:
+    """Classify from a ready paired browser without unlocking or guessing."""
+    from twitter_mcp.xchat.config import load_settings
+    from twitter_mcp.xchat.errors import XChatError
+    from twitter_mcp.xchat.session import (
+        STATE_READY,
+        XChatSession,
+        profile_is_initialized,
+    )
+
+    settings = load_settings()
+    if not profile_is_initialized(settings.profile_dir):
+        return None
+    session = XChatSession(settings=settings)
+    try:
+        await session.open()
+        await session._goto_messages()
+        if await session.current_state() != STATE_READY:
+            return None
+        conversations = await session._read_conversations()
+        return any(
+            not str(row.get("conversation_id", "")).startswith("g")
+            and str(user_id) in str(row.get("conversation_id", "")).split("-")
+            for row in conversations
+        )
+    except XChatError:
+        return None
+    finally:
+        await session.close()
+
+
+async def _raise_legacy_dm_unavailable(user_id: str, screen_name: str) -> None:
+    encrypted = await _is_xchat_user_id(user_id)
+    if encrypted is True:
+        raise ToolError(
+            f"[xchat_encrypted] DM conversation with {screen_name} is XChat "
+            "end-to-end encrypted and cannot be read through get_dm_history. "
+            "Use xchat_list_conversations / xchat_get_history."
+        )
+    raise ToolError(
+        f"[legacy_dm_unavailable] DM conversation with {screen_name} was not "
+        "returned by X's legacy endpoint. Encryption state is unknown because "
+        "the paired XChat device could not positively match that user. No retry "
+        "was attempted; use xchat_status / xchat_list_conversations to verify."
     )
 
 

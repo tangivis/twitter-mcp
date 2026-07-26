@@ -6,6 +6,8 @@ limited number of wrong guesses, so any path that could retry a PIN in a loop
 is a data-loss bug, not a UX wart.
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from twitter_mcp.xchat.config import XChatSettings
@@ -21,6 +23,7 @@ from twitter_mcp.xchat.session import (
     STATE_READY,
     STATE_UNKNOWN,
     XChatSession,
+    load_bootstrap_cookies,
     profile_is_initialized,
 )
 
@@ -263,3 +266,143 @@ def test_profile_detection(tmp_path):
     assert profile_is_initialized(tmp_path) is False  # empty dir != paired
     (tmp_path / "Default").mkdir()
     assert profile_is_initialized(tmp_path) is True
+
+
+def _semantic_node(node_id, role, name="", url=None):
+    props = [] if url is None else [{"name": "url", "value": {"value": url}}]
+    return {
+        "nodeId": node_id,
+        "role": {"value": role},
+        "name": {"value": name},
+        "properties": props,
+    }
+
+
+@pytest.mark.asyncio
+async def test_semantic_ready_and_locked_states(monkeypatch):
+    session = make_session(url="https://x.com/i/chat")
+    ready = [
+        _semantic_node("root", "RootWebArea", "X", "https://x.com/i/chat"),
+        _semantic_node("title", "StaticText", "Chat"),
+    ]
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.session.capture_accessibility_tree",
+        AsyncMock(return_value=ready),
+    )
+    assert await session.current_state() == STATE_READY
+
+    session._page.url = "https://x.com/i/chat/pin/verify"
+    locked = [_semantic_node(str(i), "textbox") for i in range(4)]
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.session.capture_accessibility_tree",
+        AsyncMock(return_value=locked),
+    )
+    assert await session.current_state() == STATE_LOCKED
+
+
+@pytest.mark.asyncio
+async def test_segmented_passcode_fields_are_filled_once(monkeypatch):
+    session = make_session(url="https://x.com/i/chat/pin/verify", pin="4321")
+
+    class Field:
+        def __init__(self):
+            self.values = []
+
+        async def fill(self, value):
+            self.values.append(value)
+
+    fields = [Field() for _ in range(4)]
+
+    class Fields:
+        async def count(self):
+            return len(fields)
+
+        def nth(self, index):
+            return fields[index]
+
+    session._page.get_by_role = lambda role: Fields()
+    monkeypatch.setattr(session, "current_state", AsyncMock(return_value=STATE_READY))
+
+    await session._unlock()
+
+    assert [field.values for field in fields] == [["4"], ["3"], ["2"], ["1"]]
+    assert session._pin_attempted is True
+
+
+def test_cookie_bootstrap_accepts_secure_mapping_without_leaking_values(tmp_path):
+    path = tmp_path / "cookies.json"
+    path.write_text('{"auth_token":"top-secret-a","ct0":"top-secret-c"}')
+    path.chmod(0o600)
+
+    cookies = load_bootstrap_cookies(path)
+
+    assert [cookie["name"] for cookie in cookies] == ["auth_token", "ct0"]
+    assert all(cookie["domain"] == ".x.com" for cookie in cookies)
+
+
+def test_cookie_bootstrap_rejects_insecure_permissions(tmp_path):
+    path = tmp_path / "cookies.json"
+    path.write_text('{"auth_token":"a","ct0":"c"}')
+    path.chmod(0o644)
+
+    from twitter_mcp.xchat.errors import XChatUnavailable
+
+    with pytest.raises(XChatUnavailable, match="chmod 600") as exc:
+        load_bootstrap_cookies(path)
+    assert '"a"' not in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_cookie_import_requires_visible_login(tmp_path):
+    path = tmp_path / "cookies.json"
+    path.write_text('{"auth_token":"a","ct0":"c"}')
+    path.chmod(0o600)
+    settings = XChatSettings(profile_dir=tmp_path / "profile", cookie_file=path)
+    session = XChatSession(settings=settings, headless=True)
+
+    from twitter_mcp.xchat.errors import XChatUnavailable
+
+    with pytest.raises(XChatUnavailable, match="visible"):
+        await session.import_login_cookies()
+
+
+@pytest.mark.asyncio
+async def test_visible_login_imports_only_two_allowed_cookies(tmp_path):
+    path = tmp_path / "cookies.json"
+    path.write_text('{"auth_token":"a","ct0":"c","guest_id":"must-not-import"}')
+    path.chmod(0o600)
+    settings = XChatSettings(profile_dir=tmp_path / "profile", cookie_file=path)
+    session = XChatSession(settings=settings, headless=False)
+
+    class Context:
+        def __init__(self):
+            self.cookies = None
+
+        async def add_cookies(self, cookies):
+            self.cookies = cookies
+
+    session._context = Context()
+
+    assert await session.import_login_cookies() == 2
+    assert [cookie["name"] for cookie in session._context.cookies] == [
+        "auth_token",
+        "ct0",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_doctor_report_is_content_free(monkeypatch):
+    session = make_session(url="https://x.com/i/chat/1-2")
+    nodes = [
+        _semantic_node("root", "RootWebArea", "X", "https://x.com/i/chat/1-2"),
+        _semantic_node("message", "listitem", "private message body"),
+    ]
+    monkeypatch.setattr(session, "_goto_messages", AsyncMock())
+    monkeypatch.setattr(session, "current_state", AsyncMock(return_value=STATE_READY))
+    monkeypatch.setattr(session, "_semantic_nodes", AsyncMock(return_value=nodes))
+
+    report = await session.doctor()
+
+    assert report["state"] == STATE_READY
+    assert report["message_items"] == 0
+    assert "private message body" not in str(report)

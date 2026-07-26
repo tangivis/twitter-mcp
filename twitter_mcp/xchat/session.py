@@ -20,6 +20,8 @@ here would be a config typo away from making your entire history unreadable.
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -37,9 +39,14 @@ from twitter_mcp.xchat.reader import (
     EXTRACT_CONVERSATIONS_JS,
     EXTRACT_MESSAGES_JS,
     LOGIN_PASSWORD_ATTRS,
+    capture_accessibility_tree,
+    extract_conversations_from_ax,
+    extract_messages_from_ax,
     load_selectors,
     normalize_conversations,
     normalize_messages,
+    scroll_semantic_message_list,
+    semantic_diagnostics,
 )
 
 STATE_READY = "ready"
@@ -70,6 +77,68 @@ SETTLE_MS = 2_500
 # screenful; 12 is ~a few hundred messages, past which callers should page.
 MAX_SCROLL_PASSES = 12
 SCROLL_SETTLE_MS = 700
+
+
+def load_bootstrap_cookies(path: Path | str) -> list[dict[str, Any]]:
+    """Load only the two X credentials needed to seed the dedicated profile.
+
+    Values are deliberately never included in errors or diagnostics. On POSIX,
+    reject files readable by group/other because these cookies grant persistent
+    account access. Both the historic twikit mapping format and a browser-style
+    cookie list are accepted.
+    """
+    cookie_path = Path(path).expanduser()
+    try:
+        mode = cookie_path.stat().st_mode
+        if os.name == "posix" and mode & 0o077:
+            raise XChatUnavailable(
+                f"Cookie file {cookie_path} must not be readable by group/other; "
+                "run `chmod 600` on it."
+            )
+        raw = json.loads(cookie_path.read_text(encoding="utf-8"))
+    except XChatUnavailable:
+        raise
+    except (OSError, json.JSONDecodeError) as exc:
+        raise XChatUnavailable(
+            f"Could not read XCHAT_COOKIE_FILE at {cookie_path}: {type(exc).__name__}."
+        ) from exc
+
+    values: dict[str, str] = {}
+    if isinstance(raw, dict):
+        values = {
+            name: value
+            for name in ("auth_token", "ct0")
+            if isinstance((value := raw.get(name)), str) and value
+        }
+    elif isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict) or item.get("name") not in {
+                "auth_token",
+                "ct0",
+            }:
+                continue
+            value = item.get("value")
+            if isinstance(value, str) and value:
+                values[str(item["name"])] = value
+
+    missing = sorted({"auth_token", "ct0"} - values.keys())
+    if missing:
+        raise XChatUnavailable(
+            "XCHAT_COOKIE_FILE must contain non-empty auth_token and ct0 values "
+            f"(missing: {', '.join(missing)})."
+        )
+    return [
+        {
+            "name": name,
+            "value": values[name],
+            "domain": ".x.com",
+            "path": "/",
+            "secure": True,
+            "httpOnly": name == "auth_token",
+            "sameSite": "Lax",
+        }
+        for name in ("auth_token", "ct0")
+    ]
 
 
 def profile_is_initialized(profile_dir: Path | str) -> bool:
@@ -130,6 +199,7 @@ class XChatSession:
         self._page = None
         # Guards the one-shot PIN rule described in the module docstring.
         self._pin_attempted = False
+        self._last_ax_nodes: list[dict[str, Any]] | None = None
 
     # ── lifecycle ──────────────────────────────────────
 
@@ -243,6 +313,35 @@ class XChatSession:
         )
         await self._page.wait_for_timeout(SETTLE_MS)
 
+    async def import_login_cookies(self) -> int:
+        """Seed the visible pairing profile from an explicitly configured file."""
+        if self.settings.cookie_file is None:
+            return 0
+        if self.headless:
+            raise XChatUnavailable(
+                "Cookie bootstrap is allowed only during visible `xchat login`."
+            )
+        cookies = load_bootstrap_cookies(self.settings.cookie_file)
+        await self._context.add_cookies(cookies)
+        return len(cookies)
+
+    async def _semantic_nodes(self) -> list[dict[str, Any]] | None:
+        """Capture the AX tree, with a fake-compatible fallback for old tests."""
+        try:
+            nodes = await capture_accessibility_tree(self._page)
+        except (AttributeError, NotImplementedError):
+            return None
+        self._last_ax_nodes = nodes
+        return nodes
+
+    @staticmethod
+    def _semantic_names(nodes: list[dict[str, Any]]) -> set[str]:
+        return {
+            str((node.get("name") or {}).get("value") or "").strip().lower()
+            for node in nodes
+            if isinstance(node.get("name"), dict)
+        }
+
     async def current_state(self) -> str:
         """Classify the client: ready / locked / logged_out / unknown.
 
@@ -253,6 +352,21 @@ class XChatSession:
         url = (self._page.url or "").lower()
         if any(marker in url for marker in LOGGED_OUT_URL_MARKERS):
             return STATE_LOGGED_OUT
+        nodes = await self._semantic_nodes()
+        if nodes is not None:
+            names = self._semantic_names(nodes)
+            if "/i/chat/pin/" in url or (
+                "enter passcode" in names
+                and sum(
+                    (node.get("role") or {}).get("value") == "textbox" for node in nodes
+                )
+                == 4
+            ):
+                return STATE_LOCKED
+            if extract_conversations_from_ax(nodes) or (
+                url.startswith("https://x.com/i/chat") and "chat" in names
+            ):
+                return STATE_READY
         if await self._first_matching("login_marker"):
             return STATE_LOGGED_OUT
         if await self._first_matching("pin_dialog") or await self._first_matching(
@@ -289,6 +403,32 @@ class XChatSession:
                 "(XCHAT_PIN_PROMPT=tty|web; currently "
                 f"{self.pin_provider.mode!r})."
             )
+
+        # The verified 2026 XChat UI uses four semantic textboxes, one per
+        # digit, under `/i/chat/pin/...`. This avoids selectors entirely and
+        # the route guard prevents an account-login form from ever receiving
+        # the chat passcode.
+        url = (self._page.url or "").lower()
+        if "/i/chat/pin/" in url and hasattr(self._page, "get_by_role"):
+            if not (len(pin) == 4 and pin.isdigit()):
+                raise XChatNoPin("XChat requires a four-digit passcode.")
+            fields = self._page.get_by_role("textbox")
+            count = await fields.count()
+            if count != 4:
+                raise XChatExtractionFailed(
+                    f"The passcode route exposed {count} textboxes, expected 4. "
+                    "Not typing the passcode; run `twikit-mcp xchat doctor`."
+                )
+            for index, digit in enumerate(pin):
+                await fields.nth(index).fill(digit)
+            await self._page.wait_for_timeout(SETTLE_MS)
+            if await self.current_state() == STATE_LOCKED:
+                self.pin_provider.invalidate()
+                raise XChatPinRejected(
+                    "The passcode screen is still showing after one submission. "
+                    "Not retrying automatically."
+                )
+            return
 
         pin_input = await self._first_matching("pin_input")
         if not pin_input:
@@ -388,6 +528,9 @@ class XChatSession:
         )
 
     async def _read_conversations(self) -> list[dict[str, Any]]:
+        nodes = await self._semantic_nodes()
+        if nodes is not None:
+            return extract_conversations_from_ax(nodes)
         raw = await self._page.evaluate(EXTRACT_CONVERSATIONS_JS, self.selectors)
         return normalize_conversations(raw)
 
@@ -408,25 +551,30 @@ class XChatSession:
     ) -> list[dict[str, Any]]:
         await self._ensure_ready()
         await self._page.goto(
-            f"https://x.com/messages/{conversation_id}",
+            f"https://x.com/i/chat/{conversation_id}",
             wait_until="domcontentloaded",
             timeout=self.settings.timeout_ms,
         )
         await self._page.wait_for_timeout(SETTLE_MS)
 
-        # Opening a specific conversation can itself trigger the PIN gate even
-        # when the inbox rendered fine.
-        if await self._first_matching("pin_dialog"):
+        # Opening a specific conversation can itself trigger the passcode gate
+        # even when the inbox rendered fine. Reuse the semantic state classifier
+        # so the verified segmented-input UI does not depend on a CSS fallback.
+        if await self.current_state() == STATE_LOCKED:
             await self._unlock()
             await self._page.wait_for_timeout(SETTLE_MS)
 
         await self._scroll_back(limit)
-        raw = await self._page.evaluate(EXTRACT_MESSAGES_JS, self.selectors)
-        messages = normalize_messages(raw, limit=limit)
+        nodes = await self._semantic_nodes()
+        if nodes is not None:
+            messages = extract_messages_from_ax(nodes, limit=limit)
+        else:
+            raw = await self._page.evaluate(EXTRACT_MESSAGES_JS, self.selectors)
+            messages = normalize_messages(raw, limit=limit)
         if not messages:
             raise XChatExtractionFailed(
                 f"No messages matched in conversation {conversation_id}. Run "
-                "`twikit-mcp xchat doctor` to check the selectors."
+                "`twikit-mcp xchat doctor` to check the semantic page shape."
             )
         return messages
 
@@ -437,24 +585,24 @@ class XChatSession:
         has been scrolled through. Stops early when a pass adds nothing, which
         is both the top-of-history case and the nothing-is-loading case.
         """
-        scroller = await self._first_matching("message_scroller")
         previous = -1
         for _ in range(MAX_SCROLL_PASSES):
             rows = await self._count_messages()
             if rows >= target or rows == previous:
                 return
             previous = rows
-            if scroller:
-                await self._page.evaluate(
-                    "(c) => { const el = document.querySelector(c);"
-                    " if (el) el.scrollTop = 0; }",
-                    scroller,
-                )
-            else:
+            try:
+                scrolled = await scroll_semantic_message_list(self._page)
+            except (AttributeError, NotImplementedError):
+                scrolled = False
+            if not scrolled:
                 await self._page.keyboard.press("Home")
             await self._page.wait_for_timeout(SCROLL_SETTLE_MS)
 
     async def _count_messages(self) -> int:
+        nodes = await self._semantic_nodes()
+        if nodes is not None:
+            return len(extract_messages_from_ax(nodes))
         for candidate in self.selectors.get("message", []):
             count = await self._page.evaluate(
                 "(c) => document.querySelectorAll(c).length", candidate
@@ -462,6 +610,16 @@ class XChatSession:
             if count:
                 return int(count)
         return 0
+
+    async def doctor(self) -> dict[str, Any]:
+        """Return content-free semantic diagnostics; never unlocks or logs text."""
+        await self._goto_messages()
+        state = await self.current_state()
+        nodes = self._last_ax_nodes or await self._semantic_nodes()
+        report = semantic_diagnostics(nodes or [])
+        report["state"] = state
+        report["profile_dir"] = str(self.settings.profile_dir)
+        return report
 
 
 async def open_session(settings: XChatSettings | None = None) -> XChatSession:
@@ -476,6 +634,7 @@ __all__ = [
     "STATE_UNKNOWN",
     "SessionStatus",
     "XChatSession",
+    "load_bootstrap_cookies",
     "open_session",
     "profile_is_initialized",
 ]

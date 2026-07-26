@@ -35,9 +35,17 @@ async def cmd_login(timeout_s: int = LOGIN_TIMEOUT_SECONDS) -> int:  # pragma: n
         "Opening a browser. Log in to X, then open Messages and complete any "
         "chat-PIN / device setup it asks for.\n"
         f"Profile: {settings.profile_dir}\n"
-        "This window stays open until the session is confirmed."
+        + (
+            "XCHAT_COOKIE_FILE is set: this login will copy auth_token and ct0 "
+            "into the dedicated profile, granting it persistent X access.\n"
+            if settings.cookie_file
+            else ""
+        )
+        + "This window stays open until the session is confirmed."
     )
     async with XChatSession(settings=settings, headless=False) as session:
+        if await session.import_login_cookies():
+            print("Imported two login cookies into the dedicated profile.")
         await session._goto_messages()
         waited = 0
         while waited < timeout_s:
@@ -84,20 +92,9 @@ async def cmd_history(conversation_id: str, limit: int) -> int:  # pragma: no co
 
 
 async def cmd_doctor() -> int:  # pragma: no cover - browser I/O
-    """Report which selector candidates actually match — the drift check."""
+    """Report sanitized accessibility-tree counts — the semantic drift check."""
     async with XChatSession() as session:
-        await session._goto_messages()
-        report: dict[str, object] = {"state": await session.current_state()}
-        for key, candidates in session.selectors.items():
-            matched = []
-            for candidate in candidates:
-                count = await session._page.evaluate(
-                    "(c) => document.querySelectorAll(c).length", candidate
-                )
-                if count:
-                    matched.append({"selector": candidate, "count": count})
-            report[key] = matched or "NO MATCH"
-        print(_dumps(report))
+        print(_dumps(await session.doctor()))
     return 0
 
 
@@ -119,7 +116,7 @@ def add_parser(subparsers) -> None:
     p_hist = xsub.add_parser("history", help="Print one conversation's messages.")
     p_hist.add_argument("conversation_id")
     p_hist.add_argument("-n", "--limit", type=int, default=50)
-    xsub.add_parser("doctor", help="Show which DOM selectors currently match.")
+    xsub.add_parser("doctor", help="Show sanitized semantic role/route diagnostics.")
 
 
 def dispatch(args) -> int:  # pragma: no cover - thin async dispatch

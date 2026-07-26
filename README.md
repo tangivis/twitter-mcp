@@ -182,7 +182,28 @@ twikit-mcp                              # stdio JSON-RPC for MCP clients
 twikit-mcp serve                        # explicit, same behavior
 ```
 
-All three modes share the same `~/.config/twitter-mcp/cookies.json` — no separate config.
+The normal twikit modes share `~/.config/twitter-mcp/cookies.json`. XChat uses
+a separate, locally paired browser profile; see [Local XChat reader](docs/XCHAT.en.md).
+
+### Local XChat (encrypted DM) reader
+
+XChat conversations no longer appear through twikit's legacy DM endpoint. The
+optional local reader drives a persistent Chromium profile where X's own web
+client performs E2EE decryption, then extracts rendered plaintext through the
+accessibility tree. Pair once with `twikit-mcp xchat login`; normal reads can
+then run headless through `xchat_list_conversations` and `xchat_get_history`.
+
+Install the optional browser dependency first:
+
+```bash
+pip install 'twikit-mcp[xchat]'
+playwright install chromium
+twikit-mcp xchat login
+```
+
+See the [XChat setup and security notes](docs/XCHAT.en.md), including the
+explicit cookie-bootstrap recovery path for a clean profile hit by X login
+rate limits.
 
 ### Available Tools
 
@@ -220,6 +241,9 @@ All three modes share the same `~/.config/twitter-mcp/cookies.json` — no separ
 | `send_dm` | ⚠️ Send a PRIVATE DM to a user — do not bulk-call |
 | `send_dm_to_group` | ⚠️ Send a PRIVATE DM to a group conversation — do not bulk-call |
 | `get_dm_history` | ⚠️ Get DM conversation history with a user (private — paginate via `max_id`) |
+| `xchat_status` | Report local encrypted-DM profile state without unlocking it |
+| `xchat_list_conversations` | ⚠️ List locally decrypted XChat conversations |
+| `xchat_get_history` | ⚠️ Read one locally decrypted XChat history |
 | `delete_dm` | ⚠️ Delete a DM by message ID (private) |
 | `get_list` | Get a Twitter List by ID |
 | `get_lists` | Get authenticated user's Lists (paginated via `cursor`, max 100/call) |

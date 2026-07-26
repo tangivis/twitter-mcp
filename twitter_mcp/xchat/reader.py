@@ -1,33 +1,50 @@
 """Turning the decrypted X web client's DOM into structured data.
 
-Everything here is deliberately free of Playwright imports. The browser-side
-work is two `evaluate()` scripts (constants below) and the interpretation of
-what they return is plain functions — so the fragile part (selectors) and the
-lossy part (normalisation) can both be unit-tested without launching a browser.
+Everything here is deliberately free of Playwright imports. The primary path
+reads Chromium's accessibility tree over CDP and interprets plain dictionaries,
+so the semantic contract can be tested without launching a browser. The older
+`evaluate()` scripts remain only as safety fallbacks for fakes/engines without
+the required CDP surface.
 
-On selector drift: X ships DOM changes regularly, and this package reads the
-rendered client rather than an API, so drift is a *when*, not an *if*. Two
-mitigations, in order of preference:
+On UI drift: X ships changes regularly, and this package reads the rendered
+client rather than an API, so drift is a *when*, not an *if*. The primary path
+uses roles, accessible names, resolved link URLs, and DOMSnapshot bounds.
+Legacy selectors are retained as a conservative compatibility lane:
 
-1. Every logical element has a *list* of candidate selectors, most-stable
-   first. `data-testid` attributes survive X's CSS-in-JS class churn, so they
-   lead; structural fallbacks trail.
+1. Every legacy logical element has a list of candidate selectors, most-stable
+   first. `data-testid` attributes lead; structural fallbacks trail.
 2. `XCHAT_SELECTORS=/path/to.json` overrides any subset at runtime, so a break
-   is a config edit rather than a release. `twikit-mcp xchat doctor` prints
-   which candidates currently match.
+   is a config edit rather than a release. `twikit-mcp xchat doctor` reports
+   content-free semantic counts and the current route.
 """
 
 from __future__ import annotations
 
 import json
+import re
+from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 # A logged-out visitor is served a login sheet that contains an account-password
 # field. Typing the chat PIN into it would submit a secret to the wrong form and
 # register a failed login against the account, so anything that matches this is
 # never treated as a PIN field — see `LOGIN_PASSWORD_SELECTOR` in session.py.
 LOGIN_PASSWORD_ATTRS = ('[name="password"]', '[autocomplete="current-password"]')
+
+_CONVERSATION_PATH = re.compile(
+    r"^/(?:i/chat|messages)/(?P<id>g?[0-9]+(?:-[0-9]+)*)/?$"
+)
+_HANDLE = re.compile(r"(?<!\w)@([A-Za-z0-9_]{1,15})\b")
+_MESSAGE_ROLES = frozenset({"article", "listitem"})
+_CLOCK_TEXT = re.compile(r"^\d{1,2}:\d{2}\s*(?:AM|PM)$", re.IGNORECASE)
+_RELATIVE_TIME = re.compile(r"^\d+\s*(?:s|m|h|d|w|mo|y)$", re.IGNORECASE)
+_DATE_TEXT = re.compile(
+    r"^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+"
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}$",
+    re.IGNORECASE,
+)
 
 # Ordered candidates per logical element; first match wins at query time.
 DEFAULT_SELECTORS: dict[str, list[str]] = {
@@ -262,3 +279,332 @@ def normalize_messages(
     if limit is not None and limit > 0:
         out = out[-limit:]
     return out
+
+
+# ── semantic accessibility extraction ────────────────
+
+
+def _ax_value(node: dict[str, Any], key: str) -> Any:
+    value = node.get(key)
+    return value.get("value") if isinstance(value, dict) else value
+
+
+def _ax_property(node: dict[str, Any], name: str) -> Any:
+    for prop in node.get("properties") or []:
+        if prop.get("name") == name:
+            return _ax_value(prop, "value")
+    return None
+
+
+def _ax_index(nodes: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        str(node["nodeId"]): node
+        for node in nodes or []
+        if node.get("nodeId") is not None
+    }
+
+
+def _has_ancestor_role(
+    node: dict[str, Any],
+    index: dict[str, dict[str, Any]],
+    roles: set[str] | frozenset[str],
+) -> bool:
+    seen: set[str] = set()
+    parent_id = node.get("parentId")
+    while parent_id is not None:
+        key = str(parent_id)
+        if key in seen:
+            return False
+        seen.add(key)
+        parent = index.get(key)
+        if parent is None:
+            return False
+        if _ax_value(parent, "role") in roles:
+            return True
+        parent_id = parent.get("parentId")
+    return False
+
+
+def _descendants(
+    node: dict[str, Any], index: dict[str, dict[str, Any]]
+) -> Iterable[dict[str, Any]]:
+    """Yield descendants once, tolerating malformed/cyclic diagnostic trees."""
+    pending = list(reversed(node.get("childIds") or []))
+    seen: set[str] = set()
+    while pending:
+        node_id = str(pending.pop())
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        child = index.get(node_id)
+        if child is None:
+            continue
+        yield child
+        pending.extend(reversed(child.get("childIds") or []))
+
+
+def _conversation_id(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        match = _CONVERSATION_PATH.fullmatch(urlparse(url).path)
+    except (TypeError, ValueError):
+        return None
+    return match.group("id") if match else None
+
+
+def _leaf_texts(
+    node: dict[str, Any], index: dict[str, dict[str, Any]]
+) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for child in _descendants(node, index):
+        role = str(_ax_value(child, "role") or "")
+        if role not in {"StaticText", "time"}:
+            continue
+        text = str(_ax_value(child, "name") or "").strip()
+        if text and (role, text) not in out:
+            out.append((role, text))
+    return out
+
+
+def _layout_direction(node: dict[str, Any], index: dict[str, dict[str, Any]]) -> str:
+    parent = index.get(str(node.get("parentId")))
+    container = parent.get("_bounds") if parent else None
+    text_node = next(
+        (
+            child
+            for child in _descendants(node, index)
+            if _ax_value(child, "role") == "StaticText" and child.get("_bounds")
+        ),
+        None,
+    )
+    bounds = text_node.get("_bounds") if text_node else None
+    if not container or not bounds or container[2] <= 0 or bounds[2] <= 0:
+        return "unknown"
+    centre = bounds[0] + bounds[2] / 2
+    container_centre = container[0] + container[2] / 2
+    tolerance = container[2] * 0.05
+    if centre > container_centre + tolerance:
+        return "outgoing"
+    if centre < container_centre - tolerance:
+        return "incoming"
+    return "unknown"
+
+
+def extract_conversations_from_ax(
+    nodes: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Read XChat rows from semantic link roles and resolved URLs.
+
+    X's CSS classes and test ids rotate. Chromium's accessibility tree has the
+    stable contract we actually need here: a conversation is a link, its URL
+    contains the conversation id, and its descendants expose user-facing text.
+    """
+    node_list = list(nodes or [])
+    index = _ax_index(node_list)
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for node in node_list:
+        if _ax_value(node, "role") != "link":
+            continue
+        conversation_id = _conversation_id(_ax_property(node, "url"))
+        if not conversation_id or conversation_id in seen:
+            continue
+        seen.add(conversation_id)
+        texts = [text for _role, text in _leaf_texts(node, index)]
+        accessible_name = str(_ax_value(node, "name") or "").strip()
+        handle_match = _HANDLE.search(" ".join((*texts, accessible_name)))
+        handle = handle_match.group(1) if handle_match else None
+        content = [text for text in texts if not _HANDLE.fullmatch(text)]
+        name = content[0] if content else accessible_name
+        preview = content[-1] if len(content) > 1 else ""
+        timestamp = next(
+            (
+                text
+                for role, text in _leaf_texts(node, index)
+                if role == "time" or _RELATIVE_TIME.fullmatch(text)
+            ),
+            None,
+        )
+        rows.append(
+            {
+                "conversation_id": conversation_id,
+                "name": name,
+                "screen_name": handle,
+                "preview": preview,
+                "timestamp": timestamp,
+                "encrypted": True,
+                "unread": "unread" in accessible_name.lower(),
+            }
+        )
+    return rows
+
+
+def extract_messages_from_ax(
+    nodes: Iterable[dict[str, Any]], limit: int | None = None
+) -> list[dict[str, Any]]:
+    """Read message items from semantic list/article boundaries.
+
+    Sender direction is only reported when the accessible name says so. It is
+    deliberately left unknown rather than inferred from generated classes or
+    bubble geometry.
+    """
+    node_list = list(nodes or [])
+    index = _ax_index(node_list)
+    messages: list[dict[str, Any]] = []
+    for node in node_list:
+        if _ax_value(node, "role") not in _MESSAGE_ROLES:
+            continue
+        # Conversation previews are also list items, below a named listbox.
+        if _has_ancestor_role(node, index, {"listbox"}):
+            continue
+        # Prefer the innermost semantic message boundary if X nests list items.
+        if any(
+            _ax_value(child, "role") in _MESSAGE_ROLES
+            for child in _descendants(node, index)
+        ):
+            continue
+        labelled = str(_ax_value(node, "name") or "").strip()
+        leaves = _leaf_texts(node, index)
+        descendants = list(_descendants(node, index))
+        if any(
+            _ax_value(child, "role") in {"link", "button"}
+            and str(_ax_value(child, "name") or "").lower() == "view profile"
+            for child in descendants
+        ):
+            continue
+        timestamps = [
+            text
+            for role, text in leaves
+            if role == "time" or _CLOCK_TEXT.fullmatch(text)
+        ]
+        text_parts = [
+            text
+            for role, text in leaves
+            if role != "time" and not _CLOCK_TEXT.fullmatch(text)
+        ]
+        # Date and unread separators are timeline structure, not messages.
+        if text_parts and all(
+            _DATE_TEXT.fullmatch(text) or text.lower() == "new" for text in text_parts
+        ):
+            continue
+        if not text_parts:
+            continue
+        lowered = labelled.lower()
+        if re.search(r"\byou\b.*\b(sent|message)", lowered):
+            direction = "outgoing"
+        elif "message from" in lowered:
+            direction = "incoming"
+        else:
+            direction = _layout_direction(node, index)
+        direction_source = (
+            "accessible-name"
+            if re.search(r"\byou\b.*\b(sent|message)", lowered)
+            or "message from" in lowered
+            else "layout-heuristic"
+            if direction != "unknown"
+            else "unknown"
+        )
+        messages.append(
+            {
+                "text": "\n".join(text_parts),
+                "timestamp": timestamps[-1] if timestamps else None,
+                "direction": direction,
+                "direction_source": direction_source,
+            }
+        )
+    if limit is not None and limit > 0:
+        messages = messages[-limit:]
+    return messages
+
+
+def semantic_diagnostics(nodes: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Return content-free AX counts suitable for doctor output and logs."""
+    node_list = list(nodes or [])
+    roles = Counter(str(_ax_value(node, "role") or "unknown") for node in node_list)
+    root_url = next(
+        (
+            _ax_property(node, "url")
+            for node in node_list
+            if _ax_value(node, "role") == "RootWebArea"
+        ),
+        None,
+    )
+    route = None
+    if root_url:
+        try:
+            route = urlparse(root_url).path
+        except (TypeError, ValueError):
+            route = None
+    return {
+        "route": route,
+        "node_count": len(node_list),
+        "roles": dict(sorted(roles.items())),
+        "conversation_links": len(extract_conversations_from_ax(node_list)),
+        "message_items": len(extract_messages_from_ax(node_list)),
+        "ignored_nodes": sum(bool(node.get("ignored")) for node in node_list),
+    }
+
+
+async def capture_accessibility_tree(page: Any) -> list[dict[str, Any]]:
+    """Capture Chromium's semantic tree through Playwright's CDP session."""
+    session = await page.context.new_cdp_session(page)
+    try:
+        payload = await session.send("Accessibility.getFullAXTree")
+        nodes = list(payload.get("nodes") or [])
+        dom = await session.send(
+            "DOMSnapshot.captureSnapshot",
+            {"computedStyles": [], "includeDOMRects": True},
+        )
+        bounds: dict[int, list[float]] = {}
+        for document in dom.get("documents") or []:
+            backend_ids = document.get("nodes", {}).get("backendNodeId") or []
+            layout = document.get("layout", {})
+            for node_index, rect in zip(
+                layout.get("nodeIndex") or [], layout.get("bounds") or []
+            ):
+                if 0 <= node_index < len(backend_ids):
+                    bounds[int(backend_ids[node_index])] = list(rect)
+        for node in nodes:
+            backend_id = node.get("backendDOMNodeId")
+            if backend_id in bounds:
+                node["_bounds"] = bounds[backend_id]
+        return nodes
+    finally:
+        await session.detach()
+
+
+async def scroll_semantic_message_list(page: Any) -> bool:
+    """Scroll the AX parent of message listitems to its top without selectors."""
+    session = await page.context.new_cdp_session(page)
+    try:
+        payload = await session.send("Accessibility.getFullAXTree")
+        nodes = list(payload.get("nodes") or [])
+        index = _ax_index(nodes)
+        message = next(
+            (
+                node
+                for node in nodes
+                if _ax_value(node, "role") in _MESSAGE_ROLES
+                and not _has_ancestor_role(node, index, {"listbox"})
+            ),
+            None,
+        )
+        parent = index.get(str(message.get("parentId"))) if message else None
+        backend_id = parent.get("backendDOMNodeId") if parent else None
+        if backend_id is None:
+            return False
+        resolved = await session.send("DOM.resolveNode", {"backendNodeId": backend_id})
+        object_id = (resolved.get("object") or {}).get("objectId")
+        if not object_id:
+            return False
+        await session.send(
+            "Runtime.callFunctionOn",
+            {
+                "objectId": object_id,
+                "functionDeclaration": "function() { this.scrollTop = 0; }",
+            },
+        )
+        return True
+    finally:
+        await session.detach()

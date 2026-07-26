@@ -23,7 +23,7 @@ ENV_FILENAMES = (".env.local", ".env")
 
 DEFAULT_PROFILE_DIR = "~/.config/twitter-mcp/xchat-profile"
 DEFAULT_TIMEOUT_MS = 30_000
-DEFAULT_MESSAGES_URL = "https://x.com/messages"
+DEFAULT_MESSAGES_URL = "https://x.com/i/chat"
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -123,6 +123,10 @@ class XChatSettings:
     # Chromium; pointing at a real Chrome build helps when X's login flow
     # treats plain Chromium as suspicious.
     browser_channel: str | None = None
+    # Optional, explicit bootstrap source for `xchat login`. The file is never
+    # consulted during normal headless reads; importing these credentials into
+    # the dedicated profile grants it persistent access to the X account.
+    cookie_file: Path | None = None
     selector_overrides: Path | None = None
     raw: dict[str, str] = field(default_factory=dict, repr=False)
 
@@ -157,6 +161,7 @@ def load_settings(
         pin_prompt = "auto"
 
     overrides = get("XCHAT_SELECTORS")
+    cookie_file = get("XCHAT_COOKIE_FILE")
 
     return XChatSettings(
         profile_dir=Path(
@@ -168,6 +173,7 @@ def load_settings(
         timeout_ms=_as_int(get("XCHAT_TIMEOUT_MS"), DEFAULT_TIMEOUT_MS),
         messages_url=get("XCHAT_MESSAGES_URL") or DEFAULT_MESSAGES_URL,
         browser_channel=get("XCHAT_BROWSER_CHANNEL"),
+        cookie_file=(Path(os.path.expanduser(cookie_file)) if cookie_file else None),
         selector_overrides=Path(os.path.expanduser(overrides)) if overrides else None,
         raw=file_env,
     )
