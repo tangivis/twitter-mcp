@@ -72,7 +72,7 @@
 
 ## 你能拿到什么
 
-- **57 个工具** — 推文、用户、列表、社群、定时推文+投票、私信、文章、搜索、趋势、通知。
+- **62 个工具** — 推文、用户、列表、社群、定时推文+投票、传统私信、本地 XChat 阅读、文章、搜索、趋势、通知。
 - **浏览器 cookie 认证** — 从你的 X 会话拷 `ct0` + `auth_token`,搞定。
 - **两种传输,一个二进制** — 默认是 MCP server(给 AI agent 用),`twikit-mcp call <tool>` 是 CLI(给 shell 用)。
 - **vendored 版 [twikit](https://github.com/d60/twikit)** — 带项目自己打的防御补丁。

@@ -166,10 +166,10 @@ twikit-mcp trends 20                    # top 20 trending topics
 
 Output is plain text — readable in any terminal, native unicode (no `\uXXXX` escapes).
 
-**Machine-friendly subcommands** — raw JSON, `key=value` args, every one of the 57 MCP tools:
+**Machine-friendly subcommands** — raw JSON, `key=value` args, every one of the 62 MCP tools:
 
 ```bash
-twikit-mcp list                         # all 57 tool names
+twikit-mcp list                         # all 62 tool names
 twikit-mcp call get_user_info screen_name=elonmusk
 twikit-mcp call search_tweets query=AI count=5 product=Top
 twikit-mcp call get_user_info screen_name=elonmusk | jq .followers_count

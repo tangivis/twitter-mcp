@@ -6,7 +6,7 @@
 |---|---|---|
 | **MCP server** (default) | `twikit-mcp` or `twikit-mcp serve` | Inside an AI agent (Claude Code, Cursor, Cline, …). LLM sends JSON-RPC over stdio. |
 | **Human-friendly CLI** | `twikit-mcp tweet 20`, `twikit-mcp user elonmusk`, etc. | You're at a shell, you want to read a tweet / profile / timeline. Output is plain text, native unicode. |
-| **Machine CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | Shell scripts, automation, debugging. Raw JSON output, every one of the 57 tools available. |
+| **Machine CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | Shell scripts, automation, debugging. Raw JSON output, every one of the 62 tools available. |
 
 All three share the same cookies file (`~/.config/twitter-mcp/cookies.json`).
 

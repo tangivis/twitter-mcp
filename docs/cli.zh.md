@@ -6,7 +6,7 @@
 |---|---|---|
 | **MCP server**(默认) | `twikit-mcp` 或 `twikit-mcp serve` | AI agent 里(Claude Code、Cursor、Cline 等),LLM 通过 stdio 发 JSON-RPC |
 | **人用 CLI** | `twikit-mcp tweet 20`、`twikit-mcp user elonmusk` 等 | 在 shell 里想读条推 / 看个 profile / 刷下 timeline。输出是纯文本,原生中日韩文(无转义) |
-| **机器 CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | shell 脚本、自动化、调试。raw JSON 输出,57 个工具全都能调 |
+| **机器 CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | shell 脚本、自动化、调试。raw JSON 输出,62 个工具全都能调 |
 
 三种模式**共享同一个** cookies 文件(`~/.config/twitter-mcp/cookies.json`)。
 

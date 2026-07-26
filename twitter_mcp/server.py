@@ -2248,6 +2248,10 @@ async def _xchat_session():
 async def xchat_status() -> str:
     """Report whether the local XChat session is ready, locked, or logged out.
 
+    Returns JSON with state, profile_dir, profile_exists, detail, and an optional
+    conversation_count. This uses the local browser reader, not twikit. Browser
+    setup failures are translated to ToolError; status never unlocks the store.
+
     `ready` means encrypted messages are readable. `locked` means the session
     needs the chat PIN (set `XCHAT_PIN` in `.env.local`, or let it prompt).
     `logged_out` means you must run `twikit-mcp xchat login` once.
@@ -2277,6 +2281,10 @@ async def xchat_status() -> str:
 async def xchat_list_conversations() -> str:
     """List XChat (encrypted) conversations from the locally-paired session.
 
+    Returns JSON with a conversations array containing conversation_id, name,
+    screen_name, preview, timestamp, encrypted, and unread fields. This uses the
+    local browser reader, not twikit. XChat errors are translated to ToolError.
+
     Note: reads PRIVATE messages from your own device. Requires a one-time
     `twikit-mcp xchat login`.
     """
@@ -2299,6 +2307,10 @@ async def xchat_get_history(conversation_id: str, limit: int = 50) -> str:
     Args:
         conversation_id: From `xchat_list_conversations`.
         limit: Maximum messages to return, newest-last (default 50).
+
+    Returns JSON with conversation_id and a messages array containing text,
+    timestamp, direction, and direction_source. This uses the local browser
+    reader, not twikit. Validation and XChat errors become ToolError.
 
     Note: Retrieves PRIVATE end-to-end encrypted messages that your own paired
     device has decrypted. Do not bulk-call.

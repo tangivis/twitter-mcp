@@ -6,7 +6,7 @@
 |---|---|---|
 | **MCP サーバー**(デフォルト) | `twikit-mcp` または `twikit-mcp serve` | AI エージェント(Claude Code、Cursor、Cline など)、LLM が stdio 経由で JSON-RPC を送る |
 | **ヒューマン CLI** | `twikit-mcp tweet 20`、`twikit-mcp user elonmusk` など | シェルでツイート / プロフィール / タイムラインを直接読みたいとき。出力はプレーンテキスト、ネイティブ Unicode |
-| **マシン CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | シェルスクリプト、自動化、デバッグ。生 JSON 出力、57 ツール全部呼べる |
+| **マシン CLI** | `twikit-mcp list` / `twikit-mcp call <tool> key=value …` | シェルスクリプト、自動化、デバッグ。生 JSON 出力、62 ツール全部呼べる |
 
 3 モードとも**同じ cookies ファイル**(`~/.config/twitter-mcp/cookies.json`)を共有します。
 
