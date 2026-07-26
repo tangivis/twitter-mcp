@@ -199,6 +199,18 @@ a persistent Playwright profile remain recovery fallbacks.
 For a browser-independent path, the optional official `chat-xdk` backend reads
 encrypted events from X's paid API and unlocks keys through Juicebox in memory:
 
+As of 2026-07-26, X's Developer Console requires a **minimum $5 USD credit
+purchase** to fund pay-per-use access and documents DM event reads at **$0.01
+per returned event**, with 24-hour resource deduplication. Before testing, set
+the account's billing-cycle spend cap to **$5 USD**. Pricing and Console rules
+can change, so verify both in [console.x.com](https://console.x.com/) before
+paying.
+
+Setup requires an OAuth 2.0 **Native App / public client** with callback
+`http://localhost:8080/callback` and exactly these read permissions:
+`dm.read`, `users.read`, `tweet.read`, and `offline.access`. It does not request
+`dm.write` or `tweet.write`, and the implementation does not export private keys.
+
 ```bash
 pip install 'twikit-mcp[xchat-api]'
 XCHAT_BACKEND=chatxdk \
@@ -210,10 +222,11 @@ twikit-mcp xchat oauth
 twikit-mcp xchat status
 ```
 
-X currently documents DM event reads at $0.01 per returned event. The backend
-is explicit opt-in, read-only, and does not require a browser process. OAuth
-requests only `dm.read users.read tweet.read offline.access`; the rotating token
-is stored owner-only at `~/.config/twitter-mcp/xchat-oauth.json`.
+The backend is explicit opt-in, read-only, and does not require a browser during
+normal use. The rotating OAuth token is stored owner-only at
+`~/.config/twitter-mcp/xchat-oauth.json`; keep `XCHAT_PIN` and the public client
+ID in a gitignored owner-only env file rather than an MCP configuration copied
+between clients.
 
 For the optional paired-browser fallback, install its dependency first:
 

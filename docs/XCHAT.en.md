@@ -44,17 +44,20 @@ configuration, and unlocks the registered XChat keys with `XCHAT_PIN` inside an
 in-memory SDK object. It never exports private keys, writes a key blob, sends a
 message, or calls the mark-read endpoint.
 
-This path uses X's paid API. As of 2026-07-26, X documents **$0.01 per DM event
-read** and **$0.01 per `chat.received` webhook event**, with 24-hour resource
-deduplication. Pricing can change; verify the live Developer Console before
-funding an account. Select it explicitly so an accidental environment variable
-cannot begin paid reads:
+This path uses X's paid API. As of 2026-07-26, X's Developer Console requires a
+**minimum $5 USD credit purchase** to fund pay-per-use access and documents
+**$0.01 per DM event read** and **$0.01 per `chat.received` webhook event**, with
+24-hour resource deduplication. Before the first test, set the billing-cycle
+spend cap to **$5 USD**. Pricing and Console rules can change; verify both in the
+live Developer Console before paying. Select this backend explicitly so an
+accidental environment variable cannot begin paid reads:
 
 ```bash
 pip install 'twikit-mcp[xchat-api]'
 
-# Create a Native App / public client in console.x.com with callback:
+# Create an OAuth 2.0 Native App / public client in console.x.com with callback:
 # http://localhost:8080/callback
+# Enable only: dm.read users.read tweet.read offline.access
 # Store these only in a gitignored .env.local or the MCP client's secret env.
 XCHAT_BACKEND=chatxdk
 XCHAT_OAUTH_CLIENT_ID=...
@@ -77,10 +80,10 @@ ID is included in that private token file, so MCP clients do not need to repeat
 it after setup. `XCHAT_API_ACCESS_TOKEN` remains available as a static-token
 override, but cannot refresh unattended.
 
-Keep the X Developer Console spend cap low while testing. History pagination is
-bounded to three pages and at most 100 encrypted events per call. The SDK
-instance is reused for the lifetime of the MCP process so recovered keys remain
-in memory rather than being exported to disk.
+The $5 credit purchase funds usage; it is not a flat fee for each test. History
+pagination is bounded to three pages and at most 100 encrypted events per call.
+The SDK instance is reused for the lifetime of the MCP process so recovered keys
+remain in memory rather than being exported to disk.
 
 ## Supported browser discovery
 
