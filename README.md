@@ -2,15 +2,14 @@
 
 # twikit-mcp
 
-**Twitter/X MCP Server — No API Key Required**
+**Twitter/X MCP Server — API Key Optional**
 
 [![CI](https://github.com/tangivis/twitter-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/tangivis/twitter-mcp/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/twikit-mcp)](https://pypi.org/project/twikit-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/twikit-mcp)](https://pypi.org/project/twikit-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies.
-No Twitter API key needed. Free forever.
+An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X. Standard tools use browser cookies without an API key; the optional browser-free XChat backend uses X OAuth and the paid X API.
 
 **[English](#english)** | **[中文](#中文)** | **[日本語](#日本語)**
 
@@ -26,10 +25,10 @@ No Twitter API key needed. Free forever.
 
 |  | twikit-mcp (this project) | Other Twitter MCP servers |
 |--|---------------------------|--------------------------|
-| **Auth** | Browser cookies | Twitter API Key |
-| **Cost** | Free | $200+/month |
-| **Setup** | 2 steps, 2 minutes | Apply for developer account, wait for approval |
-| **API** | [twikit](https://github.com/d60/twikit) (reverse-engineered) | [X API](https://developer.x.com/en/docs/x-api) (official, paid) |
+| **Auth** | Browser cookies by default; optional X OAuth for browser-free XChat | Twitter API Key |
+| **Cost** | Cookie-backed tools are free; optional X API usage is billed by X | Paid API access |
+| **Setup** | 2 steps for standard tools; developer app only for the optional API backend | Apply for developer account, wait for approval |
+| **API** | [twikit](https://github.com/d60/twikit) by default; official `chat-xdk` optionally | [X API](https://developer.x.com/en/docs/x-api) (official, paid) |
 
 ### Quick Start
 
@@ -355,10 +354,10 @@ claude mcp add twitter -s user ^
 
 |  | twikit-mcp（本项目） | 其他 Twitter MCP |
 |--|---------------------|-----------------|
-| **认证** | 浏览器 Cookies | Twitter API Key |
-| **费用** | 免费 | $200+/月 |
-| **配置** | 2 步，2 分钟 | 申请开发者账号，等审批 |
-| **API** | [twikit](https://github.com/d60/twikit)（逆向工程） | [X API](https://developer.x.com/en/docs/x-api)（官方，付费） |
+| **认证** | 默认使用浏览器 Cookies；无浏览器 XChat 可选 X OAuth | Twitter API Key |
+| **费用** | Cookie 工具免费；可选 X API 用量由 X 收费 | 付费 API |
+| **配置** | 标准工具 2 步完成；仅可选 API 后端需要开发者应用 | 申请开发者账号，等审批 |
+| **API** | 默认使用 [twikit](https://github.com/d60/twikit)；可选官方 `chat-xdk` | [X API](https://developer.x.com/en/docs/x-api)（官方，付费） |
 
 ### 快速开始
 
@@ -602,10 +601,10 @@ claude mcp add twitter -s user ^
 
 |  | twikit-mcp（本プロジェクト） | 他の Twitter MCP |
 |--|---------------------------|-----------------|
-| **認証** | ブラウザ Cookie | Twitter API Key |
-| **料金** | 無料 | $200+/月 |
-| **セットアップ** | 2ステップ、2分 | 開発者アカウント申請、承認待ち |
-| **API** | [twikit](https://github.com/d60/twikit)（リバースエンジニアリング） | [X API](https://developer.x.com/en/docs/x-api)（公式、有料） |
+| **認証** | 既定はブラウザ Cookie。ブラウザ不要の XChat では X OAuth を任意利用 | Twitter API Key |
+| **料金** | Cookie ベースの機能は無料。任意の X API 利用は X が課金 | 有料 API |
+| **セットアップ** | 標準機能は2ステップ。開発者アプリは任意の API バックエンドのみ必要 | 開発者アカウント申請、承認待ち |
+| **API** | 既定は [twikit](https://github.com/d60/twikit)。公式 `chat-xdk` は任意 | [X API](https://developer.x.com/en/docs/x-api)（公式、有料） |
 
 ### クイックスタート
 
