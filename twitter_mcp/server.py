@@ -1338,9 +1338,17 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
             raise ToolError(f"X rate limit exceeded; retry later. ({e})")
         except NotFound:
             if attempt == _DM_HISTORY_MAX_ATTEMPTS - 1:
+                # A permanently-encrypted conversation looks identical to a
+                # transient miss here, so name the likely cause instead of
+                # implying a retry will help.
                 raise ToolError(
-                    f"DM conversation with {screen_name} is not yet available; "
-                    "retry later."
+                    f"DM conversation with {screen_name} is not available via the "
+                    "legacy DM endpoint. This is expected if the conversation has "
+                    "been upgraded to XChat (end-to-end encrypted) — encrypted "
+                    "messages are not retrievable this way, by X's design. Use "
+                    "`xchat_list_conversations` / `xchat_get_history` instead "
+                    "(one-time setup: `twikit-mcp xchat login`). Otherwise the "
+                    "conversation may not exist yet; retry later."
                 )
             await asyncio.sleep(_DM_HISTORY_RETRY_DELAY_SECONDS * (attempt + 1))
 
@@ -2180,6 +2188,101 @@ async def request_to_join_community(
     return _dumps({"community_id": community_id, "status": "request_sent"})
 
 
+# ── XChat (end-to-end encrypted DMs) ──────────────────
+#
+# These do NOT go through twikit. XChat payloads are E2E encrypted and the key
+# lives on a registered device, so the legacy v1.1 DM endpoint every other tool
+# here uses simply stops returning a conversation once it is upgraded. The
+# `twitter_mcp.xchat` package instead drives a locally-paired X web client and
+# reads what that client has already decrypted. See that package's docstring.
+
+
+async def _xchat_session():
+    """Open an XChat session, translating setup failures into ToolError."""
+    from twitter_mcp.xchat.errors import XChatError
+    from twitter_mcp.xchat.session import XChatSession
+
+    try:
+        session = XChatSession()
+        await session.open()
+    except XChatError as e:
+        raise ToolError(str(e))
+    return session
+
+
+@mcp.tool()
+async def xchat_status() -> str:
+    """Report whether the local XChat session is ready, locked, or logged out.
+
+    `ready` means encrypted messages are readable. `locked` means the session
+    needs the chat PIN (set `XCHAT_PIN` in `.env.local`, or let it prompt).
+    `logged_out` means you must run `twikit-mcp xchat login` once.
+    """
+    from twitter_mcp.xchat.config import load_settings
+    from twitter_mcp.xchat.session import profile_is_initialized
+
+    settings = load_settings()
+    if not profile_is_initialized(settings.profile_dir):
+        return _dumps(
+            {
+                "state": "logged_out",
+                "profile_dir": str(settings.profile_dir),
+                "profile_exists": False,
+                "detail": "No paired profile — run `twikit-mcp xchat login` once.",
+            }
+        )
+    session = await _xchat_session()
+    try:
+        status = await session.status()
+    finally:
+        await session.close()
+    return _dumps(status.to_dict())
+
+
+@mcp.tool()
+async def xchat_list_conversations() -> str:
+    """List XChat (encrypted) conversations from the locally-paired session.
+
+    Note: reads PRIVATE messages from your own device. Requires a one-time
+    `twikit-mcp xchat login`.
+    """
+    from twitter_mcp.xchat.errors import XChatError
+
+    session = await _xchat_session()
+    try:
+        conversations = await session.list_conversations()
+    except XChatError as e:
+        raise ToolError(str(e))
+    finally:
+        await session.close()
+    return _dumps({"conversations": conversations})
+
+
+@mcp.tool()
+async def xchat_get_history(conversation_id: str, limit: int = 50) -> str:
+    """Read decrypted messages from one XChat conversation.
+
+    Args:
+        conversation_id: From `xchat_list_conversations`.
+        limit: Maximum messages to return, newest-last (default 50).
+
+    Note: Retrieves PRIVATE end-to-end encrypted messages that your own paired
+    device has decrypted. Do not bulk-call.
+    """
+    from twitter_mcp.xchat.errors import XChatError
+
+    if not conversation_id:
+        raise ToolError("conversation_id must be non-empty.")
+    session = await _xchat_session()
+    try:
+        messages = await session.get_history(conversation_id, limit=limit)
+    except XChatError as e:
+        raise ToolError(str(e))
+    finally:
+        await session.close()
+    return _dumps({"conversation_id": conversation_id, "messages": messages})
+
+
 def _get_version() -> str:
     """Read the installed package version, falling back to 'unknown'."""
     try:
@@ -2757,7 +2860,17 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
 
+    # XChat pairing/debug commands live in their own module — they drive a
+    # browser rather than twikit, and must not pull Playwright into the import
+    # path of the normal `serve` flow.
+    from twitter_mcp.xchat import cli as xchat_cli
+
+    xchat_cli.add_parser(sub)
+
     args = parser.parse_args(argv)
+
+    if args.cmd == "xchat":
+        return xchat_cli.dispatch(args)
 
     if args.cmd == "list":
         print(_list_tools_text())
