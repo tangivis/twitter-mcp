@@ -182,18 +182,21 @@ twikit-mcp                              # stdio JSON-RPC for MCP clients
 twikit-mcp serve                        # explicit, same behavior
 ```
 
-The normal twikit modes share `~/.config/twitter-mcp/cookies.json`. XChat uses
-a separate, locally paired browser profile; see [Local XChat reader](docs/XCHAT.en.md).
+The normal twikit modes share `~/.config/twitter-mcp/cookies.json`. XChat can
+read an existing registered browser's decrypted local SQLite store, with a
+separate paired Playwright profile as fallback; see
+[Local XChat reader](docs/XCHAT.en.md).
 
 ### Local XChat (encrypted DM) reader
 
 XChat conversations no longer appear through twikit's legacy DM endpoint. The
-optional local reader drives a persistent Chromium profile where X's own web
-client performs E2EE decryption, then extracts rendered plaintext through the
-accessibility tree. Pair once with `twikit-mcp xchat login`; normal reads can
-then run headless through `xchat_list_conversations` and `xchat_get_history`.
+local reader can open X's already-decrypted browser SQLite store strictly
+read-only, selecting plaintext and metadata without reading key bytes or
+launching browser automation. Configure `XCHAT_DATABASE_PATH` and use
+`xchat_list_conversations` / `xchat_get_history`. A persistent Playwright
+profile remains an optional pairing and extraction fallback.
 
-Install the optional browser dependency first:
+For the optional paired-browser fallback, install its dependency first:
 
 ```bash
 pip install 'twikit-mcp[xchat]'

@@ -116,6 +116,7 @@ def test_defaults_when_nothing_configured(tmp_path):
     assert settings.timeout_ms == DEFAULT_TIMEOUT_MS
     assert settings.selector_overrides is None
     assert settings.cookie_file is None
+    assert settings.database_path is None
     assert settings.has_pin is False
 
 
@@ -140,6 +141,7 @@ def test_boolean_and_path_expansion(tmp_path):
             "XCHAT_PROFILE_DIR": "~/somewhere",
             "XCHAT_SELECTORS": "~/sel.json",
             "XCHAT_COOKIE_FILE": "~/cookies.json",
+            "XCHAT_DATABASE_PATH": "~/chat.db",
             "XCHAT_PIN_PROMPT": "WEB",
         },
         search_from=_repo(tmp_path),
@@ -148,6 +150,7 @@ def test_boolean_and_path_expansion(tmp_path):
     assert "~" not in str(settings.profile_dir)
     assert "~" not in str(settings.selector_overrides)
     assert "~" not in str(settings.cookie_file)
+    assert "~" not in str(settings.database_path)
     assert settings.pin_prompt == "web"
 
 

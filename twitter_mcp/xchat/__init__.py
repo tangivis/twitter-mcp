@@ -11,12 +11,15 @@ built on it, including the rest of this repo) talks to the *legacy* v1.1 DM
 endpoint, which silently stops returning a conversation once it is upgraded
 to XChat.
 
-So this package does not attempt to reimplement X's cryptography. It drives a
-real, locally-persisted X web client — the one piece of software that legitimately
-holds your key — and reads the plaintext that client has already decrypted.
+So this package does not attempt to reimplement X's cryptography. Its preferred
+reader opens the registered web client's already-decrypted local SQLite store
+strictly read-only. A persistent Playwright profile remains available as a
+pairing and fallback extraction path.
 Concretely:
 
-* `session.py` keeps a persistent browser profile on disk, the same way
+* `database.py` reads only plaintext and metadata projections from the local
+  SQLite store; it never reads key bytes or mutates message/read state.
+* `session.py` keeps an optional persistent browser profile on disk, the same way
   whatsmeow keeps a paired WhatsApp session. You log in once; the profile is
   reused for every later run.
 * `pin.py` supplies the unlock PIN when X asks for it: from `.env.local`
@@ -28,6 +31,7 @@ plaintext. Nothing is sent anywhere except to x.com by the browser itself.
 """
 
 from twitter_mcp.xchat.config import XChatSettings, load_settings
+from twitter_mcp.xchat.database import XChatDatabase
 from twitter_mcp.xchat.errors import (
     XChatError,
     XChatLocked,
@@ -37,6 +41,7 @@ from twitter_mcp.xchat.errors import (
 
 __all__ = [
     "XChatSettings",
+    "XChatDatabase",
     "load_settings",
     "XChatError",
     "XChatLoginRequired",

@@ -1726,6 +1726,48 @@ async def test_xchat_user_id_classification_skips_missing_profile(
     assert await server._is_xchat_user_id("42") is None
 
 
+async def test_xchat_user_id_classification_uses_database_colon_ids(
+    monkeypatch, tmp_path
+):
+    from twitter_mcp.xchat import config as xchat_config
+    from twitter_mcp.xchat import database as xchat_database
+    from twitter_mcp.xchat import session as xchat_session
+
+    database_path = tmp_path / "chat.db"
+    settings = xchat_config.XChatSettings(
+        profile_dir=tmp_path / "missing", database_path=database_path
+    )
+
+    class FakeDatabase:
+        def __init__(self, path):
+            assert path == database_path
+
+        def list_conversations(self, limit):
+            assert limit == 500
+            return [{"conversation_id": "10:42"}]
+
+    monkeypatch.setattr(xchat_config, "load_settings", lambda: settings)
+    monkeypatch.setattr(xchat_database, "XChatDatabase", FakeDatabase)
+    monkeypatch.setattr(
+        xchat_session,
+        "XChatSession",
+        lambda *a, **k: pytest.fail("database classification must not open browser"),
+    )
+
+    assert await server._is_xchat_user_id("42") is True
+
+
+async def test_xchat_user_id_database_error_is_unknown(monkeypatch, tmp_path):
+    from twitter_mcp.xchat import config as xchat_config
+
+    settings = xchat_config.XChatSettings(
+        profile_dir=tmp_path / "missing", database_path=tmp_path / "missing.db"
+    )
+    monkeypatch.setattr(xchat_config, "load_settings", lambda: settings)
+
+    assert await server._is_xchat_user_id("42") is None
+
+
 async def test_xchat_user_id_classification_treats_browser_error_as_unknown(
     monkeypatch, tmp_path
 ):

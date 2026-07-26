@@ -8,15 +8,23 @@ retry a permanently incompatible endpoint.
 
 ## Architecture
 
-The reader is local-only:
+The reader is local-only. Its preferred path is the web client's local database:
 
-1. Playwright opens a dedicated persistent Chromium profile.
-2. You complete X login, device registration, and any passcode prompt yourself.
-3. X's web client retains its cookies, IndexedDB state, and device key material
-   in that profile and performs the actual decryption.
-4. The reader captures Chromium's accessibility tree over CDP. Conversation
-   links, message items, text, and times come from semantic roles. Message
-   direction may use bounds and is labelled `layout-heuristic` when it does.
+1. You log in, register the device, and unlock XChat in a normal local browser.
+2. X's web client performs E2EE decryption and stores the synced conversation
+   state in its origin-private SQLite filesystem.
+3. Configure `XCHAT_DATABASE_PATH` with that SQLite file's absolute path.
+4. The reader opens it with SQLite `mode=ro&immutable=1` and selects only
+   metadata and `dm_entry.plain_text`. It never selects key bytes, sends a
+   message, marks a thread read, or launches browser automation.
+
+The source browser remains responsible for future sync and decryption. If it is
+not running or X has not synced, database results may be stale. The database
+file must not be copied while the browser is writing it.
+
+When no database path is configured, the original Playwright reader remains a
+fallback: it opens a dedicated persistent Chromium profile and extracts
+rendered plaintext from Chromium's accessibility tree over CDP.
 
 CSS selectors remain only as legacy safety fallbacks. `xchat doctor` emits
 content-free role counts and the route; it never prints message text.
@@ -32,7 +40,22 @@ still require an authenticated transport such as OAuth/Activity Stream. It does
 not provide a free drop-in transport for this cookie-authenticated MCP server,
 so the browser remains the registered device and decryption boundary.
 
-## Setup
+## Direct database setup
+
+Add the discovered local XChat database path to a gitignored `.env.local`:
+
+```bash
+XCHAT_DATABASE_PATH=/absolute/path/to/chat.db
+twikit-mcp xchat status
+twikit-mcp xchat doctor
+twikit-mcp xchat list
+```
+
+`status`, `doctor`, `list`, and `history` use the database exclusively when
+this variable is set; an invalid configured database produces an error instead
+of silently launching Playwright.
+
+## Browser fallback setup
 
 ```bash
 pip install 'twikit-mcp[xchat]'
@@ -83,6 +106,6 @@ twikit-mcp xchat list
 twikit-mcp xchat history CONVERSATION_ID -n 50
 ```
 
-`status` never spends a passcode attempt. `doctor` is safe to attach to a bug
-report because it reports counts, route, state, and profile path—not decrypted
-content or credentials.
+`status` never spends a passcode attempt. In database mode, `doctor` reports
+only schema/file/count metadata, including the number of key-material rows but
+never their tags or bytes. In browser mode it reports content-free role counts.

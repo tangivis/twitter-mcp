@@ -121,6 +121,49 @@ async def test_status_reports_a_ready_session_and_closes_it(paired):
     assert session.closed is True
 
 
+@pytest.mark.asyncio
+async def test_database_status_never_opens_browser(monkeypatch, tmp_path):
+    from twitter_mcp.xchat.config import XChatSettings
+
+    database_path = tmp_path / "chat.db"
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.config.load_settings",
+        lambda *a, **k: XChatSettings(
+            profile_dir=tmp_path / "profile", database_path=database_path
+        ),
+    )
+
+    class FakeDatabase:
+        def __init__(self, path):
+            assert path == database_path
+
+        def status(self):
+            return {"state": "ready", "source": "local_database"}
+
+    monkeypatch.setattr("twitter_mcp.xchat.database.XChatDatabase", FakeDatabase)
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.session.XChatSession",
+        lambda *a, **k: pytest.fail("database mode must not launch Playwright"),
+    )
+
+    assert json.loads(await server.xchat_status())["source"] == "local_database"
+
+
+@pytest.mark.asyncio
+async def test_database_status_error_becomes_tool_error(monkeypatch, tmp_path):
+    from twitter_mcp.xchat.config import XChatSettings
+
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.config.load_settings",
+        lambda *a, **k: XChatSettings(
+            profile_dir=tmp_path / "profile", database_path=tmp_path / "missing.db"
+        ),
+    )
+
+    with pytest.raises(ToolError, match="does not exist"):
+        await server.xchat_status()
+
+
 # ── listing ────────────────────────────────────────────
 
 
@@ -133,6 +176,50 @@ async def test_list_conversations_returns_rows_and_closes(paired):
 
     assert out["conversations"] == rows
     assert session.closed is True
+
+
+@pytest.mark.asyncio
+async def test_database_list_never_opens_browser(monkeypatch, tmp_path):
+    from twitter_mcp.xchat.config import XChatSettings
+
+    database_path = tmp_path / "chat.db"
+    rows = [{"conversation_id": "10:20", "name": "alice"}]
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.config.load_settings",
+        lambda *a, **k: XChatSettings(
+            profile_dir=tmp_path / "profile", database_path=database_path
+        ),
+    )
+
+    class FakeDatabase:
+        def __init__(self, path):
+            assert path == database_path
+
+        def list_conversations(self):
+            return rows
+
+    monkeypatch.setattr("twitter_mcp.xchat.database.XChatDatabase", FakeDatabase)
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.session.XChatSession",
+        lambda *a, **k: pytest.fail("database mode must not launch Playwright"),
+    )
+
+    assert json.loads(await server.xchat_list_conversations())["conversations"] == rows
+
+
+@pytest.mark.asyncio
+async def test_database_list_error_becomes_tool_error(monkeypatch, tmp_path):
+    from twitter_mcp.xchat.config import XChatSettings
+
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.config.load_settings",
+        lambda *a, **k: XChatSettings(
+            profile_dir=tmp_path / "profile", database_path=tmp_path / "missing.db"
+        ),
+    )
+
+    with pytest.raises(ToolError, match="does not exist"):
+        await server.xchat_list_conversations()
 
 
 @pytest.mark.asyncio
@@ -181,6 +268,51 @@ async def test_get_history_applies_the_limit(paired):
     out = json.loads(await server.xchat_get_history("1-2", limit=1))
 
     assert [m["text"] for m in out["messages"]] == ["c"]
+
+
+@pytest.mark.asyncio
+async def test_database_history_never_opens_browser(monkeypatch, tmp_path):
+    from twitter_mcp.xchat.config import XChatSettings
+
+    database_path = tmp_path / "chat.db"
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.config.load_settings",
+        lambda *a, **k: XChatSettings(
+            profile_dir=tmp_path / "profile", database_path=database_path
+        ),
+    )
+
+    class FakeDatabase:
+        def __init__(self, path):
+            assert path == database_path
+
+        def get_history(self, conversation_id, limit):
+            assert (conversation_id, limit) == ("10:20", 7)
+            return [{"text": "hello"}]
+
+    monkeypatch.setattr("twitter_mcp.xchat.database.XChatDatabase", FakeDatabase)
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.session.XChatSession",
+        lambda *a, **k: pytest.fail("database mode must not launch Playwright"),
+    )
+
+    out = json.loads(await server.xchat_get_history("10:20", limit=7))
+    assert out["messages"] == [{"text": "hello"}]
+
+
+@pytest.mark.asyncio
+async def test_database_history_error_becomes_tool_error(monkeypatch, tmp_path):
+    from twitter_mcp.xchat.config import XChatSettings
+
+    monkeypatch.setattr(
+        "twitter_mcp.xchat.config.load_settings",
+        lambda *a, **k: XChatSettings(
+            profile_dir=tmp_path / "profile", database_path=tmp_path / "missing.db"
+        ),
+    )
+
+    with pytest.raises(ToolError, match="does not exist"):
+        await server.xchat_get_history("10:20")
 
 
 @pytest.mark.asyncio

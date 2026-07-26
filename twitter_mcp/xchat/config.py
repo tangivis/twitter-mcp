@@ -114,6 +114,9 @@ class XChatSettings:
     """
 
     profile_dir: Path
+    # Optional path to X's already-decrypted local XChat SQLite database.
+    # When configured, all read commands use this source and never launch a browser.
+    database_path: Path | None = None
     headless: bool = True
     pin: str | None = None
     pin_prompt: str = "auto"
@@ -133,6 +136,7 @@ class XChatSettings:
     def __repr__(self) -> str:  # pragma: no cover - trivial formatting
         return (
             f"XChatSettings(profile_dir={self.profile_dir!r}, "
+            f"database_path={self.database_path!r}, "
             f"headless={self.headless!r}, pin={'<set>' if self.pin else None}, "
             f"pin_prompt={self.pin_prompt!r}, timeout_ms={self.timeout_ms!r})"
         )
@@ -162,10 +166,14 @@ def load_settings(
 
     overrides = get("XCHAT_SELECTORS")
     cookie_file = get("XCHAT_COOKIE_FILE")
+    database_path = get("XCHAT_DATABASE_PATH")
 
     return XChatSettings(
         profile_dir=Path(
             os.path.expanduser(get("XCHAT_PROFILE_DIR") or DEFAULT_PROFILE_DIR)
+        ),
+        database_path=(
+            Path(os.path.expanduser(database_path)) if database_path else None
         ),
         headless=_as_bool(get("XCHAT_HEADLESS"), True),
         pin=get("XCHAT_PIN"),

@@ -1,9 +1,9 @@
 """`twikit-mcp xchat ...` — pairing and debugging commands.
 
-`login` is the only command that opens a visible browser, and it is the only
-one that ever needs to: pairing is a human step (password, 2FA, chat PIN,
-device registration). Everything after it runs headless against the profile
-that step leaves behind.
+`status`, `list`, `history`, and `doctor` read the configured local database
+without launching a browser. Without a database path they fall back to the
+paired Playwright profile. `login` is the only command that deliberately opens
+a visible browser because pairing is a human step.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from twitter_mcp.xchat.config import load_settings
+from twitter_mcp.xchat.database import XChatDatabase
 from twitter_mcp.xchat.errors import XChatError
 from twitter_mcp.xchat.session import (
     STATE_LOGGED_OUT,
@@ -61,6 +62,9 @@ async def cmd_login(timeout_s: int = LOGIN_TIMEOUT_SECONDS) -> int:  # pragma: n
 
 async def cmd_status() -> int:  # pragma: no cover - browser I/O
     settings = load_settings()
+    if settings.database_path:
+        print(_dumps(XChatDatabase(settings.database_path).status()))
+        return 0
     if not profile_is_initialized(settings.profile_dir):
         print(
             _dumps(
@@ -80,20 +84,38 @@ async def cmd_status() -> int:  # pragma: no cover - browser I/O
 
 
 async def cmd_list() -> int:  # pragma: no cover - browser I/O
-    async with XChatSession() as session:
+    settings = load_settings()
+    if settings.database_path:
+        print(_dumps(XChatDatabase(settings.database_path).list_conversations()))
+        return 0
+    async with XChatSession(settings=settings) as session:
         print(_dumps(await session.list_conversations()))
     return 0
 
 
 async def cmd_history(conversation_id: str, limit: int) -> int:  # pragma: no cover
-    async with XChatSession() as session:
+    settings = load_settings()
+    if settings.database_path:
+        print(
+            _dumps(
+                XChatDatabase(settings.database_path).get_history(
+                    conversation_id, limit
+                )
+            )
+        )
+        return 0
+    async with XChatSession(settings=settings) as session:
         print(_dumps(await session.get_history(conversation_id, limit=limit)))
     return 0
 
 
 async def cmd_doctor() -> int:  # pragma: no cover - browser I/O
     """Report sanitized accessibility-tree counts — the semantic drift check."""
-    async with XChatSession() as session:
+    settings = load_settings()
+    if settings.database_path:
+        print(_dumps(XChatDatabase(settings.database_path).doctor()))
+        return 0
+    async with XChatSession(settings=settings) as session:
         print(_dumps(await session.doctor()))
     return 0
 
@@ -104,9 +126,9 @@ def add_parser(subparsers) -> None:
         "xchat",
         help="Read X's end-to-end encrypted (XChat) messages via a local session.",
         description=(
-            "XChat messages cannot be decrypted from cookies or from X's API — "
-            "the key lives on a registered device. These commands pair this "
-            "machine as that device and read what it decrypts locally."
+            "XChat messages cannot be decrypted from cookies or X's legacy API. "
+            "These commands read the registered web client's local decrypted "
+            "store, with a paired Playwright profile as fallback."
         ),
     )
     xsub = parser.add_subparsers(dest="xchat_cmd", required=True)
