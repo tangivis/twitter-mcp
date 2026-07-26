@@ -197,7 +197,8 @@ claude mcp add --scope user twitter \
   -- /Users/USERNAME/.local/bin/twikit-mcp
 ```
 
-For Antigravity, add this to `~/.gemini/config/mcp_config.json`:
+For Gemini, add this to `~/.gemini/config/mcp_config.json`. Antigravity uses the
+same JSON entry in `~/.gemini/antigravity/mcp_config.json`:
 
 ```json
 {

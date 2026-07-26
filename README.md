@@ -9,7 +9,10 @@
 [![Python](https://img.shields.io/pypi/pyversions/twikit-mcp)](https://pypi.org/project/twikit-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X. Standard tools use browser cookies without an API key; the optional browser-free XChat backend uses X OAuth and the paid X API.
+An [MCP](https://modelcontextprotocol.io/) server that lets Codex, Claude, Grok,
+Gemini/Antigravity, or any MCP-compatible AI agent interact with Twitter/X.
+Standard tools use browser cookies without an API key; the optional
+browser-free XChat backend uses X OAuth and the paid X API.
 
 **[English](#english)** | **[中文](#中文)** | **[日本語](#日本語)**
 
@@ -123,7 +126,68 @@ claude mcp add twitter -s user \
 
 This is a standard MCP server (stdio transport). It works with **any** MCP-compatible client — not just Claude Code.
 
-Add to your MCP client config (e.g. `mcp.json`, `settings.json`):
+First locate the installed executable; using its absolute path avoids differences
+between desktop-app and terminal `PATH` values:
+
+```bash
+command -v twikit-mcp
+```
+
+The two environment entries below are independent:
+
+- `TWITTER_COOKIES` enables the standard cookie-backed Twitter/X tools.
+- `XCHAT_ENV_FILE` enables the optional browser-free XChat setup described
+  [below](#local-xchat-encrypted-dm-reader). Configure either one or both.
+
+**Codex / ChatGPT** — add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.twitter]
+command = "/absolute/path/to/twikit-mcp"
+args = []
+
+[mcp_servers.twitter.env]
+TWITTER_COOKIES = "/absolute/path/to/cookies.json"
+XCHAT_ENV_FILE = "/absolute/path/to/xchat.env"
+```
+
+**Grok Build** — use the same TOML block in `~/.grok/config.toml`.
+
+**Gemini** — add to `~/.gemini/config/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "/absolute/path/to/twikit-mcp",
+      "args": [],
+      "env": {
+        "TWITTER_COOKIES": "/absolute/path/to/cookies.json",
+        "XCHAT_ENV_FILE": "/absolute/path/to/xchat.env"
+      }
+    }
+  }
+}
+```
+
+**Antigravity** — use the same JSON entry in
+`~/.gemini/antigravity/mcp_config.json`.
+
+**Claude Code** — register both authentication paths from the terminal:
+
+```bash
+claude mcp add --scope user twitter \
+  -e TWITTER_COOKIES=/absolute/path/to/cookies.json \
+  -e XCHAT_ENV_FILE=/absolute/path/to/xchat.env \
+  -- /absolute/path/to/twikit-mcp
+```
+
+Restart the client—or open a new task/session—after changing its MCP config.
+Desktop clients automatically manage the stdio server process; do not start a
+separate background instance.
+
+For any other MCP client, use the same standard JSON shape in its `mcp.json` or
+`settings.json` and include whichever environment entries you need:
 
 ```json
 {
@@ -138,14 +202,15 @@ Add to your MCP client config (e.g. `mcp.json`, `settings.json`):
 }
 ```
 
-> Works with: Claude Code, Claude Desktop, Cursor, Windsurf, opencode, Cline, etc.
+> Works with: Codex/ChatGPT, Claude Code, Claude Desktop, Grok Build, Gemini,
+> Antigravity, Cursor, Windsurf, opencode, Cline, and other stdio MCP clients.
 
 That's it. Start talking:
 
 ```
 > Search tweets about AI
 > What did @elonmusk post recently?
-> Send a tweet saying: Hello from Claude!
+> Send a tweet saying: Hello from my MCP client!
 ```
 
 #### CLI mode (no MCP client needed)
@@ -480,14 +545,15 @@ claude mcp add twitter -s user \
 }
 ```
 
-> 兼容：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline 等。
+> 兼容：Codex/ChatGPT、Claude Code、Claude Desktop、Grok Build、Gemini、
+> Antigravity、Cursor、Windsurf、opencode、Cline 等。
 
 搞定。直接说人话：
 
 ```
 > 搜一下关于 AI 的推文
 > 看看 @elonmusk 最近发了什么
-> 发一条推说：Hello from Claude!
+> 发一条推说：Hello from my MCP client!
 ```
 
 ### 可用工具
@@ -727,14 +793,15 @@ MCP クライアントの設定ファイル（`mcp.json`、`settings.json` な�
 }
 ```
 
-> 対応クライアント：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline など。
+> 対応クライアント：Codex/ChatGPT、Claude Code、Claude Desktop、Grok Build、Gemini、
+> Antigravity、Cursor、Windsurf、opencode、Cline など。
 
 以上です。自然言語で話しかけてください：
 
 ```
 > AIに関するツイートを検索して
 > @elonmusk の最近の投稿を見せて
-> 「Hello from Claude!」とツイートして
+> 「Hello from my MCP client!」とツイートして
 ```
 
 ### 利用可能なツール
