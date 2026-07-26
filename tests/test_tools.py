@@ -1726,6 +1726,33 @@ async def test_xchat_user_id_classification_skips_missing_profile(
     assert await server._is_xchat_user_id("42") is None
 
 
+async def test_xchat_user_id_classification_treats_browser_error_as_unknown(
+    monkeypatch, tmp_path
+):
+    from twitter_mcp.xchat import config as xchat_config
+    from twitter_mcp.xchat import session as xchat_session
+    from twitter_mcp.xchat.errors import XChatUnavailable
+
+    profile = tmp_path / "profile"
+    (profile / "Default").mkdir(parents=True)
+    settings = xchat_config.XChatSettings(profile_dir=profile)
+
+    class FailingSession:
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def open(self):
+            raise XChatUnavailable("browser unavailable")
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(xchat_config, "load_settings", lambda: settings)
+    monkeypatch.setattr(xchat_session, "XChatSession", FailingSession)
+
+    assert await server._is_xchat_user_id("42") is None
+
+
 # ── delete_dm ─────────────────────────────────────────────────────────────────
 
 
