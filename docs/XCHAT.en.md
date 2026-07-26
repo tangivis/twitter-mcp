@@ -35,6 +35,53 @@ share a durable paired profile. A Playwright/Safari hybrid would split the
 session and key material across two browser processes without improving the
 security boundary.
 
+### Browser-independent paid API backend
+
+X's official [`chat-xdk`](https://github.com/xdevplatform/chat-xdk) 0.4.3 can
+receive encrypted events without Chrome, Edge, Safari, or a copied profile.
+This backend uses an OAuth2 PKCE user grant, fetches the account's Juicebox
+configuration, and unlocks the registered XChat keys with `XCHAT_PIN` inside an
+in-memory SDK object. It never exports private keys, writes a key blob, sends a
+message, or calls the mark-read endpoint.
+
+This path uses X's paid API. As of 2026-07-26, X documents **$0.01 per DM event
+read** and **$0.01 per `chat.received` webhook event**, with 24-hour resource
+deduplication. Pricing can change; verify the live Developer Console before
+funding an account. Select it explicitly so an accidental environment variable
+cannot begin paid reads:
+
+```bash
+pip install 'twikit-mcp[xchat-api]'
+
+# Create a Native App / public client in console.x.com with callback:
+# http://localhost:8080/callback
+# Store these only in a gitignored .env.local or the MCP client's secret env.
+XCHAT_BACKEND=chatxdk
+XCHAT_OAUTH_CLIENT_ID=...
+XCHAT_PIN=1234
+
+# One-time setup. The browser is needed only to approve this OAuth grant.
+twikit-mcp xchat oauth
+
+# Normal setup/use is browser-free.
+twikit-mcp xchat status
+twikit-mcp xchat list
+twikit-mcp xchat history CONVERSATION_ID -n 10
+```
+
+`xchat oauth` requests exactly `dm.read`, `users.read`, `tweet.read`, and
+`offline.access`. `dm.write` is unnecessary. The access and rotating refresh
+tokens are stored at `~/.config/twitter-mcp/xchat-oauth.json`; its directory is
+mode 700 and the file is atomically replaced with mode 600. The public client
+ID is included in that private token file, so MCP clients do not need to repeat
+it after setup. `XCHAT_API_ACCESS_TOKEN` remains available as a static-token
+override, but cannot refresh unattended.
+
+Keep the X Developer Console spend cap low while testing. History pagination is
+bounded to three pages and at most 100 encrypted events per call. The SDK
+instance is reused for the lifetime of the MCP process so recovered keys remain
+in memory rather than being exported to disk.
+
 ## Supported browser discovery
 
 `chrome`, `edge`, and `aside` have been verified live on macOS. `chromium` and
@@ -78,6 +125,32 @@ XCHAT_BROWSER: chrome
 XCHAT_BROWSER_PROFILE: Default
 ```
 
+For the browser-independent paid backend, replace those browser variables with:
+
+```text
+XCHAT_BACKEND: chatxdk
+XCHAT_PIN: your four-digit XChat PIN
+```
+
+Do not paste the PIN into an AI conversation. Put it in the MCP client's secret
+environment or a gitignored owner-only `.env.local`. OAuth tokens stay in the
+default owner-only token file. This mode does not need Full Disk Access and does
+not launch Chrome, Edge, Safari, Chromium, or Playwright during normal reads.
+
+To avoid duplicating the PIN across several harness configs, create one
+owner-only env file and point every client at it:
+
+```bash
+chmod 600 /absolute/path/to/xchat.env
+```
+
+```text
+XCHAT_ENV_FILE: /absolute/path/to/xchat.env
+```
+
+The selected file overrides cwd-discovered `.env` files, while real process
+environment values still have highest precedence.
+
 On macOS, Full Disk Access is granted per host application. If several desktop
 clients launch this MCP, grant the required browser-profile access separately
 to each client (for example ChatGPT/Codex, Antigravity, or Grok Build). A shell
@@ -94,12 +167,30 @@ XCHAT_BROWSER = "chrome"
 XCHAT_BROWSER_PROFILE = "Default"
 ```
 
+Paid/browser-free variant:
+
+```toml
+[mcp_servers.twitter]
+command = "/Users/USERNAME/.local/bin/twikit-mcp"
+
+[mcp_servers.twitter.env]
+XCHAT_ENV_FILE = "/absolute/path/to/xchat.env"
+```
+
 For Claude Code:
 
 ```bash
 claude mcp add --scope user twitter \
   -e XCHAT_BROWSER=chrome \
   -e XCHAT_BROWSER_PROFILE=Default \
+  -- /Users/USERNAME/.local/bin/twikit-mcp
+```
+
+Paid/browser-free variant:
+
+```bash
+claude mcp add --scope user twitter \
+  -e XCHAT_ENV_FILE=/absolute/path/to/xchat.env \
   -- /Users/USERNAME/.local/bin/twikit-mcp
 ```
 
@@ -120,6 +211,10 @@ For Antigravity, add this to `~/.gemini/config/mcp_config.json`:
 }
 ```
 
+For its paid/browser-free variant, use
+`"XCHAT_ENV_FILE": "/absolute/path/to/xchat.env"` in the same `env` object
+instead of the two browser variables.
+
 `TWITTER_COOKIES` is optional for XChat database reads. Configure it separately
 only when the same server should also expose legacy Twitter tools.
 
@@ -127,11 +222,9 @@ only when the same server should also expose legacy Twitter tools.
 
 - **Safari TODO:** WebKit does not use Chromium's OPFS profile layout. Implement
   and test a Safari-specific local storage or Safari Web Extension adapter.
-- **Paid/API option, not yet user-tested:**
-  [`chat-xdk`](https://github.com/xdevplatform/chat-xdk) has shipped, but its
-  examples require an authenticated X transport such as OAuth/Activity Stream.
-  Treat this as an experimental paid-X-API path until it has been exercised
-  end-to-end by a user; it is not the default local reader.
+- **Activity Stream notifications:** The read-only backend currently polls when
+  an MCP tool is called. A future daemon can subscribe to `chat.received` for
+  push notification; X bills those events at the documented webhook rate.
 
 ## Browser fallback setup
 

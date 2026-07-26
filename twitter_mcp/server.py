@@ -2270,15 +2270,15 @@ async def xchat_status() -> str:
     `logged_out` means you must run `twikit-mcp xchat login` once.
     """
     from twitter_mcp.xchat.config import load_settings
-    from twitter_mcp.xchat.database import configured_database
     from twitter_mcp.xchat.errors import XChatError
     from twitter_mcp.xchat.session import profile_is_initialized
+    from twitter_mcp.xchat.source import configured_reader
 
     settings = load_settings()
     try:
-        database = configured_database(settings)
-        if database:
-            return _dumps(database.status())
+        reader = configured_reader(settings)
+        if reader:
+            return _dumps(reader.status())
     except XChatError as e:
         raise ToolError(str(e))
     if not profile_is_initialized(settings.profile_dir):
@@ -2310,14 +2310,14 @@ async def xchat_list_conversations() -> str:
     `XCHAT_DATABASE_PATH` or a one-time `twikit-mcp xchat login`.
     """
     from twitter_mcp.xchat.config import load_settings
-    from twitter_mcp.xchat.database import configured_database
     from twitter_mcp.xchat.errors import XChatError
+    from twitter_mcp.xchat.source import configured_reader
 
     settings = load_settings()
     try:
-        database = configured_database(settings)
-        if database:
-            conversations = database.list_conversations()
+        reader = configured_reader(settings)
+        if reader:
+            conversations = reader.list_conversations()
             return _dumps({"conversations": conversations})
     except XChatError as e:
         raise ToolError(str(e))
@@ -2348,16 +2348,16 @@ async def xchat_get_history(conversation_id: str, limit: int = 50) -> str:
     device has decrypted. Do not bulk-call.
     """
     from twitter_mcp.xchat.config import load_settings
-    from twitter_mcp.xchat.database import configured_database
     from twitter_mcp.xchat.errors import XChatError
+    from twitter_mcp.xchat.source import configured_reader
 
     if not conversation_id:
         raise ToolError("conversation_id must be non-empty.")
     settings = load_settings()
     try:
-        database = configured_database(settings)
-        if database:
-            messages = database.get_history(conversation_id, limit=limit)
+        reader = configured_reader(settings)
+        if reader:
+            messages = reader.get_history(conversation_id, limit=limit)
             return _dumps({"conversation_id": conversation_id, "messages": messages})
     except XChatError as e:
         raise ToolError(str(e))

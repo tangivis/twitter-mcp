@@ -13,15 +13,16 @@ import json
 from pathlib import Path
 
 from twitter_mcp.xchat.config import load_settings
-from twitter_mcp.xchat.database import configured_database
 from twitter_mcp.xchat.discovery import SUPPORTED_BROWSERS, discover_xchat_databases
 from twitter_mcp.xchat.errors import XChatError
+from twitter_mcp.xchat.oauth import OAuthTokenStore, authorize
 from twitter_mcp.xchat.session import (
     STATE_LOGGED_OUT,
     STATE_READY,
     XChatSession,
     profile_is_initialized,
 )
+from twitter_mcp.xchat.source import configured_reader
 
 LOGIN_POLL_SECONDS = 3
 LOGIN_TIMEOUT_SECONDS = 600
@@ -63,9 +64,9 @@ async def cmd_login(timeout_s: int = LOGIN_TIMEOUT_SECONDS) -> int:  # pragma: n
 
 async def cmd_status() -> int:  # pragma: no cover - browser I/O
     settings = load_settings()
-    database = configured_database(settings)
-    if database:
-        print(_dumps(database.status()))
+    reader = configured_reader(settings)
+    if reader:
+        print(_dumps(reader.status()))
         return 0
     if not profile_is_initialized(settings.profile_dir):
         print(
@@ -87,9 +88,9 @@ async def cmd_status() -> int:  # pragma: no cover - browser I/O
 
 async def cmd_list() -> int:  # pragma: no cover - browser I/O
     settings = load_settings()
-    database = configured_database(settings)
-    if database:
-        print(_dumps(database.list_conversations()))
+    reader = configured_reader(settings)
+    if reader:
+        print(_dumps(reader.list_conversations()))
         return 0
     async with XChatSession(settings=settings) as session:
         print(_dumps(await session.list_conversations()))
@@ -98,9 +99,9 @@ async def cmd_list() -> int:  # pragma: no cover - browser I/O
 
 async def cmd_history(conversation_id: str, limit: int) -> int:  # pragma: no cover
     settings = load_settings()
-    database = configured_database(settings)
-    if database:
-        print(_dumps(database.get_history(conversation_id, limit)))
+    reader = configured_reader(settings)
+    if reader:
+        print(_dumps(reader.get_history(conversation_id, limit)))
         return 0
     async with XChatSession(settings=settings) as session:
         print(_dumps(await session.get_history(conversation_id, limit=limit)))
@@ -110,9 +111,9 @@ async def cmd_history(conversation_id: str, limit: int) -> int:  # pragma: no co
 async def cmd_doctor() -> int:  # pragma: no cover - browser I/O
     """Report sanitized accessibility-tree counts — the semantic drift check."""
     settings = load_settings()
-    database = configured_database(settings)
-    if database:
-        print(_dumps(database.doctor()))
+    reader = configured_reader(settings)
+    if reader:
+        print(_dumps(reader.doctor()))
         return 0
     async with XChatSession(settings=settings) as session:
         print(_dumps(await session.doctor()))
@@ -126,15 +127,31 @@ async def cmd_discover(browser: str, profile: str | None) -> int:
     return 0 if report["state"] == "found" else 2
 
 
+async def cmd_oauth(no_open: bool = False) -> int:
+    """Create a renewable, read-only OAuth2 PKCE grant."""
+    settings = load_settings()
+    if not settings.oauth_client_id:
+        raise XChatError("Set XCHAT_OAUTH_CLIENT_ID before running OAuth setup.")
+    message = await asyncio.to_thread(
+        authorize,
+        settings.oauth_client_id,
+        settings.oauth_redirect_uri,
+        OAuthTokenStore(settings.oauth_token_file),
+        open_browser=not no_open,
+    )
+    print(message)
+    return 0
+
+
 def add_parser(subparsers) -> None:
     """Register `xchat` and its subcommands on the main CLI parser."""
     parser = subparsers.add_parser(
         "xchat",
         help="Read X's end-to-end encrypted (XChat) messages via a local session.",
         description=(
-            "XChat messages cannot be decrypted from cookies or X's legacy API. "
-            "These commands read the registered web client's local decrypted "
-            "store, with a paired Playwright profile as fallback."
+            "Read XChat from a registered web client's local decrypted store, "
+            "or explicitly select the paid browser-independent chat-xdk API "
+            "backend with XCHAT_BACKEND=chatxdk."
         ),
     )
     xsub = parser.add_subparsers(dest="xchat_cmd", required=True)
@@ -145,6 +162,12 @@ def add_parser(subparsers) -> None:
     p_hist.add_argument("conversation_id")
     p_hist.add_argument("-n", "--limit", type=int, default=50)
     xsub.add_parser("doctor", help="Show sanitized semantic role/route diagnostics.")
+    p_oauth = xsub.add_parser(
+        "oauth", help="Create or replace the renewable read-only X API grant."
+    )
+    p_oauth.add_argument(
+        "--no-open", action="store_true", help="Print the authorization URL only."
+    )
     p_discover = xsub.add_parser(
         "discover",
         help="Find XChat databases in local Chromium browser profiles.",
@@ -168,6 +191,7 @@ def dispatch(args) -> int:  # pragma: no cover - thin async dispatch
         "list": lambda: cmd_list(),
         "history": lambda: cmd_history(args.conversation_id, args.limit),
         "doctor": lambda: cmd_doctor(),
+        "oauth": lambda: cmd_oauth(args.no_open),
         "discover": lambda: cmd_discover(args.browser, args.profile),
     }
     try:

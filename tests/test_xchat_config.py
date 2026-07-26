@@ -102,6 +102,29 @@ def test_process_env_wins_over_file(tmp_path):
     assert settings.pin == "shell"
 
 
+def test_explicit_env_file_works_from_any_harness_cwd(tmp_path):
+    root = _repo(tmp_path / "repo")
+    (root / ".env.local").write_text("XCHAT_PIN=discovered\n")
+    secrets = tmp_path / "private.env"
+    secrets.write_text("XCHAT_PIN=explicit\nXCHAT_BACKEND=chatxdk\n")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    settings = load_settings({"XCHAT_ENV_FILE": str(secrets)}, search_from=elsewhere)
+    assert settings.pin == "explicit"
+    assert settings.backend == "chatxdk"
+
+
+def test_process_env_wins_over_explicit_env_file(tmp_path):
+    secrets = tmp_path / "private.env"
+    secrets.write_text("XCHAT_PIN=file\n")
+    settings = load_settings(
+        {"XCHAT_ENV_FILE": str(secrets), "XCHAT_PIN": "process"},
+        search_from=_repo(tmp_path / "repo"),
+    )
+    assert settings.pin == "process"
+
+
 def test_empty_process_value_falls_back_to_file(tmp_path):
     root = _repo(tmp_path)
     (root / ".env.local").write_text("XCHAT_PIN=file\n")
@@ -119,6 +142,11 @@ def test_defaults_when_nothing_configured(tmp_path):
     assert settings.database_path is None
     assert settings.database_browser is None
     assert settings.database_profile is None
+    assert settings.backend == "local"
+    assert settings.api_access_token is None
+    assert settings.oauth_client_id is None
+    assert settings.oauth_redirect_uri == "http://localhost:8080/callback"
+    assert settings.oauth_token_file.name == "xchat-oauth.json"
     assert settings.has_pin is False
 
 
@@ -146,6 +174,11 @@ def test_boolean_and_path_expansion(tmp_path):
             "XCHAT_DATABASE_PATH": "~/chat.db",
             "XCHAT_BROWSER": "chrome",
             "XCHAT_BROWSER_PROFILE": "Profile 2",
+            "XCHAT_BACKEND": "chatxdk",
+            "XCHAT_API_ACCESS_TOKEN": "secret-token",
+            "XCHAT_OAUTH_CLIENT_ID": "public-client",
+            "XCHAT_OAUTH_REDIRECT_URI": "http://127.0.0.1:9999/callback",
+            "XCHAT_OAUTH_TOKEN_FILE": "~/oauth-token.json",
             "XCHAT_PIN_PROMPT": "WEB",
         },
         search_from=_repo(tmp_path),
@@ -157,11 +190,24 @@ def test_boolean_and_path_expansion(tmp_path):
     assert "~" not in str(settings.database_path)
     assert settings.database_browser == "chrome"
     assert settings.database_profile == "Profile 2"
+    assert settings.backend == "chatxdk"
+    assert settings.api_access_token == "secret-token"
+    assert settings.oauth_client_id == "public-client"
+    assert settings.oauth_redirect_uri == "http://127.0.0.1:9999/callback"
+    assert settings.oauth_token_file.name == "oauth-token.json"
     assert settings.pin_prompt == "web"
 
 
 def test_pin_is_not_exposed_in_repr():
-    settings = XChatSettings(profile_dir=Path("/tmp/p"), pin="9999")
+    settings = XChatSettings(
+        profile_dir=Path("/tmp/p"), pin="9999", api_access_token="secret-token"
+    )
     assert "9999" not in repr(settings)
+    assert "secret-token" not in repr(settings)
     assert "<set>" in repr(settings)
     assert settings.has_pin is True
+
+
+def test_invalid_backend_falls_back_to_local(tmp_path):
+    settings = load_settings({"XCHAT_BACKEND": "mystery"}, search_from=_repo(tmp_path))
+    assert settings.backend == "local"

@@ -327,6 +327,18 @@ wheels = [
 ]
 
 [[package]]
+name = "chatxdk"
+version = "0.4.3"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/fc/ce97f22994ff112ccb95b37022bdfd48dee24d6d6f81ee7b01f3c4d22121/chatxdk-0.4.3-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:a6d9d63e073c17e2c27bce8fa69df28bbda7fa76c30e8cf0466aeffd6a55d550", size = 3298790, upload-time = "2026-07-24T21:34:40.787Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/05/b89a0fbce9f4f6a71325745b8913aa03667ae5a4284d58d324997ebb0ea4/chatxdk-0.4.3-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:6d41b13116e9cbfc81a60be715f4449d3dd4ba36abf6cddd556bf54e6360fff6", size = 3131782, upload-time = "2026-07-24T21:34:42.739Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/19/f8a53facfaeb61475dc1e586c53dffd34558d52e408b9d11c6a098608e30/chatxdk-0.4.3-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:89d20b116cd945e00c0d3892d57a388d27364e3cc8ce6a02dbacbfb189ca6cdf", size = 3449314, upload-time = "2026-07-24T21:34:44.59Z" },
+    { url = "https://files.pythonhosted.org/packages/29/a8/f360793651be9dd70b81930e066429a6713287c34827372e5ef5d3ff2b25/chatxdk-0.4.3-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:54db1b93b7feeb754a0fbea64a8b29d5234f7e9167d3de54162d81b7dd402c3b", size = 3493692, upload-time = "2026-07-24T21:34:46.433Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/2f/a57dd84ac2c12baac4b421d880b76e36f0f6646c9ee4c35d24dc98b8c422/chatxdk-0.4.3-cp310-abi3-win_amd64.whl", hash = "sha256:df80d4fbc2e4c8c9455510ac6ffe2e81937044166f53e34f1287fcb56cc23357", size = 2971616, upload-time = "2026-07-24T21:34:48.033Z" },
+]
+
+[[package]]
 name = "click"
 version = "8.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1235,6 +1247,15 @@ wheels = [
 ]
 
 [[package]]
+name = "oauthlib"
+version = "3.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/5f/19930f824ffeb0ad4372da4812c50edbd1434f678c90c2733e1188edfc63/oauthlib-3.3.1.tar.gz", hash = "sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9", size = 185918, upload-time = "2025-06-19T22:48:08.269Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/be/9c/92789c596b8df838baa98fa71844d84283302f7604ed565dafe5a6b5041a/oauthlib-3.3.1-py3-none-any.whl", hash = "sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1", size = 160065, upload-time = "2025-06-19T22:48:06.508Z" },
+]
+
+[[package]]
 name = "packaging"
 version = "26.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1753,6 +1774,19 @@ wheels = [
 ]
 
 [[package]]
+name = "requests-oauthlib"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "oauthlib" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/f2/05f29bc3913aea15eb670be136045bf5c5bbf4b99ecb839da9b422bb2c85/requests-oauthlib-2.0.0.tar.gz", hash = "sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9", size = 55650, upload-time = "2024-03-22T20:32:29.939Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/5d/63d4ae3b9daea098d5d6f5da83984853c1bbacd5dc826764b249fe119d24/requests_oauthlib-2.0.0-py2.py3-none-any.whl", hash = "sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36", size = 24179, upload-time = "2024-03-22T20:32:28.055Z" },
+]
+
+[[package]]
 name = "rich"
 version = "14.3.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2049,6 +2083,10 @@ dependencies = [
 xchat = [
     { name = "playwright" },
 ]
+xchat-api = [
+    { name = "chatxdk" },
+    { name = "xdk" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -2068,6 +2106,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4" },
+    { name = "chatxdk", marker = "extra == 'xchat-api'", specifier = "==0.4.3" },
     { name = "filetype" },
     { name = "httpx", extras = ["socks"] },
     { name = "js2py-3-13" },
@@ -2078,8 +2117,9 @@ requires-dist = [
     { name = "pyotp" },
     { name = "rich" },
     { name = "webvtt-py" },
+    { name = "xdk", marker = "extra == 'xchat-api'", specifier = ">=0.10.6,<0.11" },
 ]
-provides-extras = ["xchat"]
+provides-extras = ["xchat", "xchat-api"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2231,4 +2271,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5e/f6/7c9c964681fb148e0293e6860108d378e09ccab2218f9063fd3eb87f840a/webvtt-py-0.5.1.tar.gz", hash = "sha256:2040dd325277ddadc1e0c6cc66cbc4a1d9b6b49b24c57a0c3364374c3e8a3dc1", size = 55128, upload-time = "2024-05-30T13:40:17.189Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f3/ed/aad7e0f5a462d679f7b4d2e0d8502c3096740c883b5bbed5103146480937/webvtt_py-0.5.1-py3-none-any.whl", hash = "sha256:9d517d286cfe7fc7825e9d4e2079647ce32f5678eb58e39ef544ffbb932610b7", size = 19802, upload-time = "2024-05-30T13:40:14.661Z" },
+]
+
+[[package]]
+name = "xdk"
+version = "0.10.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "requests-oauthlib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9b/7b/47c5efdb3f6b1e76b101eca028fc68831344762650138534854cc4bd2243/xdk-0.10.6.tar.gz", hash = "sha256:34a5142680f051f65aa1d4b53759ec7cead84ddf49428bcf278c7f8881da6d79", size = 461188, upload-time = "2026-07-25T05:33:43.031Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/98/6bf27d955447ace007b3a55094ef36dc35c3b97f4e2da939247e443f3936/xdk-0.10.6-py3-none-any.whl", hash = "sha256:89859f02e2365a3edceb04340f1902ba5d975a3e22e469bb9bfd8bfdf557e587", size = 212692, upload-time = "2026-07-25T05:33:41.6Z" },
 ]

@@ -197,6 +197,25 @@ metadata without reading key bytes or launching browser automation. Configure
 `xchat_list_conversations` / `xchat_get_history`. An explicit database path and
 a persistent Playwright profile remain recovery fallbacks.
 
+For a browser-independent path, the optional official `chat-xdk` backend reads
+encrypted events from X's paid API and unlocks keys through Juicebox in memory:
+
+```bash
+pip install 'twikit-mcp[xchat-api]'
+XCHAT_BACKEND=chatxdk \
+XCHAT_OAUTH_CLIENT_ID=... \
+XCHAT_PIN=1234 \
+twikit-mcp xchat oauth
+
+# Later reads refresh OAuth automatically and do not open a browser.
+twikit-mcp xchat status
+```
+
+X currently documents DM event reads at $0.01 per returned event. The backend
+is explicit opt-in, read-only, and does not require a browser process. OAuth
+requests only `dm.read users.read tweet.read offline.access`; the rotating token
+is stored owner-only at `~/.config/twitter-mcp/xchat-oauth.json`.
+
 For the optional paired-browser fallback, install its dependency first:
 
 ```bash
