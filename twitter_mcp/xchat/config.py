@@ -117,6 +117,8 @@ class XChatSettings:
     # Optional path to X's already-decrypted local XChat SQLite database.
     # When configured, all read commands use this source and never launch a browser.
     database_path: Path | None = None
+    database_browser: str | None = None
+    database_profile: str | None = None
     headless: bool = True
     pin: str | None = None
     pin_prompt: str = "auto"
@@ -137,6 +139,7 @@ class XChatSettings:
         return (
             f"XChatSettings(profile_dir={self.profile_dir!r}, "
             f"database_path={self.database_path!r}, "
+            f"database_browser={self.database_browser!r}, "
             f"headless={self.headless!r}, pin={'<set>' if self.pin else None}, "
             f"pin_prompt={self.pin_prompt!r}, timeout_ms={self.timeout_ms!r})"
         )
@@ -175,6 +178,8 @@ def load_settings(
         database_path=(
             Path(os.path.expanduser(database_path)) if database_path else None
         ),
+        database_browser=get("XCHAT_BROWSER"),
+        database_profile=get("XCHAT_BROWSER_PROFILE"),
         headless=_as_bool(get("XCHAT_HEADLESS"), True),
         pin=get("XCHAT_PIN"),
         pin_prompt=pin_prompt,

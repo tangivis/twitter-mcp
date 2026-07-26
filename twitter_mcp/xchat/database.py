@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import quote
@@ -29,7 +29,7 @@ _REQUIRED_TABLES = frozenset(
 def _timestamp(value: Any) -> str | None:
     try:
         return (
-            datetime.fromtimestamp(int(value) / 1000, tz=UTC)
+            datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
             .isoformat(timespec="milliseconds")
             .replace("+00:00", "Z")
         )
@@ -297,4 +297,16 @@ class XChatDatabase:
         }
 
 
-__all__ = ["XChatDatabase"]
+def configured_database(settings: Any) -> XChatDatabase | None:
+    """Return the explicit or discovered database configured by settings."""
+    from twitter_mcp.xchat.discovery import resolve_xchat_database_path
+
+    path = resolve_xchat_database_path(
+        settings.database_path,
+        settings.database_browser,
+        settings.database_profile,
+    )
+    return XChatDatabase(path) if path else None
+
+
+__all__ = ["XChatDatabase", "configured_database"]

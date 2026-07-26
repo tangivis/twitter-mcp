@@ -13,7 +13,8 @@ The reader is local-only. Its preferred path is the web client's local database:
 1. You log in, register the device, and unlock XChat in a normal local browser.
 2. X's web client performs E2EE decryption and stores the synced conversation
    state in its origin-private SQLite filesystem.
-3. Configure `XCHAT_DATABASE_PATH` with that SQLite file's absolute path.
+3. Configure `XCHAT_BROWSER` and, optionally, `XCHAT_BROWSER_PROFILE`. The
+   reader discovers the browser's opaque SQLite filename by schema.
 4. The reader opens it with SQLite `mode=ro&immutable=1` and selects only
    metadata and `dm_entry.plain_text`. It never selects key bytes, sends a
    message, marks a thread read, or launches browser automation.
@@ -34,26 +35,103 @@ share a durable paired profile. A Playwright/Safari hybrid would split the
 session and key material across two browser processes without improving the
 security boundary.
 
-[`chat-xdk`](https://github.com/xdevplatform/chat-xdk) has now shipped (v0.4.3
-when this design was verified). It supplies XChat cryptography, but its examples
-still require an authenticated transport such as OAuth/Activity Stream. It does
-not provide a free drop-in transport for this cookie-authenticated MCP server,
-so the browser remains the registered device and decryption boundary.
+## Supported browser discovery
+
+`chrome`, `edge`, and `aside` have been verified live on macOS. `chromium` and
+`brave` use the same Chromium OPFS layout and are covered by discovery tests,
+but were not live-tested during this implementation. On macOS, the MCP host may
+need Full Disk Access to inspect another browser's protected profile directory.
+
+Discovery reads only SQLite headers and table names. It does not copy a browser
+profile, inspect messages, select key bytes, or control the browser:
+
+```bash
+twikit-mcp xchat discover --browser chrome
+twikit-mcp xchat discover --browser edge --profile Default
+```
 
 ## Direct database setup
 
-Add the discovered local XChat database path to a gitignored `.env.local`:
+Select a browser in the MCP process environment or a gitignored `.env.local`:
 
 ```bash
-XCHAT_DATABASE_PATH=/absolute/path/to/chat.db
+XCHAT_BROWSER=chrome
+XCHAT_BROWSER_PROFILE=Default
 twikit-mcp xchat status
 twikit-mcp xchat doctor
 twikit-mcp xchat list
 ```
 
-`status`, `doctor`, `list`, and `history` use the database exclusively when
-this variable is set; an invalid configured database produces an error instead
-of silently launching Playwright.
+`XCHAT_DATABASE_PATH=/absolute/path/to/chat.db` remains an explicit recovery
+override and takes precedence over discovery. `status`, `doctor`, `list`, and
+`history` use database mode exclusively when either configuration is present;
+failure produces an actionable error instead of launching Playwright.
+
+## MCP client configuration
+
+The server uses standard MCP stdio and has no client-specific runtime code. All
+clients launch the same executable with the same environment:
+
+```text
+command: /Users/USERNAME/.local/bin/twikit-mcp
+XCHAT_BROWSER: chrome
+XCHAT_BROWSER_PROFILE: Default
+```
+
+On macOS, Full Disk Access is granted per host application. If several desktop
+clients launch this MCP, grant the required browser-profile access separately
+to each client (for example ChatGPT/Codex, Antigravity, or Grok Build). A shell
+client such as Claude Code inherits the privacy permissions of its terminal.
+
+For Codex/ChatGPT and Grok Build (`config.toml`):
+
+```toml
+[mcp_servers.twitter]
+command = "/Users/USERNAME/.local/bin/twikit-mcp"
+
+[mcp_servers.twitter.env]
+XCHAT_BROWSER = "chrome"
+XCHAT_BROWSER_PROFILE = "Default"
+```
+
+For Claude Code:
+
+```bash
+claude mcp add --scope user twitter \
+  -e XCHAT_BROWSER=chrome \
+  -e XCHAT_BROWSER_PROFILE=Default \
+  -- /Users/USERNAME/.local/bin/twikit-mcp
+```
+
+For Antigravity, add this to `~/.gemini/config/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "/Users/USERNAME/.local/bin/twikit-mcp",
+      "args": [],
+      "env": {
+        "XCHAT_BROWSER": "chrome",
+        "XCHAT_BROWSER_PROFILE": "Default"
+      }
+    }
+  }
+}
+```
+
+`TWITTER_COOKIES` is optional for XChat database reads. Configure it separately
+only when the same server should also expose legacy Twitter tools.
+
+## Future adapters
+
+- **Safari TODO:** WebKit does not use Chromium's OPFS profile layout. Implement
+  and test a Safari-specific local storage or Safari Web Extension adapter.
+- **Paid/API option, not yet user-tested:**
+  [`chat-xdk`](https://github.com/xdevplatform/chat-xdk) has shipped, but its
+  examples require an authenticated X transport such as OAuth/Activity Stream.
+  Treat this as an experimental paid-X-API path until it has been exercised
+  end-to-end by a user; it is not the default local reader.
 
 ## Browser fallback setup
 

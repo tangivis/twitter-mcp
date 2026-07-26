@@ -1360,7 +1360,7 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
 async def _is_xchat_user_id(user_id: str) -> bool | None:
     """Classify from the configured local source without unlocking or guessing."""
     from twitter_mcp.xchat.config import load_settings
-    from twitter_mcp.xchat.database import XChatDatabase
+    from twitter_mcp.xchat.database import configured_database
     from twitter_mcp.xchat.errors import XChatError
     from twitter_mcp.xchat.session import (
         STATE_READY,
@@ -1369,19 +1369,18 @@ async def _is_xchat_user_id(user_id: str) -> bool | None:
     )
 
     settings = load_settings()
-    if settings.database_path:
-        try:
-            conversations = XChatDatabase(settings.database_path).list_conversations(
-                limit=500
-            )
+    try:
+        database = configured_database(settings)
+        if database:
+            conversations = database.list_conversations(limit=500)
             return any(
                 not str(row.get("conversation_id", "")).startswith("g")
                 and str(user_id)
                 in str(row.get("conversation_id", "")).replace("-", ":").split(":")
                 for row in conversations
             )
-        except XChatError:
-            return None
+    except XChatError:
+        return None
     if not profile_is_initialized(settings.profile_dir):
         return None
     session = XChatSession(settings=settings)
@@ -2271,16 +2270,17 @@ async def xchat_status() -> str:
     `logged_out` means you must run `twikit-mcp xchat login` once.
     """
     from twitter_mcp.xchat.config import load_settings
-    from twitter_mcp.xchat.database import XChatDatabase
+    from twitter_mcp.xchat.database import configured_database
     from twitter_mcp.xchat.errors import XChatError
     from twitter_mcp.xchat.session import profile_is_initialized
 
     settings = load_settings()
-    if settings.database_path:
-        try:
-            return _dumps(XChatDatabase(settings.database_path).status())
-        except XChatError as e:
-            raise ToolError(str(e))
+    try:
+        database = configured_database(settings)
+        if database:
+            return _dumps(database.status())
+    except XChatError as e:
+        raise ToolError(str(e))
     if not profile_is_initialized(settings.profile_dir):
         return _dumps(
             {
@@ -2310,16 +2310,17 @@ async def xchat_list_conversations() -> str:
     `XCHAT_DATABASE_PATH` or a one-time `twikit-mcp xchat login`.
     """
     from twitter_mcp.xchat.config import load_settings
-    from twitter_mcp.xchat.database import XChatDatabase
+    from twitter_mcp.xchat.database import configured_database
     from twitter_mcp.xchat.errors import XChatError
 
     settings = load_settings()
-    if settings.database_path:
-        try:
-            conversations = XChatDatabase(settings.database_path).list_conversations()
-        except XChatError as e:
-            raise ToolError(str(e))
-        return _dumps({"conversations": conversations})
+    try:
+        database = configured_database(settings)
+        if database:
+            conversations = database.list_conversations()
+            return _dumps({"conversations": conversations})
+    except XChatError as e:
+        raise ToolError(str(e))
 
     session = await _xchat_session()
     try:
@@ -2347,20 +2348,19 @@ async def xchat_get_history(conversation_id: str, limit: int = 50) -> str:
     device has decrypted. Do not bulk-call.
     """
     from twitter_mcp.xchat.config import load_settings
-    from twitter_mcp.xchat.database import XChatDatabase
+    from twitter_mcp.xchat.database import configured_database
     from twitter_mcp.xchat.errors import XChatError
 
     if not conversation_id:
         raise ToolError("conversation_id must be non-empty.")
     settings = load_settings()
-    if settings.database_path:
-        try:
-            messages = XChatDatabase(settings.database_path).get_history(
-                conversation_id, limit=limit
-            )
-        except XChatError as e:
-            raise ToolError(str(e))
-        return _dumps({"conversation_id": conversation_id, "messages": messages})
+    try:
+        database = configured_database(settings)
+        if database:
+            messages = database.get_history(conversation_id, limit=limit)
+            return _dumps({"conversation_id": conversation_id, "messages": messages})
+    except XChatError as e:
+        raise ToolError(str(e))
     session = await _xchat_session()
     try:
         messages = await session.get_history(conversation_id, limit=limit)

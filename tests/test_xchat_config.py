@@ -117,6 +117,8 @@ def test_defaults_when_nothing_configured(tmp_path):
     assert settings.selector_overrides is None
     assert settings.cookie_file is None
     assert settings.database_path is None
+    assert settings.database_browser is None
+    assert settings.database_profile is None
     assert settings.has_pin is False
 
 
@@ -142,6 +144,8 @@ def test_boolean_and_path_expansion(tmp_path):
             "XCHAT_SELECTORS": "~/sel.json",
             "XCHAT_COOKIE_FILE": "~/cookies.json",
             "XCHAT_DATABASE_PATH": "~/chat.db",
+            "XCHAT_BROWSER": "chrome",
+            "XCHAT_BROWSER_PROFILE": "Profile 2",
             "XCHAT_PIN_PROMPT": "WEB",
         },
         search_from=_repo(tmp_path),
@@ -151,6 +155,8 @@ def test_boolean_and_path_expansion(tmp_path):
     assert "~" not in str(settings.selector_overrides)
     assert "~" not in str(settings.cookie_file)
     assert "~" not in str(settings.database_path)
+    assert settings.database_browser == "chrome"
+    assert settings.database_profile == "Profile 2"
     assert settings.pin_prompt == "web"
 
 

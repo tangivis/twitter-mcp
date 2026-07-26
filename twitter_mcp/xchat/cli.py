@@ -13,7 +13,8 @@ import json
 from pathlib import Path
 
 from twitter_mcp.xchat.config import load_settings
-from twitter_mcp.xchat.database import XChatDatabase
+from twitter_mcp.xchat.database import configured_database
+from twitter_mcp.xchat.discovery import SUPPORTED_BROWSERS, discover_xchat_databases
 from twitter_mcp.xchat.errors import XChatError
 from twitter_mcp.xchat.session import (
     STATE_LOGGED_OUT,
@@ -62,8 +63,9 @@ async def cmd_login(timeout_s: int = LOGIN_TIMEOUT_SECONDS) -> int:  # pragma: n
 
 async def cmd_status() -> int:  # pragma: no cover - browser I/O
     settings = load_settings()
-    if settings.database_path:
-        print(_dumps(XChatDatabase(settings.database_path).status()))
+    database = configured_database(settings)
+    if database:
+        print(_dumps(database.status()))
         return 0
     if not profile_is_initialized(settings.profile_dir):
         print(
@@ -85,8 +87,9 @@ async def cmd_status() -> int:  # pragma: no cover - browser I/O
 
 async def cmd_list() -> int:  # pragma: no cover - browser I/O
     settings = load_settings()
-    if settings.database_path:
-        print(_dumps(XChatDatabase(settings.database_path).list_conversations()))
+    database = configured_database(settings)
+    if database:
+        print(_dumps(database.list_conversations()))
         return 0
     async with XChatSession(settings=settings) as session:
         print(_dumps(await session.list_conversations()))
@@ -95,14 +98,9 @@ async def cmd_list() -> int:  # pragma: no cover - browser I/O
 
 async def cmd_history(conversation_id: str, limit: int) -> int:  # pragma: no cover
     settings = load_settings()
-    if settings.database_path:
-        print(
-            _dumps(
-                XChatDatabase(settings.database_path).get_history(
-                    conversation_id, limit
-                )
-            )
-        )
+    database = configured_database(settings)
+    if database:
+        print(_dumps(database.get_history(conversation_id, limit)))
         return 0
     async with XChatSession(settings=settings) as session:
         print(_dumps(await session.get_history(conversation_id, limit=limit)))
@@ -112,12 +110,20 @@ async def cmd_history(conversation_id: str, limit: int) -> int:  # pragma: no co
 async def cmd_doctor() -> int:  # pragma: no cover - browser I/O
     """Report sanitized accessibility-tree counts — the semantic drift check."""
     settings = load_settings()
-    if settings.database_path:
-        print(_dumps(XChatDatabase(settings.database_path).doctor()))
+    database = configured_database(settings)
+    if database:
+        print(_dumps(database.doctor()))
         return 0
     async with XChatSession(settings=settings) as session:
         print(_dumps(await session.doctor()))
     return 0
+
+
+async def cmd_discover(browser: str, profile: str | None) -> int:
+    """Find XChat databases without reading messages or controlling a browser."""
+    report = discover_xchat_databases(browser=browser, profile=profile)
+    print(_dumps(report))
+    return 0 if report["state"] == "found" else 2
 
 
 def add_parser(subparsers) -> None:
@@ -139,6 +145,20 @@ def add_parser(subparsers) -> None:
     p_hist.add_argument("conversation_id")
     p_hist.add_argument("-n", "--limit", type=int, default=50)
     xsub.add_parser("doctor", help="Show sanitized semantic role/route diagnostics.")
+    p_discover = xsub.add_parser(
+        "discover",
+        help="Find XChat databases in local Chromium browser profiles.",
+    )
+    p_discover.add_argument(
+        "--browser",
+        choices=("auto", *SUPPORTED_BROWSERS),
+        default="auto",
+        help="Browser family to scan (default: auto).",
+    )
+    p_discover.add_argument(
+        "--profile",
+        help="Optional exact browser profile directory, such as 'Default'.",
+    )
 
 
 def dispatch(args) -> int:  # pragma: no cover - thin async dispatch
@@ -148,6 +168,7 @@ def dispatch(args) -> int:  # pragma: no cover - thin async dispatch
         "list": lambda: cmd_list(),
         "history": lambda: cmd_history(args.conversation_id, args.limit),
         "doctor": lambda: cmd_doctor(),
+        "discover": lambda: cmd_discover(args.browser, args.profile),
     }
     try:
         return asyncio.run(handlers[args.xchat_cmd]())

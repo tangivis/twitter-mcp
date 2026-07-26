@@ -190,11 +190,12 @@ separate paired Playwright profile as fallback; see
 ### Local XChat (encrypted DM) reader
 
 XChat conversations no longer appear through twikit's legacy DM endpoint. The
-local reader can open X's already-decrypted browser SQLite store strictly
-read-only, selecting plaintext and metadata without reading key bytes or
-launching browser automation. Configure `XCHAT_DATABASE_PATH` and use
-`xchat_list_conversations` / `xchat_get_history`. A persistent Playwright
-profile remains an optional pairing and extraction fallback.
+local reader can discover and open X's already-decrypted Chrome, Edge, Aside,
+Chromium, or Brave SQLite store strictly read-only, selecting plaintext and
+metadata without reading key bytes or launching browser automation. Configure
+`XCHAT_BROWSER=chrome` (and optionally `XCHAT_BROWSER_PROFILE=Default`) and use
+`xchat_list_conversations` / `xchat_get_history`. An explicit database path and
+a persistent Playwright profile remain recovery fallbacks.
 
 For the optional paired-browser fallback, install its dependency first:
 
