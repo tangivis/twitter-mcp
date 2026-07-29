@@ -24,6 +24,8 @@ _LOCALE_TITLE_HINT = {
     "ja": "インストール",
 }
 # Clients that must each get their own h3 section in every locale.
+# Matched as an `### <name>` heading prefix, not a bare substring —
+# short names like "Pi" would otherwise match incidental prose.
 _CLIENTS = [
     "Claude Code",
     "Claude Desktop",
@@ -31,6 +33,7 @@ _CLIENTS = [
     "Windsurf",
     "Cline",
     "opencode",
+    "Pi",
 ]
 
 
@@ -60,11 +63,12 @@ def test_install_page_title_carries_locale_hint(locale):
 @pytest.mark.parametrize("client", _CLIENTS)
 def test_install_page_documents_each_client(locale, client):
     src = _INSTALL_FILES[locale].read_text(encoding="utf-8")
-    # h3 + client name appears somewhere (heading or path table or JSON
-    # comment — any mention proves the section exists).
-    assert client in src, (
-        f"install.{locale}.md doesn't mention client {client!r}. "
-        f"Issue #92 requires all 6 clients per locale."
+    # Anchor on the `### ` heading so a short name can't pass on an
+    # incidental prose mention. Prefix match — some locales suffix the
+    # heading (e.g. "### Cline(VS Code 扩展)").
+    assert f"### {client}" in src, (
+        f"install.{locale}.md has no '### {client}' section. "
+        f"Issue #92 requires a card per documented client, per locale."
     )
 
 

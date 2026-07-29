@@ -135,6 +135,43 @@ Cursor 自动加载,不用重启。
 }
 ```
 
+### Pi
+
+Pi 没有内置 MCP —— 得先装社区 MCP 扩展。[`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) 最适合本 server:配置形状和上面一样是 `mcpServers`、默认 lazy 连接、还有 `directTools` 白名单,免得 `twikit-mcp` 的 59 个工具挤爆 coding session 的上下文。
+
+```bash
+pi install npm:pi-mcp-adapter
+```
+
+然后编辑 `~/.config/mcp/mcp.json`(全局)或 `.mcp.json`(项目级):
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "/home/YOU/.local/bin/twikit-mcp",
+      "env": {
+        "TWITTER_COOKIES": "/home/YOU/.config/twitter-mcp/cookies.json"
+      },
+      "lifecycle": "lazy",
+      "directTools": [
+        "get_tweet",
+        "get_tweet_replies",
+        "search_tweets",
+        "get_user_info",
+        "get_user_tweets",
+        "get_timeline",
+        "get_trends"
+      ]
+    }
+  }
+}
+```
+
+`directTools` 里这 7 个注册成原生工具,其余 52 个留在一个代理工具后面按需发现。`command` 请写**绝对路径** —— Pi 拉子进程时 `PATH` 里不一定有 `~/.local/bin`。
+
+Pi 的 MCP 扩展都是社区个人维护、非官方,且以你的完整系统权限运行。装之前先看一眼源码,毕竟它要拿你的 cookie 路径。
+
 ### 其他任何 MCP 客户端
 
 `twikit-mcp` 是标准 **stdio** MCP server。不管你的客户端配置文件长什么样,JSON 形状都一样:
