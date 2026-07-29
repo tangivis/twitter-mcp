@@ -135,6 +135,43 @@ Cline パネル → ⚙️ → **MCP Servers** → **Edit MCP Settings** を開�
 }
 ```
 
+### Pi
+
+Pi には MCP が組み込まれていません — まずコミュニティ製の MCP 拡張を入れます。[`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) がこの server には最適です:設定の形は上記と同じ `mcpServers`、接続は遅延、そして `directTools` の許可リストで `twikit-mcp` の 59 ツールがコーディングセッションのコンテキストを圧迫するのを防げます。
+
+```bash
+pi install npm:pi-mcp-adapter
+```
+
+次に `~/.config/mcp/mcp.json`(グローバル)または `.mcp.json`(プロジェクト単位)を編集:
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "/home/YOU/.local/bin/twikit-mcp",
+      "env": {
+        "TWITTER_COOKIES": "/home/YOU/.config/twitter-mcp/cookies.json"
+      },
+      "lifecycle": "lazy",
+      "directTools": [
+        "get_tweet",
+        "get_tweet_replies",
+        "search_tweets",
+        "get_user_info",
+        "get_user_tweets",
+        "get_timeline",
+        "get_trends"
+      ]
+    }
+  }
+}
+```
+
+`directTools` の 7 つはネイティブツールとして登録され、残り 52 は 1 つのプロキシツールの背後で必要時に発見されます。`command` は**絶対パス**で書いてください — Pi のサブプロセス環境の `PATH` に `~/.local/bin` が入っているとは限りません。
+
+Pi の MCP 拡張はいずれもコミュニティ製で公式ではなく、あなたのフルシステム権限で動きます。cookie のパスを預ける前にソースを確認してください。
+
 ### その他の MCP クライアント
 
 `twikit-mcp` は標準的な **stdio** MCP サーバーです。クライアントの設定ファイルがどんな形でも、JSON の形は同じ:

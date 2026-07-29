@@ -8,12 +8,16 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.34
+
+- **Pi setup guide** — the [Install page](install.md) now covers [Pi](https://github.com/earendil-works/pi). Pi has no built-in MCP, so the card walks through installing a community MCP extension (`pi-mcp-adapter`) and using its `directTools` allowlist to keep this server's 59 tools from crowding a coding session's context. Docs only — no code changes; `twikit-mcp` is a standard stdio MCP server and needs nothing special.
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.33
 
 - **Drop the 200-char text truncation** — `get_timeline` / `search_tweets` / `get_user_tweets` / `get_bookmarks` / `get_list_tweets` / `get_scheduled_tweets` / `get_community_tweets` / `get_communities_timeline` / `search_community_tweet` no longer cut tweet text at 200 characters. `get_tweet` and `get_tweet_replies` also switch to `Tweet.full_text`, which returns the long-form text (up to 4000 chars) for X note tweets. Compact responses are user-controlled via `count`. (closes #97)
 - **`get_article_preview` distinguishes quote tweets** — when the input is a quote tweet, the error now says "this is a quote tweet, not an article. Use get_tweet to read the quoted tweet content" instead of the generic "does not embed an article".
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.32
 

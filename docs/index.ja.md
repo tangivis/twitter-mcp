@@ -8,12 +8,16 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.34 の新機能
+
+- **Pi のセットアップ手順** — [インストールページ](install.md)に [Pi](https://github.com/earendil-works/pi) を追加。Pi には MCP が組み込まれていないため、コミュニティ製 MCP 拡張(`pi-mcp-adapter`)の導入と、その `directTools` 許可リストで本 server の 59 ツールがコーディングセッションのコンテキストを圧迫しないようにする手順を記載しました。ドキュメントのみの変更 — コードは変更なし、`twikit-mcp` は標準的な stdio MCP server なので特別な対応は不要です。
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.33 の新機能
 
 - **200 文字の切り捨てを廃止** — `get_timeline` / `search_tweets` / `get_user_tweets` / `get_bookmarks` / `get_list_tweets` / `get_scheduled_tweets` / `get_community_tweets` / `get_communities_timeline` / `search_community_tweet` がツイート本文を 200 文字でカットしなくなりました。`get_tweet` と `get_tweet_replies` も `Tweet.full_text` を使用し、X のノートツイート(長文投稿、最大 4000 文字)も完全に取得できます。レスポンスサイズは `count` 引数で制御。(closes #97)
 - **`get_article_preview` の引用ツイート対応** — 入力が引用リツイートの場合、エラーが「これは引用ツイートで、記事ではありません。引用内容は get_tweet で読んでください」に変わり、汎用の "does not embed an article" は出なくなりました。
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.32 の新機能
 
