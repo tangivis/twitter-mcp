@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.35 新增
+
+- **把 MCP SDK 钉在 v2 以下** — `mcp[cli]` 之前没有上界,等 2.0.0 脱离预发布那天,新用户 `uv tool install twikit-mcp` 就会拉到 SDK v2。v2(实现 [2026-07-28 规范](https://blog.modelcontextprotocol.io/posts/2026-07-28/))把 `FastMCP` 改名成 `MCPServer`、`mcp.server.fastmcp.*` 挪到 `mcp.server.mcpserver.*`,本 server 会直接在 import 处炸。现在钉成 `>=1.27,<2`,并加了哨兵测试守着。已装好的用户行为不变。迁移在 issue #109 跟踪。
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.34 新增
 
 - **Pi 安装指南** — [安装页](install.md)加了 [Pi](https://github.com/earendil-works/pi)。Pi 没有内置 MCP,所以这张卡片走的是先装社区 MCP 扩展(`pi-mcp-adapter`)、再用它的 `directTools` 白名单,免得本 server 的 59 个工具挤爆 coding session 的上下文。纯文档改动 —— 不动代码,`twikit-mcp` 是标准 stdio MCP server,不需要任何特殊处理。
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.33 新增
 

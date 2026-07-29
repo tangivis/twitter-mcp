@@ -8,11 +8,15 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.35
+
+- **Pinned the MCP SDK below v2** — `mcp[cli]` had no upper bound, so a fresh `uv tool install twikit-mcp` would have pulled SDK v2 the day 2.0.0 leaves pre-release. v2 (implementing the [2026-07-28 spec](https://blog.modelcontextprotocol.io/posts/2026-07-28/)) renames `FastMCP` → `MCPServer` and moves `mcp.server.fastmcp.*` to `mcp.server.mcpserver.*`, which breaks this server at import. Now `>=1.27,<2`, guarded by a sentinel test. No behavior change on an existing install. Migration tracked in issue #109.
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.34
 
 - **Pi setup guide** — the [Install page](install.md) now covers [Pi](https://github.com/earendil-works/pi). Pi has no built-in MCP, so the card walks through installing a community MCP extension (`pi-mcp-adapter`) and using its `directTools` allowlist to keep this server's 59 tools from crowding a coding session's context. Docs only — no code changes; `twikit-mcp` is a standard stdio MCP server and needs nothing special.
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.33
 
