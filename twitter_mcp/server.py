@@ -467,6 +467,9 @@ _VALID_TREND_CATEGORIES = frozenset(
 
 _VALID_COMMUNITY_TWEET_TYPES = frozenset({"Top", "Latest", "Media"})
 
+_DM_HISTORY_MAX_ATTEMPTS = 3
+_DM_HISTORY_RETRY_DELAY_SECONDS = 0.5
+
 
 def _require_exactly_one(
     screen_name: str | None, user_id: str | None, *, op: str
@@ -1313,6 +1316,13 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
     Note: Retrieves PRIVATE messages. Do not bulk-call. X has aggressive
     anti-spam on DMs and may suspend the account.
 
+    Returns JSON with `messages` (id/text/sender_id/recipient_id/time),
+    `next_cursor` for pagination via `max_id`, and when present:
+    `timeline_events` (non-message entries such as `trust_conversation`)
+    and `warnings` (e.g. incomplete history for end-to-end encrypted /
+    X Chat conversations — legacy DM history does not return ciphertext
+    bodies after upgrade).
+
     Args:
         screen_name: Twitter username (without @).
         max_id: If specified, retrieves messages older than this ID (for pagination).
@@ -1322,28 +1332,55 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
     client = await _get_client()
     try:
         user = await client.get_user_by_screen_name(screen_name)
-        result = await client.get_dm_history(user.id, max_id)
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"User not found: {screen_name}.")
 
+    for attempt in range(_DM_HISTORY_MAX_ATTEMPTS):
+        try:
+            result = await client.get_dm_history(user.id, max_id)
+            break
+        except TooManyRequests as e:
+            raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+        except NotFound:
+            if attempt == _DM_HISTORY_MAX_ATTEMPTS - 1:
+                raise ToolError(
+                    f"DM conversation with {screen_name} is not yet available; "
+                    "retry later."
+                )
+            await asyncio.sleep(_DM_HISTORY_RETRY_DELAY_SECONDS * (attempt + 1))
+
     messages = [
         {
             "id": m.id,
-            "text": m.text[:500],
+            "text": (m.text or "")[:500],
             "sender_id": m.sender_id,
             "recipient_id": m.recipient_id,
             "time": m.time,
         }
         for m in result
     ]
-    return _dumps(
-        {
-            "messages": messages,
-            "next_cursor": getattr(result, "next_cursor", None),
-        }
-    )
+    # Non-message timeline entries (trust_conversation, etc.) — issue #104.
+    timeline_events = list(getattr(result, "timeline_events", None) or [])
+    payload: dict = {
+        "messages": messages,
+        "next_cursor": getattr(result, "next_cursor", None),
+    }
+    if timeline_events:
+        payload["timeline_events"] = timeline_events
+        # Legacy 1.1 DM history does not return end-to-end encrypted
+        # (X Chat) message bodies after conversation upgrade. Surface a
+        # hard warning so agents don't falsely report "no reply sent".
+        event_types = {e.get("type") for e in timeline_events if isinstance(e, dict)}
+        if "trust_conversation" in event_types or event_types - {None}:
+            payload["warnings"] = [
+                "Legacy DM history omits end-to-end encrypted (X Chat) messages "
+                "after conversation upgrade. If the X UI shows more messages "
+                "than listed here, treat this history as incomplete and do not "
+                "assume the latest UI message is missing from the account."
+            ]
+    return _dumps(payload)
 
 
 @mcp.tool()
