@@ -88,9 +88,9 @@ def test_server_still_targets_v1_import_path(forbidden):
     """Cross-check: while the pin says `<2`, the code must still import from
     the v1 path. If someone migrates the imports without moving the pin
     (or vice versa) this catches the mismatch."""
-    server_src = (
-        _PYPROJECT.parent / "twitter_mcp" / "server.py"
-    ).read_text(encoding="utf-8")
+    server_src = (_PYPROJECT.parent / "twitter_mcp" / "server.py").read_text(
+        encoding="utf-8"
+    )
     assert forbidden not in server_src, (
         f"server.py imports from {forbidden!r} (SDK v2) while pyproject still "
         f"pins `mcp<2`. Move both together — see issue #109 phase 3."
