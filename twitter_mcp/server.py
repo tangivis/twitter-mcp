@@ -467,6 +467,9 @@ _VALID_TREND_CATEGORIES = frozenset(
 
 _VALID_COMMUNITY_TWEET_TYPES = frozenset({"Top", "Latest", "Media"})
 
+_DM_HISTORY_MAX_ATTEMPTS = 3
+_DM_HISTORY_RETRY_DELAY_SECONDS = 0.5
+
 
 def _require_exactly_one(
     screen_name: str | None, user_id: str | None, *, op: str
@@ -1322,11 +1325,24 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
     client = await _get_client()
     try:
         user = await client.get_user_by_screen_name(screen_name)
-        result = await client.get_dm_history(user.id, max_id)
     except TooManyRequests as e:
         raise ToolError(f"X rate limit exceeded; retry later. ({e})")
     except NotFound:
         raise ToolError(f"User not found: {screen_name}.")
+
+    for attempt in range(_DM_HISTORY_MAX_ATTEMPTS):
+        try:
+            result = await client.get_dm_history(user.id, max_id)
+            break
+        except TooManyRequests as e:
+            raise ToolError(f"X rate limit exceeded; retry later. ({e})")
+        except NotFound:
+            if attempt == _DM_HISTORY_MAX_ATTEMPTS - 1:
+                raise ToolError(
+                    f"DM conversation with {screen_name} is not yet available; "
+                    "retry later."
+                )
+            await asyncio.sleep(_DM_HISTORY_RETRY_DELAY_SECONDS * (attempt + 1))
 
     messages = [
         {
