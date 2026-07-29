@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.35 の新機能
+
+- **MCP SDK を v2 未満に固定** — `mcp[cli]` に上限がなく、2.0.0 がプレリリースを抜けた時点で新規の `uv tool install twikit-mcp` が SDK v2 を取得してしまう状態でした。v2([2026-07-28 仕様](https://blog.modelcontextprotocol.io/posts/2026-07-28/)実装)は `FastMCP` を `MCPServer` にリネームし `mcp.server.fastmcp.*` を `mcp.server.mcpserver.*` へ移動するため、本 server は import 時点で落ちます。`>=1.27,<2` に固定し、センチネルテストで保護しました。既存インストールの挙動は変わりません。移行は issue #109 で追跡。
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.34 の新機能
 
 - **Pi のセットアップ手順** — [インストールページ](install.md)に [Pi](https://github.com/earendil-works/pi) を追加。Pi には MCP が組み込まれていないため、コミュニティ製 MCP 拡張(`pi-mcp-adapter`)の導入と、その `directTools` 許可リストで本 server の 59 ツールがコーディングセッションのコンテキストを圧迫しないようにする手順を記載しました。ドキュメントのみの変更 — コードは変更なし、`twikit-mcp` は標準的な stdio MCP server なので特別な対応は不要です。
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.33 の新機能
 
