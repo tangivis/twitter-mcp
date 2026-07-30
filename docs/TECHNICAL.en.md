@@ -9,7 +9,7 @@
 If you're an English-only reader who lands here looking for high-level info, here's the elevator pitch:
 
 - **What is MCP?** A JSON-RPC 2.0 protocol over stdio that lets an LLM client (Claude Code, Cursor, …) discover and call "tools" exposed by a server process. Think of it as a typed function-call interface for LLMs.
-- **What does this server do?** Wraps every public method on the vendored [twikit](https://github.com/d60/twikit) Twitter/X client as an `@mcp.tool()`-decorated async function. 57 tools total. The LLM picks one based on user intent + the tool's docstring.
+- **What does this server do?** Exposes 62 `@mcp.tool()`-decorated async functions backed by vendored [twikit](https://github.com/d60/twikit) or, for XChat, a local browser reader. The LLM picks one based on user intent + the tool's docstring.
 - **Why vendored twikit?** Two upstream PR-#412 fixes that aren't released to PyPI yet, plus our own defensive `.get()` patches. See [Vendoring twikit](VENDORING.md).
 - **Auth model?** Browser cookies (`ct0` + `auth_token`) lifted from a logged-in X session. No developer-account approval, no $200/mo API tier.
 

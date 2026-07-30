@@ -67,6 +67,7 @@ plugins:
             - Home: index.md
             - Install: install.md
             - CLI mode: cli.md
+            - Local XChat reader: XCHAT.md
             - MCP Tools API: api.md
             - Internals:
                 - Technical design: TECHNICAL.md
@@ -79,6 +80,7 @@ plugins:
             - 首页: index.md
             - 安装: install.md
             - CLI 模式: cli.md
+            - 本地 XChat 阅读器: XCHAT.md
             - MCP 工具 API: api.md
             - 内部实现:
                 - 技术设计: TECHNICAL.md
@@ -91,6 +93,7 @@ plugins:
             - ホーム: index.md
             - インストール: install.md
             - CLI モード: cli.md
+            - ローカル XChat リーダー: XCHAT.md
             - MCP ツール API: api.md
             - 内部実装:
                 - 技術設計: TECHNICAL.md

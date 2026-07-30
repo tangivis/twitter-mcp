@@ -1,0 +1,234 @@
+"""Settings for the XChat path, loaded from `.env.local` / `.env` + process env.
+
+We parse dotenv files ourselves rather than adding `python-dotenv`: the format
+we need is a dozen lines of code, and this package is an optional extra — it
+should not drag a runtime dependency into the base install.
+
+Precedence, highest first:
+    1. the real process environment
+    2. `.env.local`   (the file the maintainer actually uses for secrets)
+    3. `.env`
+That ordering matters: a value exported in the shell must win, otherwise a
+stale file silently overrides what the user just typed.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# Searched in order, first match wins per key (see module docstring).
+ENV_FILENAMES = (".env.local", ".env")
+
+DEFAULT_PROFILE_DIR = "~/.config/twitter-mcp/xchat-profile"
+DEFAULT_TIMEOUT_MS = 30_000
+DEFAULT_MESSAGES_URL = "https://x.com/i/chat"
+DEFAULT_OAUTH_REDIRECT_URI = "http://localhost:8080/callback"
+DEFAULT_OAUTH_TOKEN_FILE = "~/.config/twitter-mcp/xchat-oauth.json"
+
+_TRUE = {"1", "true", "yes", "on"}
+_FALSE = {"0", "false", "no", "off"}
+
+# How to obtain a PIN when X asks for one.
+PIN_PROMPT_MODES = ("auto", "tty", "web", "none")
+BACKENDS = ("local", "chatxdk")
+
+
+def _strip_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
+
+
+def parse_env_file(text: str) -> dict[str, str]:
+    """Parse dotenv-style text into a dict.
+
+    Supports `KEY=value`, `export KEY=value`, `#` comments, blank lines, and
+    single/double quoted values. Deliberately does NOT do variable expansion —
+    a PIN like `12$34` must survive verbatim.
+    """
+    out: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        if not key:
+            continue
+        out[key] = _strip_quotes(value.strip())
+    return out
+
+
+def load_env_files(search_from: Path | None = None) -> dict[str, str]:
+    """Collect env values from `.env.local` then `.env`, walking up to the repo root.
+
+    Walking upward means `twikit-mcp xchat ...` works from a subdirectory, which
+    is how it will actually be invoked most of the time.
+    """
+    start = Path(search_from or Path.cwd()).resolve()
+    merged: dict[str, str] = {}
+    # Nearest directory wins, and within a directory `.env.local` beats `.env`.
+    for directory in (start, *start.parents):
+        for name in ENV_FILENAMES:
+            path = directory / name
+            if not path.is_file():
+                continue
+            try:
+                parsed = parse_env_file(path.read_text(encoding="utf-8"))
+            except OSError:
+                continue
+            for key, value in parsed.items():
+                merged.setdefault(key, value)
+        if (directory / ".git").exists():
+            break
+    return merged
+
+
+def _as_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    lowered = value.strip().lower()
+    if lowered in _TRUE:
+        return True
+    if lowered in _FALSE:
+        return False
+    return default
+
+
+def _as_int(value: str | None, default: int) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+@dataclass
+class XChatSettings:
+    """Resolved XChat configuration.
+
+    `pin` is a secret: `__repr__` is overridden so it cannot leak into a log
+    line, a traceback, or an MCP error payload by accident.
+    """
+
+    profile_dir: Path
+    # Optional path to X's already-decrypted local XChat SQLite database.
+    # When configured, all read commands use this source and never launch a browser.
+    database_path: Path | None = None
+    database_browser: str | None = None
+    database_profile: str | None = None
+    # `chatxdk` is X's official browser-independent encrypted-chat SDK.  It is
+    # opt-in because its network transport is a paid X API product.
+    backend: str = "local"
+    api_access_token: str | None = None
+    oauth_client_id: str | None = None
+    oauth_redirect_uri: str = DEFAULT_OAUTH_REDIRECT_URI
+    oauth_token_file: Path = field(
+        default_factory=lambda: Path(os.path.expanduser(DEFAULT_OAUTH_TOKEN_FILE))
+    )
+    headless: bool = True
+    pin: str | None = None
+    pin_prompt: str = "auto"
+    timeout_ms: int = DEFAULT_TIMEOUT_MS
+    messages_url: str = DEFAULT_MESSAGES_URL
+    # Playwright browser channel, e.g. "chrome". None uses the bundled
+    # Chromium; pointing at a real Chrome build helps when X's login flow
+    # treats plain Chromium as suspicious.
+    browser_channel: str | None = None
+    # Optional, explicit bootstrap source for `xchat login`. The file is never
+    # consulted during normal headless reads; importing these credentials into
+    # the dedicated profile grants it persistent access to the X account.
+    cookie_file: Path | None = None
+    selector_overrides: Path | None = None
+    raw: dict[str, str] = field(default_factory=dict, repr=False)
+
+    def __repr__(self) -> str:  # pragma: no cover - trivial formatting
+        return (
+            f"XChatSettings(profile_dir={self.profile_dir!r}, "
+            f"database_path={self.database_path!r}, "
+            f"database_browser={self.database_browser!r}, "
+            f"backend={self.backend!r}, "
+            f"api_access_token={'<set>' if self.api_access_token else None}, "
+            f"oauth_client_id={'<set>' if self.oauth_client_id else None}, "
+            f"oauth_token_file={self.oauth_token_file!r}, "
+            f"headless={self.headless!r}, pin={'<set>' if self.pin else None}, "
+            f"pin_prompt={self.pin_prompt!r}, timeout_ms={self.timeout_ms!r})"
+        )
+
+    @property
+    def has_pin(self) -> bool:
+        return bool(self.pin)
+
+
+def load_settings(
+    environ: dict[str, str] | None = None,
+    search_from: Path | None = None,
+) -> XChatSettings:
+    """Resolve settings from process env layered over dotenv files."""
+    process_env = dict(os.environ if environ is None else environ)
+    file_env = load_env_files(search_from)
+    explicit_env_file = process_env.get("XCHAT_ENV_FILE")
+    if explicit_env_file:
+        try:
+            explicit_values = parse_env_file(
+                Path(os.path.expanduser(explicit_env_file)).read_text(encoding="utf-8")
+            )
+        except OSError:
+            explicit_values = {}
+        # An explicitly selected secret file wins over cwd discovery while the
+        # real process environment remains the highest-precedence source.
+        file_env = {**file_env, **explicit_values}
+
+    def get(key: str) -> str | None:
+        value = process_env.get(key)
+        if value is None or value == "":
+            value = file_env.get(key)
+        return value or None
+
+    pin_prompt = (get("XCHAT_PIN_PROMPT") or "auto").strip().lower()
+    if pin_prompt not in PIN_PROMPT_MODES:
+        pin_prompt = "auto"
+
+    backend = (get("XCHAT_BACKEND") or "local").strip().lower()
+    if backend not in BACKENDS:
+        backend = "local"
+
+    overrides = get("XCHAT_SELECTORS")
+    cookie_file = get("XCHAT_COOKIE_FILE")
+    database_path = get("XCHAT_DATABASE_PATH")
+
+    return XChatSettings(
+        profile_dir=Path(
+            os.path.expanduser(get("XCHAT_PROFILE_DIR") or DEFAULT_PROFILE_DIR)
+        ),
+        database_path=(
+            Path(os.path.expanduser(database_path)) if database_path else None
+        ),
+        database_browser=get("XCHAT_BROWSER"),
+        database_profile=get("XCHAT_BROWSER_PROFILE"),
+        backend=backend,
+        api_access_token=get("XCHAT_API_ACCESS_TOKEN"),
+        oauth_client_id=get("XCHAT_OAUTH_CLIENT_ID"),
+        oauth_redirect_uri=(
+            get("XCHAT_OAUTH_REDIRECT_URI") or DEFAULT_OAUTH_REDIRECT_URI
+        ),
+        oauth_token_file=Path(
+            os.path.expanduser(
+                get("XCHAT_OAUTH_TOKEN_FILE") or DEFAULT_OAUTH_TOKEN_FILE
+            )
+        ),
+        headless=_as_bool(get("XCHAT_HEADLESS"), True),
+        pin=get("XCHAT_PIN"),
+        pin_prompt=pin_prompt,
+        timeout_ms=_as_int(get("XCHAT_TIMEOUT_MS"), DEFAULT_TIMEOUT_MS),
+        messages_url=get("XCHAT_MESSAGES_URL") or DEFAULT_MESSAGES_URL,
+        browser_channel=get("XCHAT_BROWSER_CHANNEL"),
+        cookie_file=(Path(os.path.expanduser(cookie_file)) if cookie_file else None),
+        selector_overrides=Path(os.path.expanduser(overrides)) if overrides else None,
+        raw=file_env,
+    )

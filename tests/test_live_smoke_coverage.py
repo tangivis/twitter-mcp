@@ -62,6 +62,21 @@ _MUTATING = {
     "download_tweet_video",
 }
 
+# Idempotent reads that nonetheless CANNOT run in live-smoke, because they
+# don't talk to X's API at all — they drive a locally-paired browser profile
+# (see `twitter_mcp/xchat/`). CI has no such profile, no chat PIN, and no
+# registered device, so these can only ever fail there. They are not mutations,
+# so `_MUTATING` would be a lie; hence a third bucket.
+#
+# The sentinel's intent (issue #73) still holds: adding a *network* read tool
+# without smoke coverage must fail. Only add here if the tool is genuinely
+# unreachable from CI, with the reason stated.
+_LOCAL_ONLY = {
+    "xchat_status",
+    "xchat_list_conversations",
+    "xchat_get_history",
+}
+
 
 def test_live_smoke_covers_all_idempotent_reads():
     """Issue #73 acceptance criterion 1: all 25 idempotent reads are
@@ -70,14 +85,14 @@ def test_live_smoke_covers_all_idempotent_reads():
 
     all_tools = set(server.mcp._tool_manager._tools.keys())
 
-    # Sanity: every name in _MUTATING actually exists. Catches typos.
-    unknown_mutating = _MUTATING - all_tools
-    assert not unknown_mutating, (
-        f"_MUTATING references unregistered tools: {unknown_mutating!r}. "
-        f"Update this test's allowlist to match server.py's registry."
+    # Sanity: every excluded name actually exists. Catches typos.
+    unknown = (_MUTATING | _LOCAL_ONLY) - all_tools
+    assert not unknown, (
+        f"This test's allowlists reference unregistered tools: {unknown!r}. "
+        f"Update them to match server.py's registry."
     )
 
-    idempotent = all_tools - _MUTATING
+    idempotent = all_tools - _MUTATING - _LOCAL_ONLY
 
     smoke_yaml = Path(__file__).parent.parent / ".github/workflows/live-smoke.yml"
     # Windows default encoding is cp1252; pin utf-8 since the workflow

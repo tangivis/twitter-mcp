@@ -80,7 +80,7 @@ Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`
 
 ## What you get
 
-- **57 tools** covering tweets, users, lists, communities, scheduled tweets + polls, DMs, articles, search, trends, notifications.
+- **62 tools** covering tweets, users, lists, communities, scheduled tweets + polls, legacy DMs, local XChat reads, articles, search, trends, notifications.
 - **Browser-cookie auth** — copy `ct0` + `auth_token` from your X session, you're authenticated.
 - **Two transports, one binary** — MCP server (default) for AI agents; `twikit-mcp call <tool>` CLI for shells.
 - **Vendored [twikit](https://github.com/d60/twikit)** with project-specific defensive patches.

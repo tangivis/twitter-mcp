@@ -38,6 +38,13 @@ dependencies = [
     "rich",
 ]
 
+[project.optional-dependencies]
+# XChat (E2E-encrypted DM) support drives a locally-paired browser session.
+# Optional so the base install stays lightweight for the API-only tools.
+xchat = ["playwright>=1.45"]
+# Official browser-independent XChat receive/decrypt path. X bills API usage.
+xchat-api = ["chatxdk==0.4.3", "xdk>=0.10.6,<0.11"]
+
 [project.urls]
 Homepage = "https://github.com/tangivis/twitter-mcp"
 Repository = "https://github.com/tangivis/twitter-mcp"

@@ -15,7 +15,7 @@ files created by gen-files at on_files time — it scans on_config and
 misses them. A real on-disk file feeds i18n the same way as any other
 markdown page.
 
-Output: a single markdown page that groups all 57 MCP tools by their
+Output: a single markdown page that groups all 62 MCP tools by their
 implicit category (read / write / list / community / dm / etc.). For
 each tool we render the same source-of-truth docstring twice:
 
@@ -179,7 +179,7 @@ SECTION_ORDER = [
 
 # Localized headers and section labels per locale. Tool docstrings stay
 # English — Python signatures + types are language-neutral, and translating
-# 57 docstrings would create maintenance drift.
+# 62 docstrings would create maintenance drift.
 _LOCALES = {
     "en": {
         "title": "MCP Tools API Reference",
@@ -270,7 +270,7 @@ _LOCALES = {
 def _write_api_page(locale: str) -> None:
     """Emit `docs/api.<locale>.md` with localized chrome.
 
-    Tool docstrings stay native (Python source) — translating 57
+    Tool docstrings stay native (Python source) — translating 62
     docstrings would create maintenance drift. Title / intro / table /
     section headers are translated per `_LOCALES[locale]`. mkdocs-static-i18n
     serves the locale-appropriate file at /<locale>/api/.
@@ -407,7 +407,7 @@ def _write_cli_tools_page(locale: str) -> None:
                 fn = getattr(tool, "fn", None) or getattr(tool, "func", None) or tool
                 summary = _docstring_first_line(fn) or L["no_doc_summary"]
                 # `**name**` for the tool name, italic summary, bash cli on next line.
-                # No `###` per tool — keeps the page compact (57 entries × 4 lines
+                # No `###` per tool — keeps the page compact (62 entries × 4 lines
                 # ≈ 240 lines per locale, vs 600+ if every tool got a heading).
                 f.write(f"#### `{name}`\n\n")
                 f.write(f"{summary}\n\n")

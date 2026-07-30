@@ -2,15 +2,17 @@
 
 # twikit-mcp
 
-**Twitter/X MCP Server — No API Key Required**
+**Twitter/X MCP Server — API Key Optional**
 
 [![CI](https://github.com/tangivis/twitter-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/tangivis/twitter-mcp/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/twikit-mcp)](https://pypi.org/project/twikit-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/twikit-mcp)](https://pypi.org/project/twikit-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies.
-No Twitter API key needed. Free forever.
+An [MCP](https://modelcontextprotocol.io/) server that lets Codex, Claude, Grok,
+Gemini/Antigravity, or any MCP-compatible AI agent interact with Twitter/X.
+Standard tools use browser cookies without an API key; the optional
+browser-free XChat backend uses X OAuth and the paid X API.
 
 **[English](#english)** | **[中文](#中文)** | **[日本語](#日本語)**
 
@@ -26,10 +28,10 @@ No Twitter API key needed. Free forever.
 
 |  | twikit-mcp (this project) | Other Twitter MCP servers |
 |--|---------------------------|--------------------------|
-| **Auth** | Browser cookies | Twitter API Key |
-| **Cost** | Free | $200+/month |
-| **Setup** | 2 steps, 2 minutes | Apply for developer account, wait for approval |
-| **API** | [twikit](https://github.com/d60/twikit) (reverse-engineered) | [X API](https://developer.x.com/en/docs/x-api) (official, paid) |
+| **Auth** | Browser cookies by default; optional X OAuth for browser-free XChat | Twitter API Key |
+| **Cost** | Cookie-backed tools are free; optional X API usage is billed by X | Paid API access |
+| **Setup** | 2 steps for standard tools; developer app only for the optional API backend | Apply for developer account, wait for approval |
+| **API** | [twikit](https://github.com/d60/twikit) by default; official `chat-xdk` optionally | [X API](https://developer.x.com/en/docs/x-api) (official, paid) |
 
 ### Quick Start
 
@@ -124,7 +126,68 @@ claude mcp add twitter -s user \
 
 This is a standard MCP server (stdio transport). It works with **any** MCP-compatible client — not just Claude Code.
 
-Add to your MCP client config (e.g. `mcp.json`, `settings.json`):
+First locate the installed executable; using its absolute path avoids differences
+between desktop-app and terminal `PATH` values:
+
+```bash
+command -v twikit-mcp
+```
+
+The two environment entries below are independent:
+
+- `TWITTER_COOKIES` enables the standard cookie-backed Twitter/X tools.
+- `XCHAT_ENV_FILE` enables the optional browser-free XChat setup described
+  [below](#local-xchat-encrypted-dm-reader). Configure either one or both.
+
+**Codex / ChatGPT** — add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.twitter]
+command = "/absolute/path/to/twikit-mcp"
+args = []
+
+[mcp_servers.twitter.env]
+TWITTER_COOKIES = "/absolute/path/to/cookies.json"
+XCHAT_ENV_FILE = "/absolute/path/to/xchat.env"
+```
+
+**Grok Build** — use the same TOML block in `~/.grok/config.toml`.
+
+**Gemini** — add to `~/.gemini/config/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "/absolute/path/to/twikit-mcp",
+      "args": [],
+      "env": {
+        "TWITTER_COOKIES": "/absolute/path/to/cookies.json",
+        "XCHAT_ENV_FILE": "/absolute/path/to/xchat.env"
+      }
+    }
+  }
+}
+```
+
+**Antigravity** — use the same JSON entry in
+`~/.gemini/antigravity/mcp_config.json`.
+
+**Claude Code** — register both authentication paths from the terminal:
+
+```bash
+claude mcp add --scope user twitter \
+  -e TWITTER_COOKIES=/absolute/path/to/cookies.json \
+  -e XCHAT_ENV_FILE=/absolute/path/to/xchat.env \
+  -- /absolute/path/to/twikit-mcp
+```
+
+Restart the client—or open a new task/session—after changing its MCP config.
+Desktop clients automatically manage the stdio server process; do not start a
+separate background instance.
+
+For any other MCP client, use the same standard JSON shape in its `mcp.json` or
+`settings.json` and include whichever environment entries you need:
 
 ```json
 {
@@ -139,14 +202,15 @@ Add to your MCP client config (e.g. `mcp.json`, `settings.json`):
 }
 ```
 
-> Works with: Claude Code, Claude Desktop, Cursor, Windsurf, opencode, Cline, etc.
+> Works with: Codex/ChatGPT, Claude Code, Claude Desktop, Grok Build, Gemini,
+> Antigravity, Cursor, Windsurf, opencode, Cline, and other stdio MCP clients.
 
 That's it. Start talking:
 
 ```
 > Search tweets about AI
 > What did @elonmusk post recently?
-> Send a tweet saying: Hello from Claude!
+> Send a tweet saying: Hello from my MCP client!
 ```
 
 #### CLI mode (no MCP client needed)
@@ -166,10 +230,10 @@ twikit-mcp trends 20                    # top 20 trending topics
 
 Output is plain text — readable in any terminal, native unicode (no `\uXXXX` escapes).
 
-**Machine-friendly subcommands** — raw JSON, `key=value` args, every one of the 57 MCP tools:
+**Machine-friendly subcommands** — raw JSON, `key=value` args, every one of the 62 MCP tools:
 
 ```bash
-twikit-mcp list                         # all 57 tool names
+twikit-mcp list                         # all 62 tool names
 twikit-mcp call get_user_info screen_name=elonmusk
 twikit-mcp call search_tweets query=AI count=5 product=Top
 twikit-mcp call get_user_info screen_name=elonmusk | jq .followers_count
@@ -182,7 +246,82 @@ twikit-mcp                              # stdio JSON-RPC for MCP clients
 twikit-mcp serve                        # explicit, same behavior
 ```
 
-All three modes share the same `~/.config/twitter-mcp/cookies.json` — no separate config.
+The normal twikit modes share `~/.config/twitter-mcp/cookies.json`. XChat can
+read an existing registered browser's decrypted local SQLite store, with a
+separate paired Playwright profile as fallback; see
+[Local XChat reader](docs/XCHAT.en.md).
+
+### Local XChat (encrypted DM) reader
+
+XChat conversations no longer appear through twikit's legacy DM endpoint. The
+local reader can discover and open X's already-decrypted Chrome, Edge, Aside,
+Chromium, or Brave SQLite store strictly read-only, selecting plaintext and
+metadata without reading key bytes or launching browser automation. Configure
+`XCHAT_BROWSER=chrome` (and optionally `XCHAT_BROWSER_PROFILE=Default`) and use
+`xchat_list_conversations` / `xchat_get_history`. An explicit database path and
+a persistent Playwright profile remain recovery fallbacks.
+
+For a browser-independent path, the optional official `chat-xdk` backend reads
+encrypted events from X's paid API and unlocks keys through Juicebox in memory:
+
+As of 2026-07-26, X's Developer Console requires a **minimum $5 USD credit
+purchase** to fund pay-per-use access and documents DM event reads at **$0.01
+per returned event**, with 24-hour resource deduplication. Before testing, set
+the account's billing-cycle spend cap to **$5 USD**. Pricing and Console rules
+can change, so verify both in [console.x.com](https://console.x.com/) before
+paying.
+
+Setup requires an OAuth 2.0 **Native App / public client** with callback
+`http://localhost:8080/callback` and exactly these read permissions:
+`dm.read`, `users.read`, `tweet.read`, and `offline.access`. It does not request
+`dm.write` or `tweet.write`, and the implementation does not export private keys.
+
+```bash
+pip install 'twikit-mcp[xchat-api]'
+XCHAT_BACKEND=chatxdk \
+XCHAT_OAUTH_CLIENT_ID=... \
+XCHAT_PIN=1234 \
+twikit-mcp xchat oauth
+
+# Later reads refresh OAuth automatically and do not open a browser.
+twikit-mcp xchat status
+```
+
+The backend is explicit opt-in, read-only, and does not require a browser during
+normal use. The rotating OAuth token is stored owner-only at
+`~/.config/twitter-mcp/xchat-oauth.json`; keep `XCHAT_PIN` and the public client
+ID in a gitignored owner-only env file rather than an MCP configuration copied
+between clients.
+
+For the optional paired-browser fallback, install its dependency first:
+
+```bash
+pip install 'twikit-mcp[xchat]'
+playwright install chromium
+twikit-mcp xchat login
+```
+
+See the [XChat setup and security notes](docs/XCHAT.en.md), including the
+explicit cookie-bootstrap recovery path for a clean profile hit by X login
+rate limits.
+
+### Private bookmark export and categorization
+
+Bookmarks can be exported page by page with `get_bookmarks`, deduplicated by
+tweet ID, and organized into a private local archive. Store exports under
+`.private/twitter-bookmarks/`; this path is included in the repository's
+`.gitignore`, and export directories/files should use modes 700/600.
+
+The recommended workflow checkpoints the raw response after every page, follows
+`next_cursor` until X returns no new IDs, preserves expanded URLs and media
+references, assigns one primary category plus up to three tags, and creates a
+Markdown index with one file per category. It does not download media binaries
+unless explicitly extended to do so.
+
+See the [private bookmark export guide](docs/BOOKMARKS.en.md) for the exact
+pagination, sorting taxonomy, output layout, privacy checks, and safe refresh
+procedure. Never commit bookmark text, raw payloads, cookies, PINs, or OAuth
+tokens.
 
 ### Available Tools
 
@@ -220,6 +359,9 @@ All three modes share the same `~/.config/twitter-mcp/cookies.json` — no separ
 | `send_dm` | ⚠️ Send a PRIVATE DM to a user — do not bulk-call |
 | `send_dm_to_group` | ⚠️ Send a PRIVATE DM to a group conversation — do not bulk-call |
 | `get_dm_history` | ⚠️ Get DM conversation history with a user (private — paginate via `max_id`) |
+| `xchat_status` | Report local encrypted-DM profile state without unlocking it |
+| `xchat_list_conversations` | ⚠️ List locally decrypted XChat conversations |
+| `xchat_get_history` | ⚠️ Read one locally decrypted XChat history |
 | `delete_dm` | ⚠️ Delete a DM by message ID (private) |
 | `get_list` | Get a Twitter List by ID |
 | `get_lists` | Get authenticated user's Lists (paginated via `cursor`, max 100/call) |
@@ -308,10 +450,10 @@ claude mcp add twitter -s user ^
 
 |  | twikit-mcp（本项目） | 其他 Twitter MCP |
 |--|---------------------|-----------------|
-| **认证** | 浏览器 Cookies | Twitter API Key |
-| **费用** | 免费 | $200+/月 |
-| **配置** | 2 步，2 分钟 | 申请开发者账号，等审批 |
-| **API** | [twikit](https://github.com/d60/twikit)（逆向工程） | [X API](https://developer.x.com/en/docs/x-api)（官方，付费） |
+| **认证** | 默认使用浏览器 Cookies；无浏览器 XChat 可选 X OAuth | Twitter API Key |
+| **费用** | Cookie 工具免费；可选 X API 用量由 X 收费 | 付费 API |
+| **配置** | 标准工具 2 步完成；仅可选 API 后端需要开发者应用 | 申请开发者账号，等审批 |
+| **API** | 默认使用 [twikit](https://github.com/d60/twikit)；可选官方 `chat-xdk` | [X API](https://developer.x.com/en/docs/x-api)（官方，付费） |
 
 ### 快速开始
 
@@ -421,14 +563,15 @@ claude mcp add twitter -s user \
 }
 ```
 
-> 兼容：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline 等。
+> 兼容：Codex/ChatGPT、Claude Code、Claude Desktop、Grok Build、Gemini、
+> Antigravity、Cursor、Windsurf、opencode、Cline 等。
 
 搞定。直接说人话：
 
 ```
 > 搜一下关于 AI 的推文
 > 看看 @elonmusk 最近发了什么
-> 发一条推说：Hello from Claude!
+> 发一条推说：Hello from my MCP client!
 ```
 
 ### 可用工具
@@ -555,10 +698,10 @@ claude mcp add twitter -s user ^
 
 |  | twikit-mcp（本プロジェクト） | 他の Twitter MCP |
 |--|---------------------------|-----------------|
-| **認証** | ブラウザ Cookie | Twitter API Key |
-| **料金** | 無料 | $200+/月 |
-| **セットアップ** | 2ステップ、2分 | 開発者アカウント申請、承認待ち |
-| **API** | [twikit](https://github.com/d60/twikit)（リバースエンジニアリング） | [X API](https://developer.x.com/en/docs/x-api)（公式、有料） |
+| **認証** | 既定はブラウザ Cookie。ブラウザ不要の XChat では X OAuth を任意利用 | Twitter API Key |
+| **料金** | Cookie ベースの機能は無料。任意の X API 利用は X が課金 | 有料 API |
+| **セットアップ** | 標準機能は2ステップ。開発者アプリは任意の API バックエンドのみ必要 | 開発者アカウント申請、承認待ち |
+| **API** | 既定は [twikit](https://github.com/d60/twikit)。公式 `chat-xdk` は任意 | [X API](https://developer.x.com/en/docs/x-api)（公式、有料） |
 
 ### クイックスタート
 
@@ -668,14 +811,15 @@ MCP クライアントの設定ファイル（`mcp.json`、`settings.json` な�
 }
 ```
 
-> 対応クライアント：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline など。
+> 対応クライアント：Codex/ChatGPT、Claude Code、Claude Desktop、Grok Build、Gemini、
+> Antigravity、Cursor、Windsurf、opencode、Cline など。
 
 以上です。自然言語で話しかけてください：
 
 ```
 > AIに関するツイートを検索して
 > @elonmusk の最近の投稿を見せて
-> 「Hello from Claude!」とツイートして
+> 「Hello from my MCP client!」とツイートして
 ```
 
 ### 利用可能なツール

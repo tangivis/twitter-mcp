@@ -1,4 +1,4 @@
-"""Behavior tests for the 57 MCP tools.
+"""Behavior tests for the 62 MCP tools.
 
 Uses mocks to exercise each tool's body without network or real cookies.
 Covers: args passed through to twikit, output JSON shape, text truncation,
@@ -1566,6 +1566,27 @@ async def test_get_dm_history_raises_clean_on_rate_limit(fake_client):
     assert "rate limit" in str(exc.value).lower()
 
 
+async def test_get_dm_history_does_not_retry_conversation_rate_limit(
+    fake_client, monkeypatch
+):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import TooManyRequests
+
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(side_effect=TooManyRequests("rate"))
+    sleep = AsyncMock()
+    monkeypatch.setattr(server.asyncio, "sleep", sleep)
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_dm_history("alice")
+
+    assert "rate limit" in str(exc.value).lower()
+    fake_client.get_dm_history.assert_awaited_once_with("u-42", None)
+    sleep.assert_not_awaited()
+
+
 async def test_get_dm_history_raises_clean_on_not_found(fake_client):
     from mcp.server.fastmcp.exceptions import ToolError
 
@@ -1575,6 +1596,203 @@ async def test_get_dm_history_raises_clean_on_not_found(fake_client):
     with pytest.raises(ToolError) as exc:
         await server.get_dm_history("ghost")
     assert "not found" in str(exc.value).lower()
+
+
+async def test_get_dm_history_does_not_retry_conversation_not_found(
+    fake_client, monkeypatch
+):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(side_effect=NotFound("not available"))
+    sleep = AsyncMock()
+    monkeypatch.setattr(server.asyncio, "sleep", sleep)
+    monkeypatch.setattr(server, "_is_xchat_user_id", AsyncMock(return_value=False))
+
+    with pytest.raises(ToolError, match="legacy_dm_unavailable"):
+        await server.get_dm_history("alice")
+
+    fake_client.get_dm_history.assert_awaited_once_with("u-42", None)
+    sleep.assert_not_awaited()
+
+
+async def test_get_dm_history_reports_positive_xchat_classification(
+    fake_client, monkeypatch
+):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from twitter_mcp._vendor.twikit.errors import NotFound
+
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(
+        side_effect=NotFound("conversation not ready")
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr(server.asyncio, "sleep", sleep)
+    monkeypatch.setattr(server, "_is_xchat_user_id", AsyncMock(return_value=True))
+
+    with pytest.raises(ToolError) as exc:
+        await server.get_dm_history("alice")
+
+    assert "xchat_encrypted" in str(exc.value).lower()
+    assert fake_client.get_dm_history.await_count == 1
+    sleep.assert_not_awaited()
+
+
+async def test_empty_initial_legacy_history_is_classified_not_returned(
+    fake_client, monkeypatch
+):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(return_value=_FakeMessageResult([]))
+    monkeypatch.setattr(server, "_is_xchat_user_id", AsyncMock(return_value=True))
+
+    with pytest.raises(ToolError, match="xchat_encrypted"):
+        await server.get_dm_history("alice")
+
+
+async def test_empty_paginated_legacy_history_still_means_end(fake_client, monkeypatch):
+    user = _fake_user(user_id="u-42", screen_name="alice")
+    fake_client.get_user_by_screen_name = AsyncMock(return_value=user)
+    fake_client.get_dm_history = AsyncMock(return_value=_FakeMessageResult([]))
+    classifier = AsyncMock(return_value=True)
+    monkeypatch.setattr(server, "_is_xchat_user_id", classifier)
+
+    out = json.loads(await server.get_dm_history("alice", max_id="older"))
+
+    assert out["messages"] == []
+    classifier.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("state", "rows", "expected"),
+    [
+        ("ready", [{"conversation_id": "42-999"}], True),
+        ("ready", [{"conversation_id": "41-999"}], False),
+        ("locked", [{"conversation_id": "42-999"}], None),
+    ],
+)
+async def test_xchat_user_id_classification_from_paired_profile(
+    monkeypatch, tmp_path, state, rows, expected
+):
+    from twitter_mcp.xchat import config as xchat_config
+    from twitter_mcp.xchat import session as xchat_session
+
+    profile = tmp_path / "profile"
+    (profile / "Default").mkdir(parents=True)
+    settings = xchat_config.XChatSettings(profile_dir=profile)
+
+    class FakeSession:
+        closed = False
+
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def open(self):
+            return self
+
+        async def _goto_messages(self):
+            return None
+
+        async def current_state(self):
+            return state
+
+        async def _read_conversations(self):
+            return rows
+
+        async def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(xchat_config, "load_settings", lambda: settings)
+    monkeypatch.setattr(xchat_session, "XChatSession", FakeSession)
+
+    assert await server._is_xchat_user_id("42") is expected
+
+
+async def test_xchat_user_id_classification_skips_missing_profile(
+    monkeypatch, tmp_path
+):
+    from twitter_mcp.xchat import config as xchat_config
+
+    settings = xchat_config.XChatSettings(profile_dir=tmp_path / "missing")
+    monkeypatch.setattr(xchat_config, "load_settings", lambda: settings)
+
+    assert await server._is_xchat_user_id("42") is None
+
+
+async def test_xchat_user_id_classification_uses_database_colon_ids(
+    monkeypatch, tmp_path
+):
+    from twitter_mcp.xchat import config as xchat_config
+    from twitter_mcp.xchat import database as xchat_database
+    from twitter_mcp.xchat import session as xchat_session
+
+    database_path = tmp_path / "chat.db"
+    settings = xchat_config.XChatSettings(
+        profile_dir=tmp_path / "missing", database_path=database_path
+    )
+
+    class FakeDatabase:
+        def __init__(self, path):
+            assert path == database_path
+
+        def list_conversations(self, limit):
+            assert limit == 500
+            return [{"conversation_id": "10:42"}]
+
+    monkeypatch.setattr(xchat_config, "load_settings", lambda: settings)
+    monkeypatch.setattr(xchat_database, "XChatDatabase", FakeDatabase)
+    monkeypatch.setattr(
+        xchat_session,
+        "XChatSession",
+        lambda *a, **k: pytest.fail("database classification must not open browser"),
+    )
+
+    assert await server._is_xchat_user_id("42") is True
+
+
+async def test_xchat_user_id_database_error_is_unknown(monkeypatch, tmp_path):
+    from twitter_mcp.xchat import config as xchat_config
+
+    settings = xchat_config.XChatSettings(
+        profile_dir=tmp_path / "missing", database_path=tmp_path / "missing.db"
+    )
+    monkeypatch.setattr(xchat_config, "load_settings", lambda: settings)
+
+    assert await server._is_xchat_user_id("42") is None
+
+
+async def test_xchat_user_id_classification_treats_browser_error_as_unknown(
+    monkeypatch, tmp_path
+):
+    from twitter_mcp.xchat import config as xchat_config
+    from twitter_mcp.xchat import session as xchat_session
+    from twitter_mcp.xchat.errors import XChatUnavailable
+
+    profile = tmp_path / "profile"
+    (profile / "Default").mkdir(parents=True)
+    settings = xchat_config.XChatSettings(profile_dir=profile)
+
+    class FailingSession:
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def open(self):
+            raise XChatUnavailable("browser unavailable")
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(xchat_config, "load_settings", lambda: settings)
+    monkeypatch.setattr(xchat_session, "XChatSession", FailingSession)
+
+    assert await server._is_xchat_user_id("42") is None
 
 
 # ── delete_dm ─────────────────────────────────────────────────────────────────
