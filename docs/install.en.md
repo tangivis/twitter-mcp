@@ -135,6 +135,43 @@ Edit `~/.config/opencode/config.json`:
 }
 ```
 
+### Pi
+
+Pi has no built-in MCP support — install a community MCP extension first. [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) fits this server best: same `mcpServers` shape as above, lazy connection, and a `directTools` allowlist that keeps `twikit-mcp`'s 59 tools from crowding a coding session's context.
+
+```bash
+pi install npm:pi-mcp-adapter
+```
+
+Then edit `~/.config/mcp/mcp.json` (global) or `.mcp.json` (per-project):
+
+```json
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "/home/YOU/.local/bin/twikit-mcp",
+      "env": {
+        "TWITTER_COOKIES": "/home/YOU/.config/twitter-mcp/cookies.json"
+      },
+      "lifecycle": "lazy",
+      "directTools": [
+        "get_tweet",
+        "get_tweet_replies",
+        "search_tweets",
+        "get_user_info",
+        "get_user_tweets",
+        "get_timeline",
+        "get_trends"
+      ]
+    }
+  }
+}
+```
+
+The seven `directTools` register as native tools; the other 52 stay behind a single proxy tool and are discovered on demand. Use an **absolute** `command` path — Pi's subprocess environment may not have `~/.local/bin` on `PATH`.
+
+Pi's MCP extensions are community-maintained, not first-party, and run with your full system permissions. Read the source before installing one that will hold your cookie path.
+
 ### Any other MCP client
 
 `twikit-mcp` is a standard **stdio** MCP server. Whatever your client's config file looks like, the JSON shape is the same:

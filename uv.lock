@@ -2064,7 +2064,7 @@ wheels = [
 
 [[package]]
 name = "twikit-mcp"
-version = "0.1.33"
+version = "0.1.35"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -2112,7 +2112,7 @@ requires-dist = [
     { name = "js2py-3-13" },
     { name = "lxml" },
     { name = "m3u8" },
-    { name = "mcp", extras = ["cli"] },
+    { name = "mcp", extras = ["cli"], specifier = ">=1.27,<2" },
     { name = "playwright", marker = "extra == 'xchat'", specifier = ">=1.45" },
     { name = "pyotp" },
     { name = "rich" },
