@@ -129,7 +129,7 @@ def test_list_tools_text_is_sorted():
 
 def test_list_tools_text_count_matches_registry():
     out = _list_tools_text()
-    assert len(out.splitlines()) == len(server.mcp._tool_manager._tools)
+    assert len(out.splitlines()) == len(server._registered_tools())
 
 
 # ── _call_tool_async ─────────────────────────────────
@@ -196,7 +196,7 @@ def test_subprocess_list_lists_tools():
     lines = r.stdout.splitlines()
     assert "send_tweet" in lines
     assert "get_tweet" in lines
-    assert len(lines) == len(server.mcp._tool_manager._tools)
+    assert len(lines) == len(server._registered_tools())
 
 
 def test_subprocess_version_flag():

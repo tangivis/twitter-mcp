@@ -26,9 +26,9 @@ def test_import_client_helper():
 
 def test_tools_registered():
     """All 58 tools are registered in the MCP server."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tools = mcp._tool_manager._tools
+    tools = _registered_tools()
     expected = {
         "send_tweet",
         "get_tweet",
@@ -102,9 +102,9 @@ def test_tools_registered():
 
 def test_tool_count():
     """Exactly 59 tools are registered."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tools = mcp._tool_manager._tools
+    tools = _registered_tools()
     assert len(tools) == 59
 
 
@@ -113,9 +113,9 @@ def test_tool_count():
 
 def test_send_tweet_has_text_param():
     """send_tweet requires a 'text' parameter."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["send_tweet"]
+    tool = _registered_tools()["send_tweet"]
     schema = tool.parameters
     assert "text" in schema["properties"]
     assert "text" in schema.get("required", [])
@@ -123,9 +123,9 @@ def test_send_tweet_has_text_param():
 
 def test_send_tweet_has_optional_reply_to():
     """send_tweet has an optional 'reply_to' parameter."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["send_tweet"]
+    tool = _registered_tools()["send_tweet"]
     schema = tool.parameters
     assert "reply_to" in schema["properties"]
     # reply_to should NOT be required
@@ -134,9 +134,9 @@ def test_send_tweet_has_optional_reply_to():
 
 def test_search_tweets_has_query_param():
     """search_tweets requires a 'query' parameter."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["search_tweets"]
+    tool = _registered_tools()["search_tweets"]
     schema = tool.parameters
     assert "query" in schema["properties"]
     assert "query" in schema.get("required", [])
@@ -144,18 +144,18 @@ def test_search_tweets_has_query_param():
 
 def test_search_tweets_has_product_param():
     """search_tweets has a 'product' parameter with default."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["search_tweets"]
+    tool = _registered_tools()["search_tweets"]
     schema = tool.parameters
     assert "product" in schema["properties"]
 
 
 def test_get_user_tweets_has_screen_name():
     """get_user_tweets requires 'screen_name'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_user_tweets"]
+    tool = _registered_tools()["get_user_tweets"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "screen_name" in schema.get("required", [])
@@ -163,18 +163,18 @@ def test_get_user_tweets_has_screen_name():
 
 def test_get_tweet_has_tweet_id():
     """get_tweet requires 'tweet_id'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_tweet"]
+    tool = _registered_tools()["get_tweet"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
 
 
 def test_follow_user_has_screen_name():
     """follow_user requires 'screen_name' (matches get_user_tweets convention)."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["follow_user"]
+    tool = _registered_tools()["follow_user"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "screen_name" in schema.get("required", [])
@@ -182,9 +182,9 @@ def test_follow_user_has_screen_name():
 
 def test_unfollow_user_has_screen_name():
     """unfollow_user requires 'screen_name'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["unfollow_user"]
+    tool = _registered_tools()["unfollow_user"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "screen_name" in schema.get("required", [])
@@ -198,9 +198,9 @@ def test_get_user_info_accepts_either_screen_name_or_user_id():
     whichever it has in hand. Schema-wise neither is required; the body
     raises ToolError if neither is provided (or both).
     """
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_user_info"]
+    tool = _registered_tools()["get_user_info"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "user_id" in schema["properties"]
@@ -212,9 +212,9 @@ def test_get_user_info_accepts_either_screen_name_or_user_id():
 
 def test_get_user_followers_schema_has_count_and_either_user_id_or_screen_name():
     """get_user_followers takes optional screen_name / user_id / count / cursor."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_user_followers"]
+    tool = _registered_tools()["get_user_followers"]
     schema = tool.parameters
     assert {"screen_name", "user_id", "count", "cursor"}.issubset(schema["properties"])
     required = set(schema.get("required", []))
@@ -223,18 +223,18 @@ def test_get_user_followers_schema_has_count_and_either_user_id_or_screen_name()
 
 def test_get_user_following_schema_mirrors_followers():
     """get_user_following has the same schema shape as get_user_followers."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_user_following"]
+    tool = _registered_tools()["get_user_following"]
     schema = tool.parameters
     assert {"screen_name", "user_id", "count", "cursor"}.issubset(schema["properties"])
 
 
 def test_delete_tweet_has_tweet_id():
     """delete_tweet requires 'tweet_id'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["delete_tweet"]
+    tool = _registered_tools()["delete_tweet"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
     assert "tweet_id" in schema.get("required", [])
@@ -242,9 +242,9 @@ def test_delete_tweet_has_tweet_id():
 
 def test_unfavorite_tweet_has_tweet_id():
     """unfavorite_tweet requires 'tweet_id'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["unfavorite_tweet"]
+    tool = _registered_tools()["unfavorite_tweet"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
     assert "tweet_id" in schema.get("required", [])
@@ -252,9 +252,9 @@ def test_unfavorite_tweet_has_tweet_id():
 
 def test_delete_retweet_has_tweet_id():
     """delete_retweet requires 'tweet_id'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["delete_retweet"]
+    tool = _registered_tools()["delete_retweet"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
     assert "tweet_id" in schema.get("required", [])
@@ -262,9 +262,9 @@ def test_delete_retweet_has_tweet_id():
 
 def test_bookmark_tweet_has_tweet_id():
     """bookmark_tweet requires 'tweet_id'; folder_id is optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["bookmark_tweet"]
+    tool = _registered_tools()["bookmark_tweet"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
     assert "tweet_id" in schema.get("required", [])
@@ -274,9 +274,9 @@ def test_bookmark_tweet_has_tweet_id():
 
 def test_delete_bookmark_has_tweet_id():
     """delete_bookmark requires 'tweet_id'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["delete_bookmark"]
+    tool = _registered_tools()["delete_bookmark"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
     assert "tweet_id" in schema.get("required", [])
@@ -284,9 +284,9 @@ def test_delete_bookmark_has_tweet_id():
 
 def test_get_bookmarks_schema():
     """get_bookmarks has optional count and cursor."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_bookmarks"]
+    tool = _registered_tools()["get_bookmarks"]
     schema = tool.parameters
     assert "count" in schema["properties"]
     assert "cursor" in schema["properties"]
@@ -297,9 +297,9 @@ def test_get_bookmarks_schema():
 
 def test_get_favoriters_schema():
     """get_favoriters requires tweet_id; count and cursor are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_favoriters"]
+    tool = _registered_tools()["get_favoriters"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
     assert "tweet_id" in schema.get("required", [])
@@ -309,9 +309,9 @@ def test_get_favoriters_schema():
 
 def test_get_retweeters_schema():
     """get_retweeters requires tweet_id; count and cursor are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_retweeters"]
+    tool = _registered_tools()["get_retweeters"]
     schema = tool.parameters
     assert "tweet_id" in schema["properties"]
     assert "tweet_id" in schema.get("required", [])
@@ -321,9 +321,9 @@ def test_get_retweeters_schema():
 
 def test_search_user_schema():
     """search_user requires query; count and cursor are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["search_user"]
+    tool = _registered_tools()["search_user"]
     schema = tool.parameters
     assert "query" in schema["properties"]
     assert "query" in schema.get("required", [])
@@ -333,9 +333,9 @@ def test_search_user_schema():
 
 def test_get_trends_schema():
     """get_trends has optional category and count."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_trends"]
+    tool = _registered_tools()["get_trends"]
     schema = tool.parameters
     assert "category" in schema["properties"]
     assert "count" in schema["properties"]
@@ -346,9 +346,9 @@ def test_get_trends_schema():
 
 def test_get_article_format_param_in_schema():
     """get_article exposes a `format` arg with 'plain' as the default (issue #14)."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_article"]
+    tool = _registered_tools()["get_article"]
     schema = tool.parameters
     assert "format" in schema["properties"]
     # format is optional — only article_id is required.
@@ -361,9 +361,9 @@ def test_get_article_format_param_in_schema():
 
 def test_block_user_has_screen_name():
     """block_user requires 'screen_name'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["block_user"]
+    tool = _registered_tools()["block_user"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "screen_name" in schema.get("required", [])
@@ -371,9 +371,9 @@ def test_block_user_has_screen_name():
 
 def test_unblock_user_has_screen_name():
     """unblock_user requires 'screen_name'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["unblock_user"]
+    tool = _registered_tools()["unblock_user"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "screen_name" in schema.get("required", [])
@@ -381,9 +381,9 @@ def test_unblock_user_has_screen_name():
 
 def test_mute_user_has_screen_name():
     """mute_user requires 'screen_name'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["mute_user"]
+    tool = _registered_tools()["mute_user"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "screen_name" in schema.get("required", [])
@@ -391,9 +391,9 @@ def test_mute_user_has_screen_name():
 
 def test_unmute_user_has_screen_name():
     """unmute_user requires 'screen_name'."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["unmute_user"]
+    tool = _registered_tools()["unmute_user"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "screen_name" in schema.get("required", [])
@@ -401,9 +401,9 @@ def test_unmute_user_has_screen_name():
 
 def test_get_notifications_schema():
     """get_notifications has optional notification_type, count, and cursor."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_notifications"]
+    tool = _registered_tools()["get_notifications"]
     schema = tool.parameters
     assert "notification_type" in schema["properties"]
     assert "count" in schema["properties"]
@@ -416,9 +416,9 @@ def test_get_notifications_schema():
 
 def test_send_dm_schema():
     """send_dm requires screen_name and text; media_id is optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["send_dm"]
+    tool = _registered_tools()["send_dm"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "text" in schema["properties"]
@@ -430,9 +430,9 @@ def test_send_dm_schema():
 
 def test_send_dm_to_group_schema():
     """send_dm_to_group requires group_id and text; media_id is optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["send_dm_to_group"]
+    tool = _registered_tools()["send_dm_to_group"]
     schema = tool.parameters
     assert "group_id" in schema["properties"]
     assert "text" in schema["properties"]
@@ -444,9 +444,9 @@ def test_send_dm_to_group_schema():
 
 def test_get_dm_history_schema():
     """get_dm_history requires screen_name; max_id is optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_dm_history"]
+    tool = _registered_tools()["get_dm_history"]
     schema = tool.parameters
     assert "screen_name" in schema["properties"]
     assert "max_id" in schema["properties"]
@@ -456,9 +456,9 @@ def test_get_dm_history_schema():
 
 def test_delete_dm_schema():
     """delete_dm requires message_id."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["delete_dm"]
+    tool = _registered_tools()["delete_dm"]
     schema = tool.parameters
     assert "message_id" in schema["properties"]
     assert "message_id" in schema.get("required", [])
@@ -466,9 +466,9 @@ def test_delete_dm_schema():
 
 def test_get_list_schema():
     """get_list requires list_id."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_list"]
+    tool = _registered_tools()["get_list"]
     schema = tool.parameters
     assert "list_id" in schema["properties"]
     assert "list_id" in schema.get("required", [])
@@ -476,9 +476,9 @@ def test_get_list_schema():
 
 def test_get_lists_schema():
     """get_lists has optional count and cursor."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_lists"]
+    tool = _registered_tools()["get_lists"]
     schema = tool.parameters
     assert "count" in schema["properties"]
     assert "cursor" in schema["properties"]
@@ -489,9 +489,9 @@ def test_get_lists_schema():
 
 def test_get_list_tweets_schema():
     """get_list_tweets requires list_id; count and cursor are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_list_tweets"]
+    tool = _registered_tools()["get_list_tweets"]
     schema = tool.parameters
     assert "list_id" in schema["properties"]
     assert "list_id" in schema.get("required", [])
@@ -504,9 +504,9 @@ def test_get_list_tweets_schema():
 
 def test_get_list_members_schema():
     """get_list_members requires list_id; count and cursor are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_list_members"]
+    tool = _registered_tools()["get_list_members"]
     schema = tool.parameters
     assert "list_id" in schema["properties"]
     assert "list_id" in schema.get("required", [])
@@ -516,9 +516,9 @@ def test_get_list_members_schema():
 
 def test_get_list_subscribers_schema():
     """get_list_subscribers requires list_id; count and cursor are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_list_subscribers"]
+    tool = _registered_tools()["get_list_subscribers"]
     schema = tool.parameters
     assert "list_id" in schema["properties"]
     assert "list_id" in schema.get("required", [])
@@ -528,9 +528,9 @@ def test_get_list_subscribers_schema():
 
 def test_create_list_schema():
     """create_list requires name; description and is_private are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["create_list"]
+    tool = _registered_tools()["create_list"]
     schema = tool.parameters
     assert "name" in schema["properties"]
     assert "name" in schema.get("required", [])
@@ -543,9 +543,9 @@ def test_create_list_schema():
 
 def test_edit_list_schema():
     """edit_list requires list_id; name/description/is_private are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["edit_list"]
+    tool = _registered_tools()["edit_list"]
     schema = tool.parameters
     assert "list_id" in schema["properties"]
     assert "list_id" in schema.get("required", [])
@@ -560,9 +560,9 @@ def test_edit_list_schema():
 
 def test_add_list_member_schema():
     """add_list_member requires list_id; screen_name and user_id are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["add_list_member"]
+    tool = _registered_tools()["add_list_member"]
     schema = tool.parameters
     assert "list_id" in schema["properties"]
     assert "list_id" in schema.get("required", [])
@@ -575,9 +575,9 @@ def test_add_list_member_schema():
 
 def test_remove_list_member_schema():
     """remove_list_member requires list_id; screen_name and user_id are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["remove_list_member"]
+    tool = _registered_tools()["remove_list_member"]
     schema = tool.parameters
     assert "list_id" in schema["properties"]
     assert "list_id" in schema.get("required", [])
@@ -590,9 +590,9 @@ def test_remove_list_member_schema():
 
 def test_create_scheduled_tweet_schema():
     """create_scheduled_tweet requires scheduled_at; text and media_ids are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["create_scheduled_tweet"]
+    tool = _registered_tools()["create_scheduled_tweet"]
     schema = tool.parameters
     assert "scheduled_at" in schema["properties"]
     assert "scheduled_at" in schema.get("required", [])
@@ -605,18 +605,18 @@ def test_create_scheduled_tweet_schema():
 
 def test_get_scheduled_tweets_schema():
     """get_scheduled_tweets takes no arguments."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_scheduled_tweets"]
+    tool = _registered_tools()["get_scheduled_tweets"]
     schema = tool.parameters
     assert schema.get("properties", {}) == {} or not schema.get("required", [])
 
 
 def test_delete_scheduled_tweet_schema():
     """delete_scheduled_tweet requires scheduled_tweet_id."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["delete_scheduled_tweet"]
+    tool = _registered_tools()["delete_scheduled_tweet"]
     schema = tool.parameters
     assert "scheduled_tweet_id" in schema["properties"]
     assert "scheduled_tweet_id" in schema.get("required", [])
@@ -624,9 +624,9 @@ def test_delete_scheduled_tweet_schema():
 
 def test_create_poll_schema():
     """create_poll requires choices and duration_minutes."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["create_poll"]
+    tool = _registered_tools()["create_poll"]
     schema = tool.parameters
     assert "choices" in schema["properties"]
     assert "duration_minutes" in schema["properties"]
@@ -636,9 +636,9 @@ def test_create_poll_schema():
 
 def test_vote_schema():
     """vote requires selected_choice, card_uri, tweet_id, and card_name."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["vote"]
+    tool = _registered_tools()["vote"]
     schema = tool.parameters
     required = set(schema.get("required", []))
     assert "selected_choice" in schema["properties"]
@@ -653,9 +653,9 @@ def test_vote_schema():
 
 def test_get_community_schema():
     """get_community requires community_id."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_community"]
+    tool = _registered_tools()["get_community"]
     schema = tool.parameters
     assert "community_id" in schema["properties"]
     assert "community_id" in schema.get("required", [])
@@ -663,9 +663,9 @@ def test_get_community_schema():
 
 def test_search_community_schema():
     """search_community requires query; cursor is optional; NO count param."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["search_community"]
+    tool = _registered_tools()["search_community"]
     schema = tool.parameters
     assert "query" in schema["properties"]
     assert "query" in schema.get("required", [])
@@ -676,9 +676,9 @@ def test_search_community_schema():
 
 def test_get_community_tweets_schema():
     """get_community_tweets requires community_id and tweet_type; count/cursor optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_community_tweets"]
+    tool = _registered_tools()["get_community_tweets"]
     schema = tool.parameters
     required = set(schema.get("required", []))
     assert "community_id" in schema["properties"]
@@ -693,9 +693,9 @@ def test_get_community_tweets_schema():
 
 def test_get_communities_timeline_schema():
     """get_communities_timeline has optional count and cursor."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_communities_timeline"]
+    tool = _registered_tools()["get_communities_timeline"]
     schema = tool.parameters
     assert "count" in schema["properties"]
     assert "cursor" in schema["properties"]
@@ -706,9 +706,9 @@ def test_get_communities_timeline_schema():
 
 def test_get_community_members_schema():
     """get_community_members requires community_id; count and cursor are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_community_members"]
+    tool = _registered_tools()["get_community_members"]
     schema = tool.parameters
     required = set(schema.get("required", []))
     assert "community_id" in schema["properties"]
@@ -721,9 +721,9 @@ def test_get_community_members_schema():
 
 def test_get_community_moderators_schema():
     """get_community_moderators requires community_id; count and cursor are optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["get_community_moderators"]
+    tool = _registered_tools()["get_community_moderators"]
     schema = tool.parameters
     required = set(schema.get("required", []))
     assert "community_id" in schema["properties"]
@@ -736,9 +736,9 @@ def test_get_community_moderators_schema():
 
 def test_search_community_tweet_schema():
     """search_community_tweet requires community_id and query; count/cursor optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["search_community_tweet"]
+    tool = _registered_tools()["search_community_tweet"]
     schema = tool.parameters
     required = set(schema.get("required", []))
     assert "community_id" in schema["properties"]
@@ -753,9 +753,9 @@ def test_search_community_tweet_schema():
 
 def test_join_community_schema():
     """join_community requires community_id."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["join_community"]
+    tool = _registered_tools()["join_community"]
     schema = tool.parameters
     assert "community_id" in schema["properties"]
     assert "community_id" in schema.get("required", [])
@@ -763,9 +763,9 @@ def test_join_community_schema():
 
 def test_leave_community_schema():
     """leave_community requires community_id."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["leave_community"]
+    tool = _registered_tools()["leave_community"]
     schema = tool.parameters
     assert "community_id" in schema["properties"]
     assert "community_id" in schema.get("required", [])
@@ -773,9 +773,9 @@ def test_leave_community_schema():
 
 def test_request_to_join_community_schema():
     """request_to_join_community requires community_id; answer is optional."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool = mcp._tool_manager._tools["request_to_join_community"]
+    tool = _registered_tools()["request_to_join_community"]
     schema = tool.parameters
     required = set(schema.get("required", []))
     assert "community_id" in schema["properties"]
@@ -799,9 +799,9 @@ def test_dm_docstrings_contain_privacy_warning():
 
 def test_all_tools_have_descriptions():
     """Every tool has a non-empty description."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    for name, tool in mcp._tool_manager._tools.items():
+    for name, tool in _registered_tools().items():
         assert tool.description, f"Tool '{name}' has no description"
         assert len(tool.description) > 10, f"Tool '{name}' description too short"
 

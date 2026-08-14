@@ -90,7 +90,7 @@ def _fake_tweet(tid):
 
 async def test_get_tweet_accepts_int_id_through_validation(fake_client):
     fake_client.get_tweets_by_ids = AsyncMock(return_value=[_fake_tweet(str(_BIG_ID))])
-    tool = server.mcp._tool_manager._tools["get_tweet"]
+    tool = server._registered_tools()["get_tweet"]
     out = json.loads(await tool.run({"tweet_id": _BIG_ID}))
     assert out["id"] == str(_BIG_ID)
     # The coercion must happen BEFORE twikit: the client sees the string.
@@ -99,7 +99,7 @@ async def test_get_tweet_accepts_int_id_through_validation(fake_client):
 
 async def test_like_tweet_accepts_int_id_through_validation(fake_client):
     fake_client.favorite_tweet = AsyncMock()
-    tool = server.mcp._tool_manager._tools["like_tweet"]
+    tool = server._registered_tools()["like_tweet"]
     out = json.loads(await tool.run({"tweet_id": _BIG_ID}))
     assert out == {"tweet_id": str(_BIG_ID), "status": "liked"}
     fake_client.favorite_tweet.assert_awaited_once_with(str(_BIG_ID))
@@ -108,7 +108,7 @@ async def test_like_tweet_accepts_int_id_through_validation(fake_client):
 async def test_optional_id_param_accepts_int_through_validation(fake_client):
     """`folder_id: IdStr | None` — optional ID params coerce too."""
     fake_client.bookmark_tweet = AsyncMock()
-    tool = server.mcp._tool_manager._tools["bookmark_tweet"]
+    tool = server._registered_tools()["bookmark_tweet"]
     out = json.loads(await tool.run({"tweet_id": _BIG_ID, "folder_id": 42}))
     assert out["folder_id"] == "42"
     fake_client.bookmark_tweet.assert_awaited_once_with(str(_BIG_ID), "42")
@@ -117,7 +117,7 @@ async def test_optional_id_param_accepts_int_through_validation(fake_client):
 async def test_string_ids_still_accepted_through_validation(fake_client):
     """Regression: the historical str form keeps working identically."""
     fake_client.favorite_tweet = AsyncMock()
-    tool = server.mcp._tool_manager._tools["like_tweet"]
+    tool = server._registered_tools()["like_tweet"]
     out = json.loads(await tool.run({"tweet_id": "20"}))
     assert out == {"tweet_id": "20", "status": "liked"}
 
@@ -125,7 +125,7 @@ async def test_string_ids_still_accepted_through_validation(fake_client):
 async def test_float_ids_still_rejected(fake_client):
     """Floats are precision-corrupted for >2^53 snowflakes — accepting
     one would silently fetch the WRONG tweet. Must keep failing loudly."""
-    tool = server.mcp._tool_manager._tools["like_tweet"]
+    tool = server._registered_tools()["like_tweet"]
     with pytest.raises(Exception):
         await tool.run({"tweet_id": float(_BIG_ID)})
 
@@ -153,7 +153,7 @@ _ID_PARAM_NAMES = {
 
 
 def _id_params_by_tool():
-    for tool_name, tool in sorted(server.mcp._tool_manager._tools.items()):
+    for tool_name, tool in sorted(server._registered_tools().items()):
         for prop_name, prop in tool.parameters.get("properties", {}).items():
             if prop_name in _ID_PARAM_NAMES:
                 yield tool_name, prop_name, prop

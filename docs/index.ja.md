@@ -8,6 +8,12 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.38 の新機能
+
+- **MCP 2026-07-28 仕様への地ならし** — MCP Python SDK 2.0.0 が正式リリースされ、本 server が依存するクラスがリネームされました(`FastMCP` → `MCPServer`)。既存のインストールに影響はありません:0.1.35 以降、依存は SDK 1.x に固定されています。今回のリリースでは SDK のプライベートなツールレジストリへのアクセスをすべて単一の内部アクセサに集約し、今後の v2 移行を約 70 箇所の書き換えから 1 行の変更に変えました。純粋な内部リファクタリング —— 動作の変更はなく、生成されるドキュメントと CLI 出力はバイト単位で同一です。(issue #109 phase 2)
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.37 の新機能
 
 - **`get_dm_history` が message request でクラッシュしなくなりました** — 知らない人の message request を承認すると、X は会話タイムラインに `trust_conversation` システムエントリを挿入し、旧版は `KeyError: 'message'` で落ちていました。非メッセージエントリはスキップして新フィールド `timeline_events` で返し、`warnings` フィールドでエンドツーエンド暗号化(X Chat)会話の履歴が不完全な可能性を警告します — legacy DM API は暗号化本文を取得できないため、agent は「返信が無かった」と断定すべきではありません。通常の会話の JSON 形状は従来と完全に同一です。(closes #104)

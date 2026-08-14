@@ -912,6 +912,6 @@ def test_vendor_tweet_result_passes_article_plain_text_true():
 
 
 def test_new_tools_registered():
-    tools = server.mcp._tool_manager._tools
+    tools = server._registered_tools()
     assert "get_article_preview" in tools
     assert "get_article" in tools
