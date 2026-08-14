@@ -1395,16 +1395,16 @@ async def get_dm_history(screen_name: str, max_id: IdStr | None = None) -> str:
     if timeline_events:
         payload["timeline_events"] = timeline_events
         # Legacy 1.1 DM history does not return end-to-end encrypted
-        # (X Chat) message bodies after conversation upgrade. Surface a
-        # hard warning so agents don't falsely report "no reply sent".
-        event_types = {e.get("type") for e in timeline_events if isinstance(e, dict)}
-        if "trust_conversation" in event_types or event_types - {None}:
-            payload["warnings"] = [
-                "Legacy DM history omits end-to-end encrypted (X Chat) messages "
-                "after conversation upgrade. If the X UI shows more messages "
-                "than listed here, treat this history as incomplete and do not "
-                "assume the latest UI message is missing from the account."
-            ]
+        # (X Chat) message bodies after conversation upgrade. Any system
+        # event means the conversation went through a state change the
+        # legacy endpoint can't fully represent, so surface a hard warning
+        # so agents don't falsely report "no reply sent".
+        payload["warnings"] = [
+            "Legacy DM history omits end-to-end encrypted (X Chat) messages "
+            "after conversation upgrade. If the X UI shows more messages "
+            "than listed here, treat this history as incomplete and do not "
+            "assume the latest UI message is missing from the account."
+        ]
     return _dumps(payload)
 
 

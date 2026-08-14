@@ -8,6 +8,14 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.37 の新機能
+
+- **`get_dm_history` が message request でクラッシュしなくなりました** — 知らない人の message request を承認すると、X は会話タイムラインに `trust_conversation` システムエントリを挿入し、旧版は `KeyError: 'message'` で落ちていました。非メッセージエントリはスキップして新フィールド `timeline_events` で返し、`warnings` フィールドでエンドツーエンド暗号化(X Chat)会話の履歴が不完全な可能性を警告します — legacy DM API は暗号化本文を取得できないため、agent は「返信が無かった」と断定すべきではありません。通常の会話の JSON 形状は従来と完全に同一です。(closes #104)
+- **初回 DM 直後の履歴取得で "User not found" と誤報しません** — 最初の DM を送った直後の読み取りは X 側で一時的に 404 になることがあります。最大 3 回の短いバックオフ付きリトライを行い、それでも失敗する場合はユーザーではなく会話が利用不可であると正しく報告します。(closes #102)
+- 実機での診断と両パッチ(PR #103、#105)を提供してくれた [@DJNgoma](https://github.com/DJNgoma) に感謝します。
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.36 の新機能
 
 - **整数 ID を全ツールで受け付け** — X はツイート/ユーザー/リスト ID を JSON の**数値**として返します(`"id": 2087887408440164663`、その隣に `"id_str"`)。数値の `id` をそのまま渡すクライアント(`str()` なしの `{"tweet_id": id}`)は、これまでツールコードが動く前にバリデーションで拒否されていました(`Input should be a valid string`)。今回、snowflake 形の全パラメータ(59 ツール中 37 箇所:`tweet_id`、`user_id`、`list_id`、`media_ids` など)が int / string の両方を受け付け、無損失で文字列に変換します。float は引き続き拒否:これらの ID は 2^53 を超えるため float は既に精度が壊れており、黙って受け付けると別のツイートを操作してしまいます。(closes #111)

@@ -8,6 +8,14 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.37
+
+- **`get_dm_history` no longer crashes on message requests** — accepting a stranger's message request makes X inject a `trust_conversation` system entry into the conversation timeline, which crashed the tool with `KeyError: 'message'`. Non-message entries are now skipped and surfaced in a new `timeline_events` field, and a `warnings` field flags that history may be incomplete for end-to-end encrypted (X Chat) conversations — the legacy DM API cannot return encrypted bodies, so agents should not conclude "no reply was sent". Clean conversations keep the exact same JSON shape as before. (closes #104)
+- **First-time DM reads no longer misreport "User not found"** — reading a conversation right after sending a first DM can transiently 404 on X's side; the tool now retries up to 3 times with short backoff and reports the conversation (not the user) as unavailable if it persists. (closes #102)
+- Thanks to [@DJNgoma](https://github.com/DJNgoma) for the live diagnosis and both patches (PRs #103, #105).
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.36
 
 - **Integer IDs accepted everywhere** — X serializes tweet/user/list IDs as JSON *numbers* (`"id": 2087887408440164663` next to `"id_str"`). Any client that echoed the numeric `id` back — `{"tweet_id": id}` without a `str()` — used to be rejected by validation before the tool even ran (`Input should be a valid string`). Every snowflake-shaped parameter (37 sites across the 59 tools: `tweet_id`, `user_id`, `list_id`, `media_ids`, …) now accepts int or string and coerces losslessly to string. Floats stay rejected: these IDs exceed 2^53, so a float is already precision-corrupted and would silently target the wrong tweet. (closes #111)
