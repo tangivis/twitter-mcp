@@ -1,4 +1,4 @@
-"""Generate `docs/api.{en,zh,ja}.md` from `mcp._tool_manager._tools`.
+"""Generate `docs/api.{en,zh,ja}.md` from `_registered_tools()`.
 
 Run this script BEFORE `mkdocs build` (the docs.yml CI workflow does
 this automatically). The outputs are gitignored — generated fresh on
@@ -39,7 +39,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
-from twitter_mcp.server import mcp  # noqa: E402  (after sys.path tweak)
+from twitter_mcp.server import _registered_tools  # noqa: E402  (after sys.path tweak)
 
 
 def _categorize(name: str) -> str:
@@ -175,7 +175,7 @@ def _cli_example(name: str, fn) -> str:
     return f"twikit-mcp call {name}{arg_part}"
 
 
-tools = mcp._tool_manager._tools
+tools = _registered_tools()
 by_section: dict[str, list[str]] = defaultdict(list)
 for name in sorted(tools):
     by_section[_categorize(name)].append(name)

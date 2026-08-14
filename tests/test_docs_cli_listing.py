@@ -8,7 +8,7 @@ Two layers of coverage:
    the rendered cli page.
 2. **Generator** must produce `docs/_cli_tools.{en,zh,ja}.md` files
    when run; each must contain a `twikit-mcp call <tool>` line for
-   every tool in `mcp._tool_manager._tools`. (Subprocess, slow.)
+   every tool in `_registered_tools()`. (Subprocess, slow.)
 """
 
 import re
@@ -56,9 +56,9 @@ def test_gen_script_writes_per_locale_cli_tool_excerpts(tmp_path):
     # Pull the live tool list (same instance the script just walked) so
     # the assertion is exact, not approximate.
     sys.path.insert(0, str(_ROOT))
-    from twitter_mcp.server import mcp  # noqa: E402
+    from twitter_mcp.server import _registered_tools  # noqa: E402
 
-    tool_names = set(mcp._tool_manager._tools)
+    tool_names = set(_registered_tools())
 
     for locale in ("en", "zh", "ja"):
         excerpt = _ROOT / "docs" / f"_cli_tools.{locale}.md"

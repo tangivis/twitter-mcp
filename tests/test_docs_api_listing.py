@@ -28,7 +28,7 @@ _LOCALE_TITLES = {
 @pytest.fixture(scope="module", autouse=True)
 def _regen_docs():
     """Run the generator once per module so tests see fresh files.
-    The script is mock-free (reads `mcp._tool_manager._tools`) and
+    The script is mock-free (reads `_registered_tools()`) and
     idempotent. Use `sys.executable` so Windows runners (where
     `python` may not be on PATH the same way) work the same."""
     import subprocess
@@ -64,9 +64,9 @@ def test_api_page_title_is_localized(locale):
 def test_api_pages_have_tool_name_parity():
     """Every registered MCP tool appears in all 3 locale pages — i.e. the
     locales differ only in chrome, never in which tools they document."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tool_names = set(mcp._tool_manager._tools.keys())
+    tool_names = set(_registered_tools().keys())
     pages = {
         locale: path.read_text(encoding="utf-8") for locale, path in _API_FILES.items()
     }

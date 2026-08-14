@@ -8,6 +8,12 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.38
+
+- **Groundwork for the MCP 2026-07-28 spec** — the MCP Python SDK 2.0.0 is now stable, and it renames the class this server is built on (`FastMCP` → `MCPServer`). Your install is unaffected: the dependency has been pinned to SDK 1.x since 0.1.35. This release funnels every read of the SDK's private tool registry through a single internal accessor, which turns the upcoming v2 migration from a ~70-site sweep into a one-line change. Pure internal refactor — no behavior change, byte-identical generated docs and CLI output. (issue #109 phase 2)
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.37
 
 - **`get_dm_history` no longer crashes on message requests** — accepting a stranger's message request makes X inject a `trust_conversation` system entry into the conversation timeline, which crashed the tool with `KeyError: 'message'`. Non-message entries are now skipped and surfaced in a new `timeline_events` field, and a `warnings` field flags that history may be incomplete for end-to-end encrypted (X Chat) conversations — the legacy DM API cannot return encrypted bodies, so agents should not conclude "no reply was sent". Clean conversations keep the exact same JSON shape as before. (closes #104)

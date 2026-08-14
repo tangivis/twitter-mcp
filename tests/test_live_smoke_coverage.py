@@ -1,6 +1,6 @@
 """Issue #73 sentinel: live-smoke must exercise every idempotent read tool.
 
-Scans `mcp._tool_manager._tools` at import time to discover the full
+Scans `_registered_tools()` at import time to discover the full
 tool registry. Buckets tools as mutating (explicit allowlist) vs
 idempotent. For every idempotent tool, asserts a `check("<tool>", …)`
 invocation exists in `.github/workflows/live-smoke.yml`.
@@ -68,7 +68,7 @@ def test_live_smoke_covers_all_idempotent_reads():
     invoked from `live-smoke.yml` against real X."""
     from twitter_mcp import server
 
-    all_tools = set(server.mcp._tool_manager._tools.keys())
+    all_tools = set(server._registered_tools().keys())
 
     # Sanity: every name in _MUTATING actually exists. Catches typos.
     unknown_mutating = _MUTATING - all_tools

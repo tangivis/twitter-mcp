@@ -311,9 +311,9 @@ def test_server_imports_from_vendor():
 
 def test_server_still_works():
     """Server still loads and registers all 59 tools after vendoring."""
-    from twitter_mcp.server import mcp
+    from twitter_mcp.server import _registered_tools
 
-    tools = mcp._tool_manager._tools
+    tools = _registered_tools()
     assert len(tools) == 59
     expected = {
         "send_tweet",

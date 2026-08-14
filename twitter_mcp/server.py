@@ -24,6 +24,27 @@ from twitter_mcp._vendor.twikit.errors import NotFound, TooManyRequests
 
 mcp = FastMCP("twitter")
 
+
+def _registered_tools() -> dict:
+    """Single choke point for the SDK's private tool registry.
+
+    The SDK's private registry maps tool name → its `Tool` object
+    (`.parameters` JSON Schema, `.fn` handler, `.description`, `.run`).
+    Both hops are private API with no compatibility promise, and we read
+    them from shipped CLI code, the docs generator, and ~70 per-tool test
+    assertions. Funnelling every read through here makes an SDK-side
+    rename a one-line fix instead of a repo-wide sweep — see issue #109.
+
+    Guarded by `tests/test_sdk_boundary.py`, which fails if anything else
+    reaches past this accessor.
+    """
+    # NOTE: must reach into the SDK directly here — this IS the accessor.
+    # The sweep that introduced it rewrote every direct registry read into
+    # `_registered_tools()`, including this line; left unfixed it
+    # infinite-recurses. Same trap as `_dumps()` above.
+    return mcp._tool_manager._tools  # noqa: SLF001
+
+
 # Cookies 路径: 环境变量 > 默认路径
 COOKIES_PATH = Path(
     os.environ.get(
@@ -2289,12 +2310,12 @@ def _coerce(value: str, annotation):
 
 def _list_tools_text() -> str:
     """Sorted tool names, one per line."""
-    return "\n".join(sorted(mcp._tool_manager._tools))
+    return "\n".join(sorted(_registered_tools()))
 
 
 async def _call_tool_async(tool_name: str, raw_kwargs: dict[str, str]) -> str:
     """Look up a tool, coerce kwargs, await it, return its string output."""
-    tools = mcp._tool_manager._tools
+    tools = _registered_tools()
     if tool_name not in tools:
         raise SystemExit(
             f"Unknown tool: {tool_name!r}. Run `twikit-mcp list` to see "
