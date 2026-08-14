@@ -19,15 +19,15 @@ AI 应用 (Client)  ←──stdio/SSE──→  MCP Server  ←──→  外�
 
 ## 本项目的具体实现
 
-整个项目用 `mcp` 官方 Python SDK 的 `FastMCP` 高层 API，实现非常简洁。
+整个项目用 `mcp` 官方 Python SDK 的 `MCPServer` 高层 API（SDK v1 里叫 `FastMCP`，v2 起改名——见 issue #109），实现非常简洁。
 
 ### 1. 创建 Server（server.py:11）
 
 ```python
-mcp = FastMCP("twitter")
+mcp = MCPServer("twitter", version=_get_version())
 ```
 
-声明一个名为 `"twitter"` 的 MCP server。`FastMCP` 封装了底层的 JSON-RPC 协议处理、tool 注册、schema 生成等。
+声明一个名为 `"twitter"` 的 MCP server。`MCPServer` 封装了底层的 JSON-RPC 协议处理、tool 注册、schema 生成等。
 
 ### 2. 注册 Tool（server.py:33-167）
 

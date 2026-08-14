@@ -67,9 +67,20 @@ def test_parse_article_url_or_id_str_forms_unchanged():
 # ── the reported repro, through real pydantic validation ─
 #
 # Calling `server.get_tweet(...)` directly would bypass the framework
-# boundary where the bug lives. `Tool.run(arguments)` goes through the
-# same fn_metadata/pydantic validation the MCP server applies to a
-# tools/call request.
+# boundary where the bug lives. `Tool.run()` goes through the same
+# fn_metadata/pydantic validation the MCP server applies to a tools/call
+# request.
+
+
+async def _run(tool, arguments):
+    """Invoke a tool through the SDK's validation boundary.
+
+    SDK v2 made `context` a required positional on `Tool.run()` (it was
+    absent in v1 — issue #109 phase 3). `None` is correct for every tool
+    here: the SDK only materializes a `Context` for handlers that declare
+    one as a parameter, and none of ours do.
+    """
+    return await tool.run(arguments, None)
 
 
 def _fake_tweet(tid):
@@ -91,7 +102,7 @@ def _fake_tweet(tid):
 async def test_get_tweet_accepts_int_id_through_validation(fake_client):
     fake_client.get_tweets_by_ids = AsyncMock(return_value=[_fake_tweet(str(_BIG_ID))])
     tool = server._registered_tools()["get_tweet"]
-    out = json.loads(await tool.run({"tweet_id": _BIG_ID}))
+    out = json.loads(await _run(tool, {"tweet_id": _BIG_ID}))
     assert out["id"] == str(_BIG_ID)
     # The coercion must happen BEFORE twikit: the client sees the string.
     fake_client.get_tweets_by_ids.assert_awaited_once_with([str(_BIG_ID)])
@@ -100,7 +111,7 @@ async def test_get_tweet_accepts_int_id_through_validation(fake_client):
 async def test_like_tweet_accepts_int_id_through_validation(fake_client):
     fake_client.favorite_tweet = AsyncMock()
     tool = server._registered_tools()["like_tweet"]
-    out = json.loads(await tool.run({"tweet_id": _BIG_ID}))
+    out = json.loads(await _run(tool, {"tweet_id": _BIG_ID}))
     assert out == {"tweet_id": str(_BIG_ID), "status": "liked"}
     fake_client.favorite_tweet.assert_awaited_once_with(str(_BIG_ID))
 
@@ -109,7 +120,7 @@ async def test_optional_id_param_accepts_int_through_validation(fake_client):
     """`folder_id: IdStr | None` — optional ID params coerce too."""
     fake_client.bookmark_tweet = AsyncMock()
     tool = server._registered_tools()["bookmark_tweet"]
-    out = json.loads(await tool.run({"tweet_id": _BIG_ID, "folder_id": 42}))
+    out = json.loads(await _run(tool, {"tweet_id": _BIG_ID, "folder_id": 42}))
     assert out["folder_id"] == "42"
     fake_client.bookmark_tweet.assert_awaited_once_with(str(_BIG_ID), "42")
 
@@ -118,7 +129,7 @@ async def test_string_ids_still_accepted_through_validation(fake_client):
     """Regression: the historical str form keeps working identically."""
     fake_client.favorite_tweet = AsyncMock()
     tool = server._registered_tools()["like_tweet"]
-    out = json.loads(await tool.run({"tweet_id": "20"}))
+    out = json.loads(await _run(tool, {"tweet_id": "20"}))
     assert out == {"tweet_id": "20", "status": "liked"}
 
 
@@ -127,7 +138,7 @@ async def test_float_ids_still_rejected(fake_client):
     one would silently fetch the WRONG tweet. Must keep failing loudly."""
     tool = server._registered_tools()["like_tweet"]
     with pytest.raises(Exception):
-        await tool.run({"tweet_id": float(_BIG_ID)})
+        await _run(tool, {"tweet_id": float(_BIG_ID)})
 
 
 # ── breadth sentinel: every snowflake param on every tool ─

@@ -8,6 +8,13 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.39
+
+- **Migrated to MCP Python SDK v2** — the server is now built on `MCPServer` (`mcp.server.mcpserver`) instead of the removed `FastMCP`, and the dependency moved from `mcp[cli]>=1.27,<2` to `>=2,<3`. **Nothing changes for you at the protocol level**: the full `tools/list` payload — negotiated protocol version, capabilities, and all 59 tools with their complete input/output schemas — is byte-for-byte identical to 0.1.38 (58,843 bytes, diffed across both SDKs over a real stdio handshake). Upgrading pulls SDK 2.x; if you pin `mcp<2` yourself, stay on 0.1.38. (closes #109)
+- **`serverInfo.version` now reports the actual package version** — SDK v1 filled this field with its own version, and v2 leaves it empty unless set. Clients now see `twikit-mcp`'s real version in the initialize response.
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.38
 
 - **Groundwork for the MCP 2026-07-28 spec** — the MCP Python SDK 2.0.0 is now stable, and it renames the class this server is built on (`FastMCP` → `MCPServer`). Your install is unaffected: the dependency has been pinned to SDK 1.x since 0.1.35. This release funnels every read of the SDK's private tool registry through a single internal accessor, which turns the upcoming v2 migration from a ~70-site sweep into a one-line change. Pure internal refactor — no behavior change, byte-identical generated docs and CLI output. (issue #109 phase 2)

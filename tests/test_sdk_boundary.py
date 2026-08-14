@@ -1,6 +1,6 @@
 """Issue #109 phase 2: the SDK's private tool registry has ONE call site.
 
-`FastMCP._tool_manager._tools` is private API — a leading underscore on
+`MCPServer._tool_manager._tools` is private API — a leading underscore on
 both hops, no compatibility promise. We depend on it in shipped code
 (`twikit-mcp list` / `twikit-mcp call`), in the docs generator, and in
 ~70 per-tool schema assertions across the test suite.

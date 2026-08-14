@@ -2,7 +2,7 @@
 
 > ⚠️ この詳細解説は現在 **中国語のみ** です。**上部の言語切り替えで「中文」を選択** するか、[GitHub](https://github.com/tangivis/twitter-mcp/blob/main/docs/TECHNICAL.zh.md) で閲覧してください。
 >
-> 日本語訳の PR を歓迎します(`docs/TECHNICAL.ja.md` の内容追加)。内部実装にフォーカスした内容(MCP プロトコル、FastMCP、ツール登録機構、cookie 認証フロー)なので、直訳で問題ありません。
+> 日本語訳の PR を歓迎します(`docs/TECHNICAL.ja.md` の内容追加)。内部実装にフォーカスした内容(MCP プロトコル、MCPServer、ツール登録機構、cookie 認証フロー)なので、直訳で問題ありません。
 
 ## TL;DR(日本語)
 
@@ -13,4 +13,4 @@
 - **なぜ twikit をベンダリング?** PyPI 未リリースの上流 PR-#412 修正と、プロジェクト独自の防御パッチを含めるため。詳細は [Vendoring twikit](VENDORING.md)。
 - **認証?** ログイン済み X セッションから取得したブラウザ cookies(`ct0` + `auth_token`)。開発者アカウント申請も $200/月の API 階層も不要。
 
-詳細(FastMCP 内部、ツール出力バジェット制御、Claude Code でのサーバーライフサイクル等)は中国語版へ。
+詳細(MCPServer 内部、ツール出力バジェット制御、Claude Code でのサーバーライフサイクル等)は中国語版へ。

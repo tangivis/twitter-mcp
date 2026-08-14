@@ -493,7 +493,7 @@ async def test_get_user_info_accepts_user_id_kwarg(fake_client):
 
 async def test_get_user_info_raises_when_neither_provided(fake_client):
     """Strict contract: caller must give exactly one of screen_name / user_id."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_user_info()
@@ -503,7 +503,7 @@ async def test_get_user_info_raises_when_neither_provided(fake_client):
 
 async def test_get_user_info_raises_when_both_provided(fake_client):
     """Both at once is also a contract violation — pick one."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_user_info(screen_name="alice", user_id="42")
@@ -513,7 +513,7 @@ async def test_get_user_info_raises_when_both_provided(fake_client):
 
 async def test_get_user_info_raises_clean_error_on_too_many_requests(fake_client):
     """twikit's TooManyRequests → ToolError with a friendly rate-limit message."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -527,7 +527,7 @@ async def test_get_user_info_raises_clean_error_on_too_many_requests(fake_client
 
 async def test_get_user_info_raises_clean_error_on_not_found(fake_client):
     """twikit's NotFound → ToolError with a 'user not found' message."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -614,7 +614,7 @@ async def test_get_user_followers_passes_cursor_through(fake_client):
 
 async def test_get_user_followers_raises_on_count_over_100(fake_client):
     """Don't silently clamp — raise so callers know about the cap."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_user_followers(user_id="u-1", count=500)
@@ -623,7 +623,7 @@ async def test_get_user_followers_raises_on_count_over_100(fake_client):
 
 async def test_get_user_followers_raises_when_neither_provided(fake_client):
     """Same exactly-one contract as get_user_info."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_user_followers()
@@ -653,7 +653,7 @@ async def test_get_user_following_resolves_screen_name(fake_client):
 
 
 async def test_get_user_following_raises_on_count_over_100(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_user_following(user_id="u-1", count=200)
@@ -661,7 +661,7 @@ async def test_get_user_following_raises_on_count_over_100(fake_client):
 
 async def test_get_user_followers_raises_clean_on_rate_limit(fake_client):
     """TooManyRequests during followers fetch → ToolError, not raw twikit error."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -673,7 +673,7 @@ async def test_get_user_followers_raises_clean_on_rate_limit(fake_client):
 
 async def test_get_user_followers_raises_clean_on_not_found(fake_client):
     """NotFound during followers fetch → ToolError naming the missing user."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -685,7 +685,7 @@ async def test_get_user_followers_raises_clean_on_not_found(fake_client):
 
 async def test_get_user_following_raises_clean_on_rate_limit(fake_client):
     """Same TooManyRequests pattern for get_user_following."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -696,7 +696,7 @@ async def test_get_user_following_raises_clean_on_rate_limit(fake_client):
 
 async def test_get_user_following_raises_clean_on_not_found(fake_client):
     """Same NotFound pattern for get_user_following."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -712,7 +712,7 @@ async def test_get_user_following_raises_clean_on_not_found(fake_client):
 async def test_get_user_followers_raises_clean_on_not_found_during_resolve(fake_client):
     """If screen_name resolution itself raises NotFound, that path is also
     caught — not just the followers-fetch path."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -724,7 +724,7 @@ async def test_get_user_followers_raises_clean_on_not_found_during_resolve(fake_
 
 async def test_get_user_following_raises_clean_on_not_found_during_resolve(fake_client):
     """Same NotFound-during-resolve path on get_user_following."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -736,7 +736,7 @@ async def test_get_user_following_raises_clean_on_not_found_during_resolve(fake_
 
 async def test_get_user_followers_raises_on_count_below_1(fake_client):
     """count=0 / -1 must raise — don't silently forward to twikit."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_user_followers(user_id="u-1", count=0)
@@ -745,7 +745,7 @@ async def test_get_user_followers_raises_on_count_below_1(fake_client):
 
 
 async def test_get_user_following_raises_on_count_below_1(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_user_following(user_id="u-1", count=0)
@@ -762,7 +762,7 @@ async def test_delete_tweet_calls_client_and_returns_deleted(fake_client):
 
 
 async def test_delete_tweet_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -773,7 +773,7 @@ async def test_delete_tweet_raises_clean_on_not_found(fake_client):
 
 
 async def test_delete_tweet_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -794,7 +794,7 @@ async def test_unfavorite_tweet_calls_client_and_returns_unliked(fake_client):
 
 
 async def test_unfavorite_tweet_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -815,7 +815,7 @@ async def test_delete_retweet_calls_client_and_returns_un_retweeted(fake_client)
 
 
 async def test_delete_retweet_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -843,7 +843,7 @@ async def test_bookmark_tweet_passes_folder_id(fake_client):
 
 
 async def test_bookmark_tweet_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -866,7 +866,7 @@ async def test_delete_bookmark_calls_client_and_returns_un_bookmarked(fake_clien
 async def test_delete_bookmark_raises_clean_on_not_found(fake_client):
     """Error message says 'bookmark not found' (not 'tweet not found') because
     the tweet typically still exists — only the bookmark is missing."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -927,7 +927,7 @@ async def test_get_bookmarks_passes_count_and_cursor(fake_client):
 
 
 async def test_get_bookmarks_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_bookmarks(count=101)
@@ -935,14 +935,14 @@ async def test_get_bookmarks_raises_on_count_too_high(fake_client):
 
 
 async def test_get_bookmarks_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_bookmarks(count=0)
 
 
 async def test_get_bookmarks_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -973,7 +973,7 @@ async def test_get_favoriters_passes_cursor(fake_client):
 
 
 async def test_get_favoriters_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_favoriters("tw-1", count=200)
@@ -981,14 +981,14 @@ async def test_get_favoriters_raises_on_count_too_high(fake_client):
 
 
 async def test_get_favoriters_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_favoriters("tw-1", count=0)
 
 
 async def test_get_favoriters_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -999,7 +999,7 @@ async def test_get_favoriters_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_get_favoriters_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1031,7 +1031,7 @@ async def test_get_retweeters_passes_cursor(fake_client):
 
 
 async def test_get_retweeters_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_retweeters("tw-2", count=500)
@@ -1039,14 +1039,14 @@ async def test_get_retweeters_raises_on_count_too_high(fake_client):
 
 
 async def test_get_retweeters_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_retweeters("tw-2", count=-1)
 
 
 async def test_get_retweeters_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1057,7 +1057,7 @@ async def test_get_retweeters_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_get_retweeters_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1088,7 +1088,7 @@ async def test_search_user_passes_cursor(fake_client):
 
 
 async def test_search_user_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.search_user("query", count=101)
@@ -1096,14 +1096,14 @@ async def test_search_user_raises_on_count_too_high(fake_client):
 
 
 async def test_search_user_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.search_user("query", count=0)
 
 
 async def test_search_user_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1144,7 +1144,7 @@ async def test_get_trends_passes_category_and_count(fake_client):
 
 
 async def test_get_trends_raises_on_invalid_category(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_trends(category="invalid")
@@ -1152,7 +1152,7 @@ async def test_get_trends_raises_on_invalid_category(fake_client):
 
 
 async def test_get_trends_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1167,7 +1167,7 @@ async def test_get_trends_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_unfavorite_tweet_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1178,7 +1178,7 @@ async def test_unfavorite_tweet_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_delete_retweet_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1189,7 +1189,7 @@ async def test_delete_retweet_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_bookmark_tweet_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1200,7 +1200,7 @@ async def test_bookmark_tweet_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_delete_bookmark_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1215,7 +1215,7 @@ async def test_delete_bookmark_raises_clean_on_rate_limit(fake_client):
 
 async def test_get_trends_raises_on_count_too_low(fake_client):
     """Claude PR #27 review: get_trends was missing the count<1 guard."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_trends(count=0)
@@ -1225,7 +1225,7 @@ async def test_get_trends_raises_on_count_too_low(fake_client):
 
 async def test_search_user_raises_on_empty_query(fake_client):
     """Claude PR #27 review: empty / whitespace query → clean ToolError."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.search_user("")
@@ -1275,7 +1275,7 @@ async def test_unmute_user_returns_unmuted_status(fake_client):
 
 
 async def test_block_user_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1286,7 +1286,7 @@ async def test_block_user_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_block_user_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1350,7 +1350,7 @@ async def test_get_notifications_omits_tweet_id_when_no_tweet(fake_client):
 
 
 async def test_get_notifications_raises_on_invalid_type(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_notifications(notification_type="BadType")
@@ -1358,7 +1358,7 @@ async def test_get_notifications_raises_on_invalid_type(fake_client):
 
 
 async def test_get_notifications_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_notifications(count=101)
@@ -1366,14 +1366,14 @@ async def test_get_notifications_raises_on_count_too_high(fake_client):
 
 
 async def test_get_notifications_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_notifications(count=0)
 
 
 async def test_get_notifications_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1419,7 +1419,7 @@ async def test_send_dm_passes_media_id(fake_client):
 
 
 async def test_send_dm_raises_on_empty_text(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.send_dm("alice", "")
@@ -1428,7 +1428,7 @@ async def test_send_dm_raises_on_empty_text(fake_client):
 
 
 async def test_send_dm_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1439,7 +1439,7 @@ async def test_send_dm_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_send_dm_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1466,14 +1466,14 @@ async def test_send_dm_to_group_passes_media_id(fake_client):
 
 
 async def test_send_dm_to_group_raises_on_empty_text(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.send_dm_to_group("grp-1", "")
 
 
 async def test_send_dm_to_group_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1556,7 +1556,7 @@ async def test_get_dm_history_returns_next_cursor(fake_client):
 
 
 async def test_get_dm_history_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1569,7 +1569,7 @@ async def test_get_dm_history_raises_clean_on_rate_limit(fake_client):
 async def test_get_dm_history_does_not_retry_conversation_rate_limit(
     fake_client, monkeypatch
 ):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1588,7 +1588,7 @@ async def test_get_dm_history_does_not_retry_conversation_rate_limit(
 
 
 async def test_get_dm_history_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1622,7 +1622,7 @@ async def test_get_dm_history_retries_transient_conversation_not_found(
 async def test_get_dm_history_reports_persistent_conversation_not_found(
     fake_client, monkeypatch
 ):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1690,7 +1690,7 @@ async def test_delete_dm_returns_deleted_status(fake_client):
 
 
 async def test_delete_dm_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1701,7 +1701,7 @@ async def test_delete_dm_raises_clean_on_not_found(fake_client):
 
 
 async def test_delete_dm_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1715,7 +1715,7 @@ async def test_delete_dm_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_unblock_user_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1727,7 +1727,7 @@ async def test_unblock_user_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_mute_user_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1739,7 +1739,7 @@ async def test_mute_user_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_unmute_user_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1751,7 +1751,7 @@ async def test_unmute_user_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_unblock_user_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1763,7 +1763,7 @@ async def test_unblock_user_raises_clean_on_not_found(fake_client):
 
 
 async def test_mute_user_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1775,7 +1775,7 @@ async def test_mute_user_raises_clean_on_not_found(fake_client):
 
 
 async def test_unmute_user_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1790,7 +1790,7 @@ async def test_send_dm_to_group_raises_clean_on_not_found(fake_client):
     """Claude PR #29 review: send_dm_to_group was missing the NotFound handler.
     Sibling DM tools (send_dm, get_dm_history) all catch it; this one was the
     only outlier. Now matches the pattern."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1860,7 +1860,7 @@ async def test_get_list_is_public_for_public_mode(fake_client):
 
 
 async def test_get_list_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -1871,7 +1871,7 @@ async def test_get_list_raises_clean_on_not_found(fake_client):
 
 
 async def test_get_list_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1904,7 +1904,7 @@ async def test_get_lists_passes_cursor(fake_client):
 
 
 async def test_get_lists_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_lists(count=101)
@@ -1912,14 +1912,14 @@ async def test_get_lists_raises_on_count_too_high(fake_client):
 
 
 async def test_get_lists_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_lists(count=0)
 
 
 async def test_get_lists_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -1977,7 +1977,7 @@ async def test_get_list_tweets_passes_cursor(fake_client):
 
 
 async def test_get_list_tweets_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_list_tweets("lst-1", count=200)
@@ -1985,14 +1985,14 @@ async def test_get_list_tweets_raises_on_count_too_high(fake_client):
 
 
 async def test_get_list_tweets_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_list_tweets("lst-1", count=0)
 
 
 async def test_get_list_tweets_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2003,7 +2003,7 @@ async def test_get_list_tweets_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_get_list_tweets_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2036,7 +2036,7 @@ async def test_get_list_members_passes_cursor(fake_client):
 
 
 async def test_get_list_members_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_list_members("lst-1", count=200)
@@ -2044,14 +2044,14 @@ async def test_get_list_members_raises_on_count_too_high(fake_client):
 
 
 async def test_get_list_members_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_list_members("lst-1", count=0)
 
 
 async def test_get_list_members_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2062,7 +2062,7 @@ async def test_get_list_members_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_get_list_members_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2097,7 +2097,7 @@ async def test_get_list_subscribers_passes_cursor(fake_client):
 
 
 async def test_get_list_subscribers_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_list_subscribers("lst-1", count=200)
@@ -2105,14 +2105,14 @@ async def test_get_list_subscribers_raises_on_count_too_high(fake_client):
 
 
 async def test_get_list_subscribers_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_list_subscribers("lst-1", count=0)
 
 
 async def test_get_list_subscribers_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2123,7 +2123,7 @@ async def test_get_list_subscribers_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_get_list_subscribers_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2152,7 +2152,7 @@ async def test_create_list_passes_description_and_is_private(fake_client):
 
 
 async def test_create_list_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2173,7 +2173,7 @@ async def test_edit_list_returns_updated_list_dict(fake_client):
 
 
 async def test_edit_list_raises_on_no_fields(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.edit_list("lst-1")
@@ -2194,7 +2194,7 @@ async def test_edit_list_allows_empty_string_description(fake_client):
 
 
 async def test_edit_list_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2205,7 +2205,7 @@ async def test_edit_list_raises_clean_on_not_found(fake_client):
 
 
 async def test_edit_list_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2236,7 +2236,7 @@ async def test_add_list_member_by_user_id(fake_client):
 
 
 async def test_add_list_member_raises_on_neither(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.add_list_member("lst-1")
@@ -2244,14 +2244,14 @@ async def test_add_list_member_raises_on_neither(fake_client):
 
 
 async def test_add_list_member_raises_on_both(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.add_list_member("lst-1", screen_name="alice", user_id="u-1")
 
 
 async def test_add_list_member_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2262,7 +2262,7 @@ async def test_add_list_member_raises_clean_on_not_found(fake_client):
 
 
 async def test_add_list_member_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2293,7 +2293,7 @@ async def test_remove_list_member_by_user_id(fake_client):
 
 
 async def test_remove_list_member_raises_on_neither(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.remove_list_member("lst-1")
@@ -2301,14 +2301,14 @@ async def test_remove_list_member_raises_on_neither(fake_client):
 
 
 async def test_remove_list_member_raises_on_both(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.remove_list_member("lst-1", screen_name="alice", user_id="u-1")
 
 
 async def test_remove_list_member_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2319,7 +2319,7 @@ async def test_remove_list_member_raises_clean_on_not_found(fake_client):
 
 
 async def test_remove_list_member_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2332,7 +2332,7 @@ async def test_remove_list_member_raises_clean_on_rate_limit(fake_client):
 async def test_create_list_raises_on_empty_name(fake_client):
     """Claude PR #31 review: empty / whitespace-only name should raise
     a clean ToolError before reaching twikit (matches send_dm pattern)."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.create_list("")
@@ -2384,7 +2384,7 @@ async def test_create_scheduled_tweet_passes_media_ids(fake_client):
 
 
 async def test_create_scheduled_tweet_rejects_past_timestamp(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     past_ts = int(_time.time()) - 10
     with pytest.raises(ToolError) as exc:
@@ -2393,7 +2393,7 @@ async def test_create_scheduled_tweet_rejects_past_timestamp(fake_client):
 
 
 async def test_create_scheduled_tweet_rejects_current_timestamp(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     now_ts = int(_time.time())
     with pytest.raises(ToolError):
@@ -2401,7 +2401,7 @@ async def test_create_scheduled_tweet_rejects_current_timestamp(fake_client):
 
 
 async def test_create_scheduled_tweet_rejects_empty_text_and_no_media(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     future_ts = int(_time.time()) + 3600
     with pytest.raises(ToolError) as exc:
@@ -2410,7 +2410,7 @@ async def test_create_scheduled_tweet_rejects_empty_text_and_no_media(fake_clien
 
 
 async def test_create_scheduled_tweet_rejects_whitespace_text_and_no_media(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     future_ts = int(_time.time()) + 3600
     with pytest.raises(ToolError):
@@ -2418,7 +2418,7 @@ async def test_create_scheduled_tweet_rejects_whitespace_text_and_no_media(fake_
 
 
 async def test_create_scheduled_tweet_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2479,7 +2479,7 @@ async def test_get_scheduled_tweets_includes_media_count(fake_client):
 
 
 async def test_get_scheduled_tweets_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2501,7 +2501,7 @@ async def test_delete_scheduled_tweet_returns_dict(fake_client):
 
 
 async def test_delete_scheduled_tweet_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2512,7 +2512,7 @@ async def test_delete_scheduled_tweet_raises_clean_on_not_found(fake_client):
 
 
 async def test_delete_scheduled_tweet_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2546,7 +2546,7 @@ async def test_create_poll_accepts_four_choices(fake_client):
 
 
 async def test_create_poll_rejects_one_choice(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.create_poll(["Only"], 60)
@@ -2554,14 +2554,14 @@ async def test_create_poll_rejects_one_choice(fake_client):
 
 
 async def test_create_poll_rejects_five_choices(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.create_poll(["A", "B", "C", "D", "E"], 60)
 
 
 async def test_create_poll_rejects_zero_duration(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.create_poll(["Yes", "No"], 0)
@@ -2569,14 +2569,14 @@ async def test_create_poll_rejects_zero_duration(fake_client):
 
 
 async def test_create_poll_rejects_negative_duration(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.create_poll(["Yes", "No"], -1)
 
 
 async def test_create_poll_rejects_empty_choice(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.create_poll(["Yes", ""], 60)
@@ -2584,14 +2584,14 @@ async def test_create_poll_rejects_empty_choice(fake_client):
 
 
 async def test_create_poll_rejects_whitespace_only_choice(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.create_poll(["Yes", "   "], 60)
 
 
 async def test_create_poll_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2618,7 +2618,7 @@ async def test_vote_returns_dict(fake_client):
 
 
 async def test_vote_rejects_empty_selected_choice(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.vote("", "card://123", "tweet-1", "poll2choice")
@@ -2626,28 +2626,28 @@ async def test_vote_rejects_empty_selected_choice(fake_client):
 
 
 async def test_vote_rejects_whitespace_selected_choice(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.vote("   ", "card://123", "tweet-1", "poll2choice")
 
 
 async def test_vote_rejects_empty_card_uri(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.vote("Option A", "", "tweet-1", "poll2choice")
 
 
 async def test_vote_rejects_empty_card_name(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.vote("Option A", "card://123", "tweet-1", "")
 
 
 async def test_vote_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2658,7 +2658,7 @@ async def test_vote_raises_clean_on_rate_limit(fake_client):
 
 
 async def test_vote_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2674,7 +2674,7 @@ async def test_vote_raises_clean_on_not_found(fake_client):
 async def test_vote_rejects_empty_tweet_id(fake_client):
     """Claude PR #33 review: vote was missing the tweet_id non-empty guard
     (other 3 string params already had it)."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.vote("Option A", "card://123", "", "poll2choice")
@@ -2683,7 +2683,7 @@ async def test_vote_rejects_empty_tweet_id(fake_client):
 
 async def test_create_poll_rejects_duration_over_max(fake_client):
     """Claude PR #33 review: X polls cap at 7 days = 10080 minutes."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.create_poll(["A", "B"], 10_081)
@@ -2692,7 +2692,7 @@ async def test_create_poll_rejects_duration_over_max(fake_client):
 
 async def test_create_poll_rejects_choice_over_25_chars(fake_client):
     """Claude PR #33 review: X poll choices cap at 25 chars per choice."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.create_poll(["A" * 26, "B"], 60)
@@ -2702,7 +2702,7 @@ async def test_create_poll_rejects_choice_over_25_chars(fake_client):
 
 async def test_delete_scheduled_tweet_rejects_empty_id(fake_client):
     """Consistency with vote: empty id → clean ToolError before twikit call."""
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.delete_scheduled_tweet("")
@@ -2799,7 +2799,7 @@ async def test_get_community_description_truncated_to_200(fake_client):
 
 
 async def test_get_community_raises_on_empty_community_id(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_community("")
@@ -2807,7 +2807,7 @@ async def test_get_community_raises_on_empty_community_id(fake_client):
 
 
 async def test_get_community_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2818,7 +2818,7 @@ async def test_get_community_raises_clean_on_not_found(fake_client):
 
 
 async def test_get_community_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2851,7 +2851,7 @@ async def test_search_community_passes_cursor(fake_client):
 
 
 async def test_search_community_raises_on_empty_query(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.search_community("")
@@ -2859,14 +2859,14 @@ async def test_search_community_raises_on_empty_query(fake_client):
 
 
 async def test_search_community_raises_on_whitespace_query(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.search_community("   ")
 
 
 async def test_search_community_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2915,7 +2915,7 @@ async def test_get_community_tweets_returns_full_text(fake_client):
 
 
 async def test_get_community_tweets_rejects_invalid_tweet_type(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_community_tweets("comm-1", "Invalid")
@@ -2923,7 +2923,7 @@ async def test_get_community_tweets_rejects_invalid_tweet_type(fake_client):
 
 
 async def test_get_community_tweets_raises_on_empty_community_id(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_community_tweets("", "Latest")
@@ -2931,14 +2931,14 @@ async def test_get_community_tweets_raises_on_empty_community_id(fake_client):
 
 
 async def test_get_community_tweets_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_community_tweets("comm-1", "Latest", count=0)
 
 
 async def test_get_community_tweets_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_community_tweets("comm-1", "Latest", count=200)
@@ -2946,7 +2946,7 @@ async def test_get_community_tweets_raises_on_count_too_high(fake_client):
 
 
 async def test_get_community_tweets_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -2957,7 +2957,7 @@ async def test_get_community_tweets_raises_clean_on_not_found(fake_client):
 
 
 async def test_get_community_tweets_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -2992,14 +2992,14 @@ async def test_get_communities_timeline_passes_cursor(fake_client):
 
 
 async def test_get_communities_timeline_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_communities_timeline(count=0)
 
 
 async def test_get_communities_timeline_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_communities_timeline(count=200)
@@ -3007,7 +3007,7 @@ async def test_get_communities_timeline_raises_on_count_too_high(fake_client):
 
 
 async def test_get_communities_timeline_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -3046,7 +3046,7 @@ async def test_get_community_members_passes_cursor(fake_client):
 
 
 async def test_get_community_members_raises_on_empty_community_id(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_community_members("")
@@ -3054,14 +3054,14 @@ async def test_get_community_members_raises_on_empty_community_id(fake_client):
 
 
 async def test_get_community_members_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_community_members("comm-1", count=0)
 
 
 async def test_get_community_members_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_community_members("comm-1", count=200)
@@ -3069,7 +3069,7 @@ async def test_get_community_members_raises_on_count_too_high(fake_client):
 
 
 async def test_get_community_members_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -3080,7 +3080,7 @@ async def test_get_community_members_raises_clean_on_not_found(fake_client):
 
 
 async def test_get_community_members_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -3117,7 +3117,7 @@ async def test_get_community_moderators_passes_cursor(fake_client):
 
 
 async def test_get_community_moderators_raises_on_empty_community_id(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_community_moderators("")
@@ -3125,14 +3125,14 @@ async def test_get_community_moderators_raises_on_empty_community_id(fake_client
 
 
 async def test_get_community_moderators_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.get_community_moderators("comm-1", count=0)
 
 
 async def test_get_community_moderators_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.get_community_moderators("comm-1", count=200)
@@ -3140,7 +3140,7 @@ async def test_get_community_moderators_raises_on_count_too_high(fake_client):
 
 
 async def test_get_community_moderators_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -3151,7 +3151,7 @@ async def test_get_community_moderators_raises_clean_on_not_found(fake_client):
 
 
 async def test_get_community_moderators_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -3192,7 +3192,7 @@ async def test_search_community_tweet_passes_cursor(fake_client):
 
 
 async def test_search_community_tweet_raises_on_empty_community_id(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.search_community_tweet("", "python")
@@ -3200,7 +3200,7 @@ async def test_search_community_tweet_raises_on_empty_community_id(fake_client):
 
 
 async def test_search_community_tweet_raises_on_empty_query(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.search_community_tweet("comm-1", "")
@@ -3208,21 +3208,21 @@ async def test_search_community_tweet_raises_on_empty_query(fake_client):
 
 
 async def test_search_community_tweet_raises_on_whitespace_query(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.search_community_tweet("comm-1", "   ")
 
 
 async def test_search_community_tweet_raises_on_count_too_low(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError):
         await server.search_community_tweet("comm-1", "python", count=0)
 
 
 async def test_search_community_tweet_raises_on_count_too_high(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.search_community_tweet("comm-1", "python", count=200)
@@ -3230,7 +3230,7 @@ async def test_search_community_tweet_raises_on_count_too_high(fake_client):
 
 
 async def test_search_community_tweet_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -3241,7 +3241,7 @@ async def test_search_community_tweet_raises_clean_on_not_found(fake_client):
 
 
 async def test_search_community_tweet_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -3266,7 +3266,7 @@ async def test_join_community_returns_community_dict_with_status(fake_client):
 
 
 async def test_join_community_raises_on_empty_community_id(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.join_community("")
@@ -3274,7 +3274,7 @@ async def test_join_community_raises_on_empty_community_id(fake_client):
 
 
 async def test_join_community_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -3285,7 +3285,7 @@ async def test_join_community_raises_clean_on_not_found(fake_client):
 
 
 async def test_join_community_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -3308,7 +3308,7 @@ async def test_leave_community_returns_community_dict_with_status(fake_client):
 
 
 async def test_leave_community_raises_on_empty_community_id(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.leave_community("")
@@ -3316,7 +3316,7 @@ async def test_leave_community_raises_on_empty_community_id(fake_client):
 
 
 async def test_leave_community_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -3327,7 +3327,7 @@ async def test_leave_community_raises_clean_on_not_found(fake_client):
 
 
 async def test_leave_community_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 
@@ -3361,7 +3361,7 @@ async def test_request_to_join_community_passes_answer(fake_client):
 
 
 async def test_request_to_join_community_raises_on_empty_community_id(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     with pytest.raises(ToolError) as exc:
         await server.request_to_join_community("")
@@ -3369,7 +3369,7 @@ async def test_request_to_join_community_raises_on_empty_community_id(fake_clien
 
 
 async def test_request_to_join_community_raises_clean_on_not_found(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import NotFound
 
@@ -3380,7 +3380,7 @@ async def test_request_to_join_community_raises_clean_on_not_found(fake_client):
 
 
 async def test_request_to_join_community_raises_clean_on_rate_limit(fake_client):
-    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.mcpserver.exceptions import ToolError
 
     from twitter_mcp._vendor.twikit.errors import TooManyRequests
 

@@ -15,14 +15,27 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 import httpx
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BeforeValidator
 
 from twitter_mcp._vendor.twikit import Client
 from twitter_mcp._vendor.twikit.errors import NotFound, TooManyRequests
 
-mcp = FastMCP("twitter")
+
+def _get_version() -> str:
+    """Read the installed package version, falling back to 'unknown'."""
+    try:
+        return _pkg_version("twikit-mcp")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+# `version` reaches clients as `serverInfo.version` in the initialize
+# response. SDK v1 filled that field with its own version when we left it
+# unset; v2 defaults it to an empty string, so pass ours explicitly — our
+# package version is the useful answer either way (issue #109 phase 3).
+mcp = MCPServer("twitter", version=_get_version())
 
 
 def _registered_tools() -> dict:
@@ -2245,14 +2258,6 @@ async def request_to_join_community(
     except NotFound:
         raise ToolError(f"Community {community_id} not found.")
     return _dumps({"community_id": community_id, "status": "request_sent"})
-
-
-def _get_version() -> str:
-    """Read the installed package version, falling back to 'unknown'."""
-    try:
-        return _pkg_version("twikit-mcp")
-    except PackageNotFoundError:
-        return "unknown"
 
 
 # ── CLI mode ──────────────────────────────────────────
