@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.36 の新機能
+
+- **整数 ID を全ツールで受け付け** — X はツイート/ユーザー/リスト ID を JSON の**数値**として返します(`"id": 2087887408440164663`、その隣に `"id_str"`)。数値の `id` をそのまま渡すクライアント(`str()` なしの `{"tweet_id": id}`)は、これまでツールコードが動く前にバリデーションで拒否されていました(`Input should be a valid string`)。今回、snowflake 形の全パラメータ(59 ツール中 37 箇所:`tweet_id`、`user_id`、`list_id`、`media_ids` など)が int / string の両方を受け付け、無損失で文字列に変換します。float は引き続き拒否:これらの ID は 2^53 を超えるため float は既に精度が壊れており、黙って受け付けると別のツイートを操作してしまいます。(closes #111)
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.35 の新機能
 
 - **MCP SDK を v2 未満に固定** — `mcp[cli]` に上限がなく、2.0.0 がプレリリースを抜けた時点で新規の `uv tool install twikit-mcp` が SDK v2 を取得してしまう状態でした。v2([2026-07-28 仕様](https://blog.modelcontextprotocol.io/posts/2026-07-28/)実装)は `FastMCP` を `MCPServer` にリネームし `mcp.server.fastmcp.*` を `mcp.server.mcpserver.*` へ移動するため、本 server は import 時点で落ちます。`>=1.27,<2` に固定し、センチネルテストで保護しました。既存インストールの挙動は変わりません。移行は issue #109 で追跡。
-
-アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.34 の新機能
 

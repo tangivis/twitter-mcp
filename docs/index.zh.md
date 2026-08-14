@@ -8,11 +8,15 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.36 新增
+
+- **所有工具接受整数 ID** — X 返回的推文/用户/列表 ID 是 JSON **数字**(`"id": 2087887408440164663`,旁边才是 `"id_str"`)。客户端把数字 `id` 原样传回来(`{"tweet_id": id}` 没加 `str()`)时,以前在工具代码运行之前就被验证层拒绝(`Input should be a valid string`)。现在全部雪花 ID 参数(59 个工具里的 37 处:`tweet_id`、`user_id`、`list_id`、`media_ids`……)接受 int 或 string,无损转成字符串。浮点数仍然拒绝:这些 ID 超过 2^53,float 已经精度损坏,静默接受会拿错推文。(closes #111)
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.35 新增
 
 - **把 MCP SDK 钉在 v2 以下** — `mcp[cli]` 之前没有上界,等 2.0.0 脱离预发布那天,新用户 `uv tool install twikit-mcp` 就会拉到 SDK v2。v2(实现 [2026-07-28 规范](https://blog.modelcontextprotocol.io/posts/2026-07-28/))把 `FastMCP` 改名成 `MCPServer`、`mcp.server.fastmcp.*` 挪到 `mcp.server.mcpserver.*`,本 server 会直接在 import 处炸。现在钉成 `>=1.27,<2`,并加了哨兵测试守着。已装好的用户行为不变。迁移在 issue #109 跟踪。
-
-升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
 
 ## 0.1.34 新增
 

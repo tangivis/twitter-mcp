@@ -8,11 +8,15 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.36
+
+- **Integer IDs accepted everywhere** — X serializes tweet/user/list IDs as JSON *numbers* (`"id": 2087887408440164663` next to `"id_str"`). Any client that echoed the numeric `id` back — `{"tweet_id": id}` without a `str()` — used to be rejected by validation before the tool even ran (`Input should be a valid string`). Every snowflake-shaped parameter (37 sites across the 59 tools: `tweet_id`, `user_id`, `list_id`, `media_ids`, …) now accepts int or string and coerces losslessly to string. Floats stay rejected: these IDs exceed 2^53, so a float is already precision-corrupted and would silently target the wrong tweet. (closes #111)
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.35
 
 - **Pinned the MCP SDK below v2** — `mcp[cli]` had no upper bound, so a fresh `uv tool install twikit-mcp` would have pulled SDK v2 the day 2.0.0 leaves pre-release. v2 (implementing the [2026-07-28 spec](https://blog.modelcontextprotocol.io/posts/2026-07-28/)) renames `FastMCP` → `MCPServer` and moves `mcp.server.fastmcp.*` to `mcp.server.mcpserver.*`, which breaks this server at import. Now `>=1.27,<2`, guarded by a sentinel test. No behavior change on an existing install. Migration tracked in issue #109.
-
-Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
 
 ## What's new in 0.1.34
 
