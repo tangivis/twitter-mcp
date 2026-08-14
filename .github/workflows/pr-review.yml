@@ -1,4 +1,4 @@
-name: PR review (MiniMax M2 → Sonnet 4.6)
+name: PR review (MiniMax M3 → Sonnet 4.6)
 
 # Per-PR ADVISORY review. Issue #60 — quality-pass v2:
 #
@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   review:
-    name: MiniMax M2 review
+    name: MiniMax M3 review
     runs-on: ubuntu-latest
     timeout-minutes: 6
     # No draft filter — review fires on every PR open / synchronize /
@@ -250,7 +250,7 @@ jobs:
             echo "Output the JSON only. No prose around it."
           } > prompt.txt
 
-      - name: Call MiniMax M2 (or Sonnet 4.6 on escalation)
+      - name: Call MiniMax M3 (or Sonnet 4.6 on escalation)
         id: call
         if: steps.diff.outputs.skip != 'true'
         env:
@@ -259,7 +259,7 @@ jobs:
           ESCALATE: ${{ steps.iter.outputs.escalate }}
         run: |
           payload_minimax=$(jq -nc --rawfile p prompt.txt \
-            '{model: "MiniMax-M2",
+            '{model: "MiniMax-M3",
               messages: [{role: "user", content: $p}],
               max_tokens: 8000,
               temperature: 0.2,
@@ -336,7 +336,7 @@ jobs:
           CRIT_EOF
 
           payload=$(jq -nc --rawfile p critique_prompt.txt \
-            '{model: "MiniMax-M2",
+            '{model: "MiniMax-M3",
               messages: [{role: "user", content: $p}],
               max_tokens: 6000,
               temperature: 0.1,
@@ -374,7 +374,7 @@ jobs:
             exit 0
           fi
 
-          # Strip <think>...</think> (M2 sometimes; Sonnet doesn't but harmless).
+          # Strip <think>...</think> (M3 sometimes; Sonnet doesn't but harmless).
           cat > /tmp/parse.py <<'PY'
           import json, re, sys
           src = sys.stdin.read()

@@ -1,7 +1,7 @@
-name: Issue triage (MiniMax M2)
+name: Issue triage (MiniMax M3)
 
 # Single-shot label triage on new issues. Was on Anthropic
-# claude-code-action; swapped to MiniMax M2 because:
+# claude-code-action; swapped to MiniMax M3 because:
 #   - triage is text-in / labels-out, no agentic flow needed
 #   - cheap + frequent enough to matter at scale
 #
@@ -101,14 +101,14 @@ jobs:
           PY
           python3 /tmp/build.py
 
-      - name: Call MiniMax M2 (JSON mode)
+      - name: Call MiniMax M3 (JSON mode)
         id: call
         env:
           K: ${{ secrets.MINIMAX_API_KEY }}
         run: |
           payload=$(jq -nc --rawfile p prompt.txt \
             '{
-              model: "MiniMax-M2",
+              model: "MiniMax-M3",
               messages: [{role: "user", content: $p}],
               max_tokens: 2000,
               temperature: 0.1,
