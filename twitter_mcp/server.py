@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from pydantic import BeforeValidator
 
 from twitter_mcp._vendor.twikit import Client
 from twitter_mcp._vendor.twikit.errors import NotFound, TooManyRequests
@@ -79,7 +80,30 @@ def _dumps(obj) -> str:
     return _stdlib_json.dumps(obj, ensure_ascii=False)
 
 
-def _parse_article_url_or_id(value: str | None) -> str | None:
+def _id_to_str(value: object) -> object:
+    """Losslessly coerce integer snowflake IDs to their string form.
+
+    X serializes IDs as JSON numbers (`"id": 2087887408440164663`) next to
+    `"id_str"`; clients that echo the numeric form back used to be rejected
+    by pydantic before any tool code ran (issue #111). Python ints are
+    arbitrary-precision, so `str(int)` is exact even above 2^53.
+
+    Floats are deliberately NOT coerced: a float that big is already
+    precision-corrupted, and coercing it would silently target the wrong
+    tweet. Let pydantic reject it loudly.
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    return value
+
+
+IdStr = typing.Annotated[
+    str, BeforeValidator(_id_to_str, json_schema_input_type=int | str)
+]
+"""Snowflake-ID parameter type: handler sees `str`, schema admits int | str."""
+
+
+def _parse_article_url_or_id(value: int | str | None) -> str | None:
     """Return the article rest_id if `value` is an /i/article/<id> URL, else None.
 
     Bare numeric IDs are NOT treated as articles — article and tweet IDs share
@@ -87,15 +111,16 @@ def _parse_article_url_or_id(value: str | None) -> str | None:
     """
     if not value:
         return None
-    m = _ARTICLE_URL_RE.search(value)
+    m = _ARTICLE_URL_RE.search(str(value))
     return m.group(1) if m else None
 
 
-def _extract_tweet_id(value: str) -> str:
+def _extract_tweet_id(value: int | str) -> str:
     """Strip a tweet URL down to its numeric ID; pass numeric IDs through."""
-    if "/" in value:
-        return value.rstrip("/").split("/")[-1]
-    return value
+    s = str(value)
+    if "/" in s:
+        return s.rstrip("/").split("/")[-1]
+    return s
 
 
 # ── Tools ──────────────────────────────────────────────
@@ -115,7 +140,7 @@ async def send_tweet(text: str, reply_to: str | None = None) -> str:
 
 
 @mcp.tool()
-async def get_tweet(tweet_id: str) -> str:
+async def get_tweet(tweet_id: IdStr) -> str:
     """Fetch a tweet by ID.
 
     Args:
@@ -159,7 +184,7 @@ async def get_tweet(tweet_id: str) -> str:
 
 
 @mcp.tool()
-async def get_tweet_replies(tweet_id: str, cursor: str | None = None) -> str:
+async def get_tweet_replies(tweet_id: IdStr, cursor: str | None = None) -> str:
     """Fetch replies (comments) to a tweet (issue #94).
 
     Uses X's TweetDetail GraphQL endpoint via vendored twikit's
@@ -324,7 +349,7 @@ async def _ytdlp_download(
 
 @mcp.tool()
 async def download_tweet_video(
-    tweet_id: str,
+    tweet_id: IdStr,
     output_dir: str | None = None,
     format: str = "best[ext=mp4]",
 ) -> str:
@@ -411,7 +436,7 @@ async def search_tweets(query: str, count: int = 20, product: str = "Latest") ->
 
 
 @mcp.tool()
-async def like_tweet(tweet_id: str) -> str:
+async def like_tweet(tweet_id: IdStr) -> str:
     """Like a tweet by ID.
 
     Args:
@@ -423,7 +448,7 @@ async def like_tweet(tweet_id: str) -> str:
 
 
 @mcp.tool()
-async def retweet(tweet_id: str) -> str:
+async def retweet(tweet_id: IdStr) -> str:
     """Retweet a tweet by ID.
 
     Args:
@@ -469,7 +494,7 @@ _VALID_COMMUNITY_TWEET_TYPES = frozenset({"Top", "Latest", "Media"})
 
 
 def _require_exactly_one(
-    screen_name: str | None, user_id: str | None, *, op: str
+    screen_name: str | None, user_id: IdStr | None, *, op: str
 ) -> None:
     """Enforce exactly-one-of-(screen_name, user_id) input contract.
 
@@ -504,7 +529,7 @@ def _user_to_dict(u) -> dict:
 
 @mcp.tool()
 async def get_user_info(
-    screen_name: str | None = None, user_id: str | None = None
+    screen_name: str | None = None, user_id: IdStr | None = None
 ) -> str:
     """Get a user's profile metadata by screen name OR numeric user ID.
 
@@ -553,7 +578,7 @@ async def get_user_info(
 
 
 async def _resolve_user_id(
-    client: Client, screen_name: str | None, user_id: str | None
+    client: Client, screen_name: str | None, user_id: IdStr | None
 ) -> str:
     """Return numeric user_id, resolving from screen_name if needed."""
     if user_id:
@@ -565,7 +590,7 @@ async def _resolve_user_id(
 @mcp.tool()
 async def get_user_followers(
     screen_name: str | None = None,
-    user_id: str | None = None,
+    user_id: IdStr | None = None,
     count: int = 20,
     cursor: str | None = None,
 ) -> str:
@@ -612,7 +637,7 @@ async def get_user_followers(
 @mcp.tool()
 async def get_user_following(
     screen_name: str | None = None,
-    user_id: str | None = None,
+    user_id: IdStr | None = None,
     count: int = 20,
     cursor: str | None = None,
 ) -> str:
@@ -693,7 +718,7 @@ async def unfollow_user(screen_name: str) -> str:
 
 
 @mcp.tool()
-async def delete_tweet(tweet_id: str) -> str:
+async def delete_tweet(tweet_id: IdStr) -> str:
     """Delete a tweet by ID.
 
     Args:
@@ -710,7 +735,7 @@ async def delete_tweet(tweet_id: str) -> str:
 
 
 @mcp.tool()
-async def unfavorite_tweet(tweet_id: str) -> str:
+async def unfavorite_tweet(tweet_id: IdStr) -> str:
     """Unlike a tweet by ID.
 
     Args:
@@ -727,7 +752,7 @@ async def unfavorite_tweet(tweet_id: str) -> str:
 
 
 @mcp.tool()
-async def delete_retweet(tweet_id: str) -> str:
+async def delete_retweet(tweet_id: IdStr) -> str:
     """Un-retweet a tweet by ID.
 
     Args:
@@ -744,7 +769,7 @@ async def delete_retweet(tweet_id: str) -> str:
 
 
 @mcp.tool()
-async def bookmark_tweet(tweet_id: str, folder_id: str | None = None) -> str:
+async def bookmark_tweet(tweet_id: IdStr, folder_id: IdStr | None = None) -> str:
     """Bookmark a tweet. Optionally add it to a bookmark folder.
 
     Args:
@@ -765,7 +790,7 @@ async def bookmark_tweet(tweet_id: str, folder_id: str | None = None) -> str:
 
 
 @mcp.tool()
-async def delete_bookmark(tweet_id: str) -> str:
+async def delete_bookmark(tweet_id: IdStr) -> str:
     """Remove a tweet from bookmarks.
 
     Args:
@@ -821,7 +846,7 @@ async def get_bookmarks(count: int = 20, cursor: str | None = None) -> str:
 
 @mcp.tool()
 async def get_favoriters(
-    tweet_id: str, count: int = 40, cursor: str | None = None
+    tweet_id: IdStr, count: int = 40, cursor: str | None = None
 ) -> str:
     """Get users who liked a tweet (paginated).
 
@@ -855,7 +880,7 @@ async def get_favoriters(
 
 @mcp.tool()
 async def get_retweeters(
-    tweet_id: str, count: int = 40, cursor: str | None = None
+    tweet_id: IdStr, count: int = 40, cursor: str | None = None
 ) -> str:
     """Get users who retweeted a tweet (paginated).
 
@@ -951,7 +976,7 @@ async def get_trends(category: str = "trending", count: int = 20) -> str:
 
 
 @mcp.tool()
-async def get_article_preview(tweet_id: str) -> str:
+async def get_article_preview(tweet_id: IdStr) -> str:
     """Get title/preview/cover of an X Article embedded in a tweet.
 
     Uses X's public syndication endpoint — no authentication required.
@@ -1005,7 +1030,7 @@ _ARTICLE_FORMATS = ("preview", "plain", "full")
 
 
 @mcp.tool()
-async def get_article(article_id: str, format: str = "plain") -> str:
+async def get_article(article_id: IdStr, format: str = "plain") -> str:
     """Fetch an X Article (long-form post) by rest_id or URL.
 
     Two-hop reader flow (issue #10):
@@ -1256,7 +1281,7 @@ async def get_notifications(
 
 
 @mcp.tool()
-async def send_dm(screen_name: str, text: str, media_id: str | None = None) -> str:
+async def send_dm(screen_name: str, text: str, media_id: IdStr | None = None) -> str:
     """Send a direct message to a user by screen name.
 
     Note: Sends a PRIVATE message. Do not bulk-call. X has aggressive anti-spam
@@ -1282,7 +1307,7 @@ async def send_dm(screen_name: str, text: str, media_id: str | None = None) -> s
 
 @mcp.tool()
 async def send_dm_to_group(
-    group_id: str, text: str, media_id: str | None = None
+    group_id: IdStr, text: str, media_id: IdStr | None = None
 ) -> str:
     """Send a direct message to a group conversation.
 
@@ -1307,7 +1332,7 @@ async def send_dm_to_group(
 
 
 @mcp.tool()
-async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
+async def get_dm_history(screen_name: str, max_id: IdStr | None = None) -> str:
     """Get DM conversation history with a user.
 
     Note: Retrieves PRIVATE messages. Do not bulk-call. X has aggressive
@@ -1347,7 +1372,7 @@ async def get_dm_history(screen_name: str, max_id: str | None = None) -> str:
 
 
 @mcp.tool()
-async def delete_dm(message_id: str) -> str:
+async def delete_dm(message_id: IdStr) -> str:
     """Delete a direct message by ID.
 
     Note: Deletes a PRIVATE message. Do not bulk-call. X has aggressive
@@ -1419,7 +1444,7 @@ def _community_member_to_dict(m) -> dict:
 
 
 @mcp.tool()
-async def get_list(list_id: str) -> str:
+async def get_list(list_id: IdStr) -> str:
     """Get a Twitter List by ID.
 
     Args:
@@ -1466,7 +1491,7 @@ async def get_lists(count: int = 20, cursor: str | None = None) -> str:
 
 @mcp.tool()
 async def get_list_tweets(
-    list_id: str, count: int = 20, cursor: str | None = None
+    list_id: IdStr, count: int = 20, cursor: str | None = None
 ) -> str:
     """Get tweets from a Twitter List (paginated).
 
@@ -1509,7 +1534,7 @@ async def get_list_tweets(
 
 @mcp.tool()
 async def get_list_members(
-    list_id: str, count: int = 20, cursor: str | None = None
+    list_id: IdStr, count: int = 20, cursor: str | None = None
 ) -> str:
     """Get members of a Twitter List (paginated).
 
@@ -1543,7 +1568,7 @@ async def get_list_members(
 
 @mcp.tool()
 async def get_list_subscribers(
-    list_id: str, count: int = 20, cursor: str | None = None
+    list_id: IdStr, count: int = 20, cursor: str | None = None
 ) -> str:
     """Get subscribers of a Twitter List (paginated).
 
@@ -1598,7 +1623,7 @@ async def create_list(
 
 @mcp.tool()
 async def edit_list(
-    list_id: str,
+    list_id: IdStr,
     name: str | None = None,
     description: str | None = None,
     is_private: bool | None = None,
@@ -1628,9 +1653,9 @@ async def edit_list(
 
 @mcp.tool()
 async def add_list_member(
-    list_id: str,
+    list_id: IdStr,
     screen_name: str | None = None,
-    user_id: str | None = None,
+    user_id: IdStr | None = None,
 ) -> str:
     """Add a user to a Twitter List.
 
@@ -1655,9 +1680,9 @@ async def add_list_member(
 
 @mcp.tool()
 async def remove_list_member(
-    list_id: str,
+    list_id: IdStr,
     screen_name: str | None = None,
-    user_id: str | None = None,
+    user_id: IdStr | None = None,
 ) -> str:
     """Remove a user from a Twitter List.
 
@@ -1684,7 +1709,7 @@ async def remove_list_member(
 async def create_scheduled_tweet(
     scheduled_at: int,
     text: str = "",
-    media_ids: list[str] | None = None,
+    media_ids: list[IdStr] | None = None,
 ) -> str:
     """Schedule a tweet to be posted at a future Unix timestamp.
 
@@ -1744,7 +1769,7 @@ async def get_scheduled_tweets() -> str:
 
 
 @mcp.tool()
-async def delete_scheduled_tweet(scheduled_tweet_id: str) -> str:
+async def delete_scheduled_tweet(scheduled_tweet_id: IdStr) -> str:
     """Delete a scheduled tweet by its scheduled tweet ID.
 
     Scheduled tweets follow X's standard rate limits, no special caveats needed.
@@ -1803,7 +1828,7 @@ async def create_poll(choices: list[str], duration_minutes: int) -> str:
 async def vote(
     selected_choice: str,
     card_uri: str,
-    tweet_id: str,
+    tweet_id: IdStr,
     card_name: str,
 ) -> str:
     """Vote on an X poll.
@@ -1838,7 +1863,7 @@ async def vote(
 
 
 @mcp.tool()
-async def get_community(community_id: str) -> str:
+async def get_community(community_id: IdStr) -> str:
     """Get a Twitter Community by ID.
 
     Args:
@@ -1885,7 +1910,7 @@ async def search_community(query: str, cursor: str | None = None) -> str:
 
 @mcp.tool()
 async def get_community_tweets(
-    community_id: str,
+    community_id: IdStr,
     tweet_type: str,
     count: int = 40,
     cursor: str | None = None,
@@ -1979,7 +2004,7 @@ async def get_communities_timeline(count: int = 20, cursor: str | None = None) -
 
 @mcp.tool()
 async def get_community_members(
-    community_id: str, count: int = 20, cursor: str | None = None
+    community_id: IdStr, count: int = 20, cursor: str | None = None
 ) -> str:
     """Get members of a Twitter Community (paginated).
 
@@ -2015,7 +2040,7 @@ async def get_community_members(
 
 @mcp.tool()
 async def get_community_moderators(
-    community_id: str, count: int = 20, cursor: str | None = None
+    community_id: IdStr, count: int = 20, cursor: str | None = None
 ) -> str:
     """Get moderators of a Twitter Community (paginated).
 
@@ -2051,7 +2076,7 @@ async def get_community_moderators(
 
 @mcp.tool()
 async def search_community_tweet(
-    community_id: str,
+    community_id: IdStr,
     query: str,
     count: int = 20,
     cursor: str | None = None,
@@ -2101,7 +2126,7 @@ async def search_community_tweet(
 
 
 @mcp.tool()
-async def join_community(community_id: str) -> str:
+async def join_community(community_id: IdStr) -> str:
     """Join a Twitter Community.
 
     Args:
@@ -2120,7 +2145,7 @@ async def join_community(community_id: str) -> str:
 
 
 @mcp.tool()
-async def leave_community(community_id: str) -> str:
+async def leave_community(community_id: IdStr) -> str:
     """Leave a Twitter Community.
 
     Args:
@@ -2140,7 +2165,7 @@ async def leave_community(community_id: str) -> str:
 
 @mcp.tool()
 async def request_to_join_community(
-    community_id: str, answer: str | None = None
+    community_id: IdStr, answer: str | None = None
 ) -> str:
     """Request to join a Twitter Community.
 

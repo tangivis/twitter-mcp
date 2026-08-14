@@ -29,6 +29,8 @@ and a hand-written file always drifts.
 
 import inspect
 import sys
+import types
+import typing
 from collections import defaultdict
 from pathlib import Path
 
@@ -95,6 +97,22 @@ def _annotation_str(ann) -> str:
     """Render a Python annotation in a way close to source form."""
     if ann is inspect.Parameter.empty:
         return ""
+    # Annotated[str, BeforeValidator(...)] (e.g. server.IdStr, issue #111)
+    # renders as its runtime type so docs keep showing plain `str`.
+    if hasattr(ann, "__metadata__"):
+        return _annotation_str(ann.__origin__)
+    # Rebuild unions member-by-member so `IdStr | None` → `str | None`
+    # instead of the useless `Optional`.
+    origin = typing.get_origin(ann)
+    if origin is typing.Union or isinstance(ann, types.UnionType):
+        return " | ".join(
+            "None" if a is type(None) else _annotation_str(a)
+            for a in typing.get_args(ann)
+        )
+    # Recurse into generic aliases so `list[IdStr]` → `list[str]`.
+    if origin is not None:
+        args = ", ".join(_annotation_str(a) for a in typing.get_args(ann))
+        return f"{_annotation_str(origin)}[{args}]"
     if hasattr(ann, "__name__"):
         return ann.__name__
     return str(ann).replace("typing.", "")
