@@ -8,6 +8,14 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.37 新增
+
+- **`get_dm_history` 不再因 message request 崩溃** — 接受陌生人的 message request 后,X 会在会话时间线里塞一个 `trust_conversation` 系统条目,旧版直接 `KeyError: 'message'`。现在跳过非消息条目并通过新的 `timeline_events` 字段透出,同时用 `warnings` 字段提示端到端加密(X Chat)会话的历史可能不完整 —— legacy DM API 拿不到加密消息体,agent 不应据此断言"对方没回复"。干净会话的 JSON 形状与之前完全一致。(closes #104)
+- **首次 DM 后读历史不再误报 "User not found"** — 刚发出第一条 DM 就读会话,X 侧可能瞬时 404;现在最多重试 3 次(短退避),持续失败时如实报告是会话不可用而不是用户不存在。(closes #102)
+- 感谢 [@DJNgoma](https://github.com/DJNgoma) 的真机排查和两个补丁(PR #103、#105)。
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.36 新增
 
 - **所有工具接受整数 ID** — X 返回的推文/用户/列表 ID 是 JSON **数字**(`"id": 2087887408440164663`,旁边才是 `"id_str"`)。客户端把数字 `id` 原样传回来(`{"tweet_id": id}` 没加 `str()`)时,以前在工具代码运行之前就被验证层拒绝(`Input should be a valid string`)。现在全部雪花 ID 参数(59 个工具里的 37 处:`tweet_id`、`user_id`、`list_id`、`media_ids`……)接受 int 或 string,无损转成字符串。浮点数仍然拒绝:这些 ID 超过 2^53,float 已经精度损坏,静默接受会拿错推文。(closes #111)
