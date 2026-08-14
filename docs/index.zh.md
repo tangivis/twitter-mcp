@@ -8,6 +8,13 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.39 新增
+
+- **迁移到 MCP Python SDK v2** — server 现在基于 `MCPServer`(`mcp.server.mcpserver`),不再是已被删除的 `FastMCP`,依赖从 `mcp[cli]>=1.27,<2` 改成 `>=2,<3`。**协议层面对你没有任何变化**:完整的 `tools/list` 响应 —— 协商的协议版本、capabilities、59 个工具的全部输入/输出 schema —— 与 0.1.38 逐字节完全相同(58,843 字节,在真实 stdio 握手下跨两个 SDK 对比验证)。升级会拉取 SDK 2.x;如果你自己钉了 `mcp<2`,请留在 0.1.38。(closes #109)
+- **`serverInfo.version` 现在报告真实的包版本** — SDK v1 会把这个字段填成它自己的版本,v2 不设置就是空。现在客户端在 initialize 响应里能看到 `twikit-mcp` 的真实版本号。
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.38 新增
 
 - **为 MCP 2026-07-28 规范铺路** — MCP Python SDK 2.0.0 已经正式发布,它把本 server 依赖的类改名了(`FastMCP` → `MCPServer`)。你的安装不受影响:从 0.1.35 起依赖就钉在 SDK 1.x。这个版本把所有对 SDK 私有工具注册表的读取收敛到一个内部访问器,把将来的 v2 迁移从 ~70 处改动变成一行改动。纯内部重构 —— 行为不变,生成的文档和 CLI 输出字节一致。(issue #109 phase 2)

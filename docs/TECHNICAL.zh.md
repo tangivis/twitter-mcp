@@ -246,7 +246,7 @@ pip install twikit-mcp
    MCP Protocol（JSON-RPC 2.0 over stdio）
          │
          ▼
-   twitter-mcp server（本项目 — FastMCP 封装）
+   twitter-mcp server（本项目 — MCPServer 封装）
          │
          ▼
    twikit（模拟浏览器请求，无需 API Key）
@@ -313,7 +313,7 @@ description = "Twitter/X MCP server powered by twikit — no API key needed, fre
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp[cli]",
+    "mcp[cli]>=2,<3",
     "httpx[socks]",
     "beautifulsoup4",
     "filetype",
@@ -329,7 +329,7 @@ twikit-mcp = "twitter_mcp.server:main"
 ```
 
 依赖说明：
-- **`mcp[cli]`** — Anthropic 官方 MCP Python SDK，包含 `FastMCP` 高层封装
+- **`mcp[cli]`** — Anthropic 官方 MCP Python SDK，包含 `MCPServer` 高层封装（SDK v1 里叫 `FastMCP`，v2 改名，见 issue #109）
 - **其余依赖** — twikit 的子依赖，因为 twikit 已 vendor 进项目（见下方说明）
 
 > **关于 twikit vendoring：** PyPI 上的 twikit 2.3.3 有两个 bug（正则匹配失败 + 搜索 HTTP 方法错误），
@@ -348,12 +348,12 @@ import json
 import os
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP    # MCP SDK 的高层封装
+from mcp.server.mcpserver import MCPServer  # MCP SDK 的高层封装
 from twitter_mcp._vendor.twikit import Client  # vendored twikit（含 PR#412 修复）
 
 # 创建 MCP server 实例
 # "twitter" 是 server 名称，会显示在 Claude Code 的工具列表中
-mcp = FastMCP("twitter")
+mcp = MCPServer("twitter", version=_get_version())
 
 # Cookies 文件路径
 # 优先级：环境变量 TWITTER_COOKIES > 默认路径 ~/.config/twitter-mcp/cookies.json
@@ -386,7 +386,7 @@ async def _get_client() -> Client:
 # ── 工具定义 ──────────────────────────────────────────────
 #
 # 每个 @mcp.tool() 函数就是一个 Claude 能调用的工具。
-# FastMCP 会自动：
+# MCPServer 会自动：
 #   1. 从函数签名生成 JSON Schema（参数类型和描述）
 #   2. 从 docstring 提取工具描述（Claude 用来决定是否调用）
 #   3. 注册到 tools/list 响应中
@@ -907,12 +907,12 @@ Claude Code (Host)                  twitter-mcp server
 3. **无状态：** 每次调用都是独立的，server 不需要维护会话状态
 4. **不需要手动运行：** 你永远不需要自己启动 MCP server
 
-### FastMCP 框架
+### MCPServer 框架
 
-`mcp[cli]` 包含 `FastMCP`，是 MCP Python SDK 的高层封装（类比 FastAPI 之于 Starlette）：
+`mcp[cli]` 包含 `MCPServer`，是 MCP Python SDK 的高层封装（类比 FastAPI 之于 Starlette）。SDK v1 里这个类叫 `FastMCP`，v2（2026-07-28 规范）改名成 `MCPServer` 并把 `mcp.server.fastmcp.*` 整个挪到 `mcp.server.mcpserver.*`——本项目在 0.1.39 完成迁移（issue #109）：
 
 ```python
-# FastMCP 自动做了这些事：
+# MCPServer 自动做了这些事：
 @mcp.tool()
 async def search_tweets(query: str, count: int = 20) -> str:
     """Search tweets."""    # ← Claude 看到的工具描述
@@ -926,7 +926,7 @@ async def search_tweets(query: str, count: int = 20) -> str:
 # 5. 处理 JSON-RPC 协议细节
 ```
 
-你只需要写普通的 async Python 函数 + docstring，FastMCP 处理一切协议细节。
+你只需要写普通的 async Python 函数 + docstring，MCPServer 处理一切协议细节。
 
 ### 为什么每次调用都创建新 Client？
 
@@ -1399,9 +1399,9 @@ touch my_service_mcp/__init__.py
 
 ```python
 # my_service_mcp/server.py
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
-mcp = FastMCP("my-service")
+mcp = MCPServer("my-service")
 
 @mcp.tool()
 async def do_something(param: str) -> str:

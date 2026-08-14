@@ -2,7 +2,7 @@
 
 > ⚠️ This deep-dive is currently authored in 中文 only. Switch the **language toggle in the top bar to 中文** to read it, or browse the source on [GitHub](https://github.com/tangivis/twitter-mcp/blob/main/docs/TECHNICAL.zh.md).
 >
-> An English translation is welcome — open a PR adding `docs/TECHNICAL.en.md` content. The page is internals-focused (MCP protocol, FastMCP, tool registration mechanics, cookie auth flow) so a literal translation works fine.
+> An English translation is welcome — open a PR adding `docs/TECHNICAL.en.md` content. The page is internals-focused (MCP protocol, MCPServer, tool registration mechanics, cookie auth flow) so a literal translation works fine.
 
 ## TL;DR pointers (English)
 
@@ -13,4 +13,4 @@ If you're an English-only reader who lands here looking for high-level info, her
 - **Why vendored twikit?** Two upstream PR-#412 fixes that aren't released to PyPI yet, plus our own defensive `.get()` patches. See [Vendoring twikit](VENDORING.md).
 - **Auth model?** Browser cookies (`ct0` + `auth_token`) lifted from a logged-in X session. No developer-account approval, no $200/mo API tier.
 
-For the granular details (FastMCP internals, tool output budget shaping, server lifecycle in Claude Code, etc.) — please toggle to the 中文 version above.
+For the granular details (MCPServer internals, tool output budget shaping, server lifecycle in Claude Code, etc.) — please toggle to the 中文 version above.

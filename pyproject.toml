@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "twikit-mcp"
-version = "0.1.38"
+version = "0.1.39"
 description = "Twitter/X MCP server powered by twikit — no API key needed, free forever"
 readme = "README.md"
 license = "MIT"
@@ -21,12 +21,12 @@ classifiers = [
     "Topic :: Communications :: Chat",
 ]
 dependencies = [
-    # Upper bound is load-bearing: SDK v2 (2026-07-28 spec) renames
-    # FastMCP → MCPServer and moves mcp.server.fastmcp.* to
-    # mcp.server.mcpserver.*, which breaks server.py at import. Lift to
-    # >=2,<3 only together with that migration — issue #109 phase 3.
-    # Guarded by tests/test_dependency_pins.py.
-    "mcp[cli]>=1.27,<2",
+    # Upper bound is load-bearing: SDK v3, whenever it lands, is free to
+    # rename the server class again — v2 already did it once (FastMCP →
+    # MCPServer, mcp.server.fastmcp.* → mcp.server.mcpserver.*), which is
+    # exactly what issue #109 was filed for. Lift this only together with
+    # the corresponding migration. Guarded by tests/test_dependency_pins.py.
+    "mcp[cli]>=2,<3",
     "httpx[socks]",
     "beautifulsoup4",
     "filetype",
