@@ -103,7 +103,7 @@ def test_pr_review_still_runs_minimax_review():
     still be called and its review posted as a PR comment.
     """
     src = _PR_REVIEW.read_text()
-    assert "MiniMax M2 review" in src, "pr-review.yml job name lost"
+    assert "MiniMax M3 review" in src, "pr-review.yml job name lost"
     assert "https://api.minimaxi.com" in src, "pr-review.yml lost the MiniMax call"
     assert "gh pr comment" in src, "pr-review.yml lost the comment-post step"
 

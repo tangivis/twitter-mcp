@@ -70,7 +70,7 @@ jobs:
           #
           # Sonnet 4.6 is plenty for 90% of issue triage / small fixes /
           # PR feedback in this repo. (Reference: pr-review.yml runs on
-          # MiniMax M2 — strictly weaker — and converges within 5 review
+          # MiniMax M3 — strictly weaker — and converges within 5 review
           # iterations on real PRs.) Opus 4.7 is reserved for cases the
           # maintainer drives locally via Claude Code; routing the
           # GitHub bot to Opus on every @claude burns ~5× the tokens

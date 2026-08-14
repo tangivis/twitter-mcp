@@ -262,7 +262,7 @@ def test_tools_registered():
 ```
 PR open / push
   ├─ ci.yml          → lint + 3 平台 test + MCP protocol(决定能不能合)
-  └─ pr-review.yml   → MiniMax M2 拉个 review,post 成评论(顾问)
+  └─ pr-review.yml   → MiniMax M3 拉个 review,post 成评论(顾问)
 
   ↓
 maintainer(在 Claude Code session 里)
