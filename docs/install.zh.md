@@ -172,6 +172,29 @@ pi install npm:pi-mcp-adapter
 
 Pi 的 MCP 扩展都是社区个人维护、非官方,且以你的完整系统权限运行。装之前先看一眼源码,毕竟它要拿你的 cookie 路径。
 
+### DeepSeek Harness(dsh)
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 自带官方 MCP 客户端(`@deepseek-ai/dsh-mcp-client`),不需要装社区扩展。配置写在 `cordis.yml` 里,是一条插件条目,不是 `mcpServers` 映射:
+
+```yaml
+- id: mcp-twitter
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: twitter
+    transport: stdio
+    command: twikit-mcp
+    env:
+      TWITTER_COOKIES: /home/YOU/.config/twitter-mcp/cookies.json
+```
+
+`serverName` 给工具做命名空间,模型那边看到的是 `mcp__twitter__get_tweet`、`mcp__twitter__search_tweets` 这种名字。
+
+和 Pi 不同,**dsh 没有工具白名单** —— 59 个工具会全部注册,没有官方支持的办法只暴露一部分,上下文预算要自己留够。
+
+两个值得知道的可选键:`failOnStartupError: true` 让 cookie 路径写错时在激活阶段直接报错,而不是静悄悄一个工具都不注册;`toolCallTimeoutMs`(默认 `60000`)在你给重读接口传大 `count` 时值得调高。
+
+dsh 目前是 developer preview,配置形状可能会变;上面这些键要是对不上了,查[插件自己的 README](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md)。
+
 ### 其他任何 MCP 客户端
 
 `twikit-mcp` 是标准 **stdio** MCP server。不管你的客户端配置文件长什么样,JSON 形状都一样:
