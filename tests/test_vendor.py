@@ -310,11 +310,11 @@ def test_server_imports_from_vendor():
 
 
 def test_server_still_works():
-    """Server still loads and registers all 59 tools after vendoring."""
+    """Server still loads and registers all 62 tools after vendoring."""
     from twitter_mcp.server import _registered_tools
 
     tools = _registered_tools()
-    assert len(tools) == 59
+    assert len(tools) == 62
     expected = {
         "send_tweet",
         "get_tweet",
@@ -381,6 +381,10 @@ def test_server_still_works():
         "download_tweet_video",
         # new in v0.1.32 (issue #94)
         "get_tweet_replies",
+        # new in v0.1.41 (issue #118) — local read-only XChat
+        "xchat_status",
+        "xchat_list_conversations",
+        "xchat_get_history",
     }
     assert set(tools.keys()) == expected
 

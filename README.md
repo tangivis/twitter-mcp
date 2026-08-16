@@ -221,6 +221,9 @@ All three modes share the same `~/.config/twitter-mcp/cookies.json` — no separ
 | `send_dm_to_group` | ⚠️ Send a PRIVATE DM to a group conversation — do not bulk-call |
 | `get_dm_history` | ⚠️ Get DM conversation history with a user (private — paginate via `max_id`) |
 | `delete_dm` | ⚠️ Delete a DM by message ID (private) |
+| `xchat_status` | Check whether XChat (encrypted DMs) is readable from the local browser store |
+| `xchat_list_conversations` | ⚠️ List XChat conversations with previews (private — read locally, never marks read) |
+| `xchat_get_history` | ⚠️ Read one XChat conversation's decrypted messages (private — local only) |
 | `get_list` | Get a Twitter List by ID |
 | `get_lists` | Get authenticated user's Lists (paginated via `cursor`, max 100/call) |
 | `get_list_tweets` | Get tweets from a List (paginated via `cursor`, max 100/call) |
@@ -468,6 +471,9 @@ claude mcp add twitter -s user \
 | `send_dm_to_group` | ⚠️ 发送私信到群组，勿批量调用 | "发消息到群组..." |
 | `get_dm_history` | ⚠️ 获取与某用户的私信记录（私密，通过 `max_id` 分页） | "看看和 @xxx 的私信记录" |
 | `delete_dm` | ⚠️ 删除某条私信（私密） | "删除这条私信" |
+| `xchat_status` | 检查本地浏览器里的 XChat（加密私信）能不能读 | "XChat 能读吗" |
+| `xchat_list_conversations` | ⚠️ 列出 XChat 会话和预览（私密,纯本地读,不会标记已读） | "看看加密私信有哪些会话" |
+| `xchat_get_history` | ⚠️ 读某个 XChat 会话的解密消息（私密,纯本地） | "读一下和 xxx 的加密私信" |
 | `get_list` | 通过 ID 获取 Twitter 列表 | "查看列表 xxx" |
 | `get_lists` | 获取当前用户的所有列表（`cursor` 分页，单次最多 100） | "我有哪些列表？" |
 | `get_list_tweets` | 获取列表中的推文（`cursor` 分页，单次最多 100） | "查看列表推文" |
@@ -715,6 +721,9 @@ MCP クライアントの設定ファイル（`mcp.json`、`settings.json` な�
 | `send_dm_to_group` | ⚠️ グループにダイレクトメッセージを送信 — 一括送信禁止 | 「グループにメッセージ送信...」 |
 | `get_dm_history` | ⚠️ ユーザーとの DM 履歴取得（プライベート、`max_id` でページング） | 「@xxx との DM 履歴を見せて」 |
 | `delete_dm` | ⚠️ DM を削除（プライベート） | 「この DM を削除して」 |
+| `xchat_status` | ローカルブラウザの XChat（暗号化 DM）が読めるか確認 | 「XChat は読める?」 |
+| `xchat_list_conversations` | ⚠️ XChat 会話一覧とプレビュー（プライベート、ローカル読み取り、既読にしない） | 「暗号化 DM の一覧を見せて」 |
+| `xchat_get_history` | ⚠️ XChat 会話の復号済みメッセージを読む（プライベート、ローカルのみ） | 「@xxx との暗号化 DM を読んで」 |
 | `get_list` | ID でリストを取得 | 「リスト xxx を見せて」 |
 | `get_lists` | 自分のリスト一覧取得（`cursor` でページング、1 回最大 100） | 「自分のリストは？」 |
 | `get_list_tweets` | リストのツイート取得（`cursor` でページング、1 回最大 100） | 「リストのツイートを見せて」 |

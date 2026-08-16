@@ -62,6 +62,22 @@ _MUTATING = {
     "download_tweet_video",
 }
 
+# Idempotent reads that have no live-smoke surface because they never
+# call X. Marking these `_MUTATING` would be a lie — they mutate nothing.
+# They read a SQLite file the user's own browser wrote, so a burner
+# cookie and a network round-trip prove nothing about them, and CI has no
+# such file to read. They are covered instead by tests/test_xchat_local.py,
+# which drives the real code against a real database — stronger evidence
+# than live-smoke gives any tool on the list above.
+#
+# Add here ONLY if the tool genuinely makes no request to X. If it talks
+# to X at all, it belongs in live-smoke.
+_NO_LIVE_SURFACE = {
+    "xchat_status",  # reads local XChat SQLite (issue #118)
+    "xchat_list_conversations",
+    "xchat_get_history",
+}
+
 
 def test_live_smoke_covers_all_idempotent_reads():
     """Issue #73 acceptance criterion 1: all 25 idempotent reads are
@@ -76,8 +92,14 @@ def test_live_smoke_covers_all_idempotent_reads():
         f"_MUTATING references unregistered tools: {unknown_mutating!r}. "
         f"Update this test's allowlist to match server.py's registry."
     )
+    unknown_local = _NO_LIVE_SURFACE - all_tools
+    assert not unknown_local, (
+        f"_NO_LIVE_SURFACE references unregistered tools: {unknown_local!r}."
+    )
+    overlap = _MUTATING & _NO_LIVE_SURFACE
+    assert not overlap, f"a tool cannot be both mutating and X-free: {overlap!r}"
 
-    idempotent = all_tools - _MUTATING
+    idempotent = all_tools - _MUTATING - _NO_LIVE_SURFACE
 
     smoke_yaml = Path(__file__).parent.parent / ".github/workflows/live-smoke.yml"
     # Windows default encoding is cp1252; pin utf-8 since the workflow
@@ -102,3 +124,27 @@ def test_live_smoke_covers_all_idempotent_reads():
         f"  (b) if it's actually a mutation, add it to the _MUTATING "
         f"allowlist in this test file with a comment explaining why."
     )
+
+
+def test_no_live_surface_tools_really_do_not_call_x():
+    """Enforce the exemption above — an unchecked allowlist is a hole.
+
+    A tool earns a live-smoke exemption only by making no request to X.
+    Verified structurally: the local XChat package must not import any
+    HTTP client, must not reach for the authenticated twikit client, and
+    must not name an x.com endpoint.
+    """
+    package = Path(__file__).parent.parent / "twitter_mcp" / "xchat"
+    sources = sorted(package.glob("*.py"))
+    assert sources, "the xchat package should exist while it holds exemptions"
+
+    banned = ("httpx", "requests", "urllib.request", "socket", "_get_client", "x.com")
+    for path in sources:
+        src = path.read_text(encoding="utf-8")
+        # Strip the module docstring: prose may legitimately mention X.
+        body = src.split('"""', 2)[-1] if src.lstrip().startswith('"""') else src
+        for token in banned:
+            assert token not in body, (
+                f"{path.name} references {token!r}, so it may reach the network. "
+                f"Tools backed by it must not sit in _NO_LIVE_SURFACE."
+            )

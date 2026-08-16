@@ -2260,6 +2260,129 @@ async def request_to_join_community(
     return _dumps({"community_id": community_id, "status": "request_sent"})
 
 
+# ── XChat (local, read-only) ──────────────────────────
+#
+# XChat is X's E2EE DM system; the legacy DM API above cannot return
+# encrypted bodies (see the `warnings` field on get_dm_history). These
+# tools read the plaintext X's own web client already decrypted into a
+# local SQLite file. No network, no credentials, no write path — see
+# twitter_mcp/xchat/__init__.py and issue #118.
+
+
+def _xchat_db():
+    """Resolve the configured reader, or raise a ToolError explaining why not."""
+    from twitter_mcp import xchat
+
+    try:
+        database = xchat.database_from_env()
+    except xchat.XChatUnavailable as e:
+        raise ToolError(str(e))
+    if database is None:
+        raise ToolError(
+            "No local XChat store is configured. Set XCHAT_BROWSER (auto, "
+            f"{', '.join(xchat.SUPPORTED_BROWSERS)}) to discover one, or "
+            "XCHAT_DATABASE_PATH to point at the file directly. Call "
+            "xchat_status for what was found on this machine."
+        )
+    return database
+
+
+def _xchat_call(operation, *args, **kwargs):
+    """Run a reader call, translating its errors to ToolError."""
+    from twitter_mcp import xchat
+
+    try:
+        return operation(*args, **kwargs)
+    except (xchat.XChatUnavailable, xchat.XChatExtractionFailed) as e:
+        raise ToolError(str(e))
+
+
+@mcp.tool()
+async def xchat_status() -> str:
+    """Check whether XChat (encrypted DMs) can be read on this machine.
+
+    Reads X's locally decrypted store — the browser did the decryption;
+    this only opens the resulting SQLite file read-only. Nothing is sent,
+    marked read, or modified.
+
+    Returns JSON with `state`, and when a store is readable:
+    `database_path`, `conversation_count`, `last_updated`. When no store
+    is configured, returns `discovery` listing the XChat databases found
+    in local browser profiles so you can pick one.
+
+    Configure with `XCHAT_BROWSER` (auto/chrome/chromium/edge/brave/aside),
+    `XCHAT_BROWSER_PROFILE`, or `XCHAT_DATABASE_PATH`.
+    """
+    from twitter_mcp import xchat
+
+    config = xchat.env_config()
+    if not config["database_path"] and not config["browser"]:
+        # Unconfigured: scan so the user learns what exists rather than
+        # just being told "unavailable".
+        report = _xchat_call(xchat.discover_xchat_databases, browser="auto")
+        return _dumps(
+            {
+                "state": "not_configured",
+                "detail": (
+                    "Set XCHAT_BROWSER or XCHAT_DATABASE_PATH to enable "
+                    "XChat reads. Candidates found on this machine are listed "
+                    "under `discovery`."
+                ),
+                "discovery": report,
+            }
+        )
+    return _dumps(_xchat_call(_xchat_db().status))
+
+
+@mcp.tool()
+async def xchat_list_conversations(limit: int = 50, unread_only: bool = False) -> str:
+    """List XChat (encrypted DM) conversations, newest activity first.
+
+    Note: returns PRIVATE message previews from your own machine.
+
+    Returns JSON `conversations`: `conversation_id`, `name`, `screen_name`,
+    `preview` (latest message text; `[image attachment]`-style placeholder
+    when the message carried no text), `timestamp`, `unread`.
+
+    Args:
+        limit: Max conversations to return (1-500, default 50).
+        unread_only: Only conversations with unread messages.
+    """
+    conversations = _xchat_call(
+        _xchat_db().list_conversations, limit=limit, unread_only=unread_only
+    )
+    return _dumps({"count": len(conversations), "conversations": conversations})
+
+
+@mcp.tool()
+async def xchat_get_history(conversation_id: str, limit: int = 50) -> str:
+    """Read messages from one XChat (encrypted DM) conversation.
+
+    Note: returns PRIVATE decrypted message text from your own machine.
+    Reading here does NOT mark the conversation read on X.
+
+    Returns JSON `messages` oldest-first: `text`, `timestamp`,
+    `direction` (incoming/outgoing), `sender_screen_name`,
+    `sequence_number`, `has_attachment`.
+
+    Args:
+        conversation_id: From xchat_list_conversations.
+        limit: Max messages, most recent kept (1-500, default 50).
+    """
+    if not conversation_id:
+        raise ToolError("conversation_id must be non-empty.")
+    messages = _xchat_call(
+        _xchat_db().get_history, conversation_id=conversation_id, limit=limit
+    )
+    return _dumps(
+        {
+            "conversation_id": conversation_id,
+            "count": len(messages),
+            "messages": messages,
+        }
+    )
+
+
 # ── CLI mode ──────────────────────────────────────────
 #
 # `twikit-mcp` is dual-mode:

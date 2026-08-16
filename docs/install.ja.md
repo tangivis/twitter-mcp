@@ -137,7 +137,7 @@ Cline パネル → ⚙️ → **MCP Servers** → **Edit MCP Settings** を開�
 
 ### Pi
 
-Pi には MCP が組み込まれていません — まずコミュニティ製の MCP 拡張を入れます。[`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) がこの server には最適です:設定の形は上記と同じ `mcpServers`、接続は遅延、そして `directTools` の許可リストで `twikit-mcp` の 59 ツールがコーディングセッションのコンテキストを圧迫するのを防げます。
+Pi には MCP が組み込まれていません — まずコミュニティ製の MCP 拡張を入れます。[`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) がこの server には最適です:設定の形は上記と同じ `mcpServers`、接続は遅延、そして `directTools` の許可リストで `twikit-mcp` の 62 ツールがコーディングセッションのコンテキストを圧迫するのを防げます。
 
 ```bash
 pi install npm:pi-mcp-adapter
@@ -168,7 +168,7 @@ pi install npm:pi-mcp-adapter
 }
 ```
 
-`directTools` の 7 つはネイティブツールとして登録され、残り 52 は 1 つのプロキシツールの背後で必要時に発見されます。`command` は**絶対パス**で書いてください — Pi のサブプロセス環境の `PATH` に `~/.local/bin` が入っているとは限りません。
+`directTools` の 7 つはネイティブツールとして登録され、残り 55 は 1 つのプロキシツールの背後で必要時に発見されます。`command` は**絶対パス**で書いてください — Pi のサブプロセス環境の `PATH` に `~/.local/bin` が入っているとは限りません。
 
 Pi の MCP 拡張はいずれもコミュニティ製で公式ではなく、あなたのフルシステム権限で動きます。cookie のパスを預ける前にソースを確認してください。
 
@@ -189,7 +189,7 @@ Pi の MCP 拡張はいずれもコミュニティ製で公式ではなく、あ
 
 `serverName` がツール名の名前空間になり、モデルからは `mcp__twitter__get_tweet` や `mcp__twitter__search_tweets` として見えます。
 
-Pi と違い、**dsh にはツールの許可リストがありません** — 59 ツールすべてが登録され、一部だけを公開する公式な方法はないため、コンテキストの余裕を見込んでおいてください。
+Pi と違い、**dsh にはツールの許可リストがありません** — 62 ツールすべてが登録され、一部だけを公開する公式な方法はないため、コンテキストの余裕を見込んでおいてください。
 
 知っておくと便利なオプション 2 つ:`failOnStartupError: true` は cookie パスの誤りを黙って握りつぶさず起動時に失敗させます。`toolCallTimeoutMs`(既定 `60000`)は重い読み取りに大きな `count` を渡す場合に引き上げる価値があります。
 
