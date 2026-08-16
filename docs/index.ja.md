@@ -8,6 +8,10 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.40 の新機能
+
+- **DeepSeek Harness(dsh)のセットアップ手順** — [インストールページ](install.md)に [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) を追加。Pi と違い dsh は公式の MCP クライアント(`@deepseek-ai/dsh-mcp-client`)を同梱しているためコミュニティ拡張は不要ですが、設定は通常の `mcpServers` マップではなく `cordis.yml` のプラグインエントリで、**ツールの許可リストがない**ため 59 ツールすべてが登録されます。カードではその両方に加え、知っておく価値のある `failOnStartupError` と `toolCallTimeoutMs` にも触れています。ドキュメントのみの変更 — コードは変更なし、`twikit-mcp` は標準的な stdio MCP server なので特別な対応は不要です。
+
 ## 0.1.39 の新機能
 
 - **MCP Python SDK v2 へ移行** — server は削除された `FastMCP` ではなく `MCPServer`(`mcp.server.mcpserver`)ベースになり、依存は `mcp[cli]>=1.27,<2` から `>=2,<3` へ移りました。**プロトコルレベルでの変更はありません**:`tools/list` の完全なペイロード —— ネゴシエートされたプロトコルバージョン、capabilities、59 ツールすべての入出力スキーマ —— は 0.1.38 とバイト単位で同一です(58,843 バイト、実際の stdio ハンドシェイクで両 SDK を比較検証)。アップグレードすると SDK 2.x が入ります。自分で `mcp<2` を固定している場合は 0.1.38 に留まってください。(closes #109)

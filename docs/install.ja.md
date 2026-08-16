@@ -172,6 +172,29 @@ pi install npm:pi-mcp-adapter
 
 Pi の MCP 拡張はいずれもコミュニティ製で公式ではなく、あなたのフルシステム権限で動きます。cookie のパスを預ける前にソースを確認してください。
 
+### DeepSeek Harness(dsh)
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) は公式の MCP クライアント(`@deepseek-ai/dsh-mcp-client`)を同梱しているため、コミュニティ拡張は不要です。設定は `mcpServers` マップではなく、`cordis.yml` のプラグインエントリとして書きます:
+
+```yaml
+- id: mcp-twitter
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: twitter
+    transport: stdio
+    command: twikit-mcp
+    env:
+      TWITTER_COOKIES: /home/YOU/.config/twitter-mcp/cookies.json
+```
+
+`serverName` がツール名の名前空間になり、モデルからは `mcp__twitter__get_tweet` や `mcp__twitter__search_tweets` として見えます。
+
+Pi と違い、**dsh にはツールの許可リストがありません** — 59 ツールすべてが登録され、一部だけを公開する公式な方法はないため、コンテキストの余裕を見込んでおいてください。
+
+知っておくと便利なオプション 2 つ:`failOnStartupError: true` は cookie パスの誤りを黙って握りつぶさず起動時に失敗させます。`toolCallTimeoutMs`(既定 `60000`)は重い読み取りに大きな `count` を渡す場合に引き上げる価値があります。
+
+dsh は developer preview であり設定の形が変わる可能性があります。上記のキーが合わなくなっていたら[プラグインの README](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md) を確認してください。
+
 ### その他の MCP クライアント
 
 `twikit-mcp` は標準的な **stdio** MCP サーバーです。クライアントの設定ファイルがどんな形でも、JSON の形は同じ:

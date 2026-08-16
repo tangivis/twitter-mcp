@@ -172,6 +172,29 @@ The seven `directTools` register as native tools; the other 52 stay behind a sin
 
 Pi's MCP extensions are community-maintained, not first-party, and run with your full system permissions. Read the source before installing one that will hold your cookie path.
 
+### DeepSeek Harness (dsh)
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) ships a first-party MCP client (`@deepseek-ai/dsh-mcp-client`), so no community extension is needed. Config is a plugin entry in `cordis.yml` rather than an `mcpServers` map:
+
+```yaml
+- id: mcp-twitter
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: twitter
+    transport: stdio
+    command: twikit-mcp
+    env:
+      TWITTER_COOKIES: /home/YOU/.config/twitter-mcp/cookies.json
+```
+
+`serverName` namespaces the tools, so they reach the model as `mcp__twitter__get_tweet`, `mcp__twitter__search_tweets`, and so on.
+
+Unlike Pi, **dsh has no tool allowlist** — every one of the 59 tools is registered. There is no supported way to expose a subset, so budget your context accordingly.
+
+Two optional keys worth knowing: `failOnStartupError: true` makes a broken cookie path fail loudly at activation instead of silently registering nothing, and `toolCallTimeoutMs` (default `60000`) is worth raising if you pass a large `count` to the heavier reads.
+
+dsh is in developer preview and its config shape may change; if the keys above no longer match, check [the plugin's README](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md).
+
 ### Any other MCP client
 
 `twikit-mcp` is a standard **stdio** MCP server. Whatever your client's config file looks like, the JSON shape is the same:
