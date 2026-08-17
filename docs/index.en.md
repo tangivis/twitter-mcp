@@ -8,6 +8,13 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.45
+
+- **CI: an unreachable review API no longer fails the PR** — `pr-review.yml` had a warn-and-skip handler for a bad LLM response, but GitHub runs `run:` blocks under `bash -e`, so a non-zero `curl` exit (timeout, DNS, connection refused) killed the step *before* the handler ran. [Run #141](https://github.com/tangivis/twitter-mcp/actions/runs/32003925207) died that way and turned an already-approved PR red. All three call sites now capture curl's status and degrade as intended. A test extracts the real shell out of the workflow and runs it against a stub `curl`, so it can't drift from what CI executes — and it immediately found the same latent bug in `issue-triage.yml`. (closes #124)
+- **No more duplicate review on a draft→ready flip** — reviews now record which commit they covered, and a second run on the same SHA skips instead of spending another LLM call. `ready_for_review` stays a trigger, since a contributor marking a draft ready genuinely wants a review then.
+
+CI only — no change to the package. Upgrade is optional.
+
 ## What's new in 0.1.44
 
 - **Listed in the official MCP registry** — a `server.json` manifest now declares this server to [`registry.modelcontextprotocol.io`](https://registry.modelcontextprotocol.io) as `io.github.tangivis/twitter-mcp`: PyPI package, stdio transport, and every environment variable with a description you can act on. A sentinel test keeps it in sync with `pyproject.toml` and cross-checks the declared variables against the ones the code actually reads — in both directions, so the manifest can't advertise a knob that does nothing or omit one that matters. (closes #122)

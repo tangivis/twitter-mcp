@@ -8,6 +8,13 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.45 の新機能
+
+- **CI:レビュー API に到達できなくても PR を落とさない** — `pr-review.yml` には「警告してスキップ」のハンドラがありましたが、GitHub は `run:` を `bash -e` で実行するため、curl の非ゼロ終了(タイムアウト / DNS / 接続拒否)がハンドラに到達する前にステップを殺していました。[Run #141](https://github.com/tangivis/twitter-mcp/actions/runs/32003925207) がまさにそれで、承認済みの PR が赤くなりました。3 箇所すべてで curl のステータスを捕捉し、意図通り降格します。テストは**ワークフローから実際の shell を抽出**してスタブ `curl` で実行するため CI の実行内容と乖離しません —— 初回実行で `issue-triage.yml` の同じ潜在バグも検出しました。(closes #124)
+- **draft→ready で重複レビューが走らない** — レビューが対象コミットを記録し、同一 SHA の 2 回目はスキップします。`ready_for_review` はトリガーとして維持:草稿を ready にする貢献者は本当にレビューを求めています。
+
+CI のみの変更 —— パッケージ自体は変わりません。アップグレードは任意です。
+
 ## 0.1.44 の新機能
 
 - **公式 MCP レジストリへの登録** — `server.json` を追加し、本 server を `io.github.tangivis/twitter-mcp` として [`registry.modelcontextprotocol.io`](https://registry.modelcontextprotocol.io) に宣言します:PyPI パッケージ、stdio トランスポート、そして各環境変数の実用的な説明付き。センチネルテストが `pyproject.toml` とのバージョン同期を保証し、宣言された変数とコードが実際に読む変数を**双方向で**突き合わせます —— 存在しない設定を宣伝することも、必要な設定を落とすこともできません。(closes #122)
