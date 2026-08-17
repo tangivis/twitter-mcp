@@ -8,6 +8,11 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.44
+
+- **Listed in the official MCP registry** — a `server.json` manifest now declares this server to [`registry.modelcontextprotocol.io`](https://registry.modelcontextprotocol.io) as `io.github.tangivis/twitter-mcp`: PyPI package, stdio transport, and every environment variable with a description you can act on. A sentinel test keeps it in sync with `pyproject.toml` and cross-checks the declared variables against the ones the code actually reads — in both directions, so the manifest can't advertise a knob that does nothing or omit one that matters. (closes #122)
+- **DeepSeek Harness card completed** — documents the `reconnect` keys and the fact that a duplicate `serverName` across live instances fails the later plugin at load.
+
 ## What's new in 0.1.43
 
 - **README's client list is no longer stale** — Pi (documented in 0.1.34) and DeepSeek Harness (0.1.40) were missing from the one-line "Works with" summary in all three languages, because nothing connected that line to the Install page. Both are now listed, and a sentinel test asserts every client card on the Install page appears in every README summary, so the next one can't quietly go missing. Docs + test only.

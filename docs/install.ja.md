@@ -191,7 +191,9 @@ Pi の MCP 拡張はいずれもコミュニティ製で公式ではなく、あ
 
 Pi と違い、**dsh にはツールの許可リストがありません** — 62 ツールすべてが登録され、一部だけを公開する公式な方法はないため、コンテキストの余裕を見込んでおいてください。
 
-知っておくと便利なオプション 2 つ:`failOnStartupError: true` は cookie パスの誤りを黙って握りつぶさず起動時に失敗させます。`toolCallTimeoutMs`(既定 `60000`)は重い読み取りに大きな `count` を渡す場合に引き上げる価値があります。
+知っておくと便利なオプション:`failOnStartupError: true` は cookie パスの誤りを黙って握りつぶさず起動時に失敗させます。`toolCallTimeoutMs`(既定 `60000`)は重い読み取りに大きな `count` を渡す場合に引き上げる価値があります。`reconnect` グループ(`enabled`、`initialDelayMs`、`maxDelayMs`、`maxAttempts`)は再接続の挙動を制御します —— dsh は倍々のバックオフで再試行し、`maxAttempts` 回連続で失敗するとその server のツールを登録解除、接続が安定すると回数をリセットします。
+
+複数インスタンスを動かす場合、`serverName` は必ず別々にしてください:稼働中のインスタンス間で重複すると、後から読み込まれたプラグインが load 時に失敗します。
 
 dsh は developer preview であり設定の形が変わる可能性があります。上記のキーが合わなくなっていたら[プラグインの README](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md) を確認してください。
 

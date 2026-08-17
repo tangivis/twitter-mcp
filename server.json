@@ -1,0 +1,55 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.tangivis/twitter-mcp",
+  "description": "Read and write Twitter/X with browser cookies — no API key, no billing. 62 tools covering tweets, users, lists, communities, DMs, and locally-decrypted XChat.",
+  "version": "0.1.44",
+  "repository": {
+    "url": "https://github.com/tangivis/twitter-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://tangivis.github.io/twitter-mcp/",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "twikit-mcp",
+      "version": "0.1.44",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "TWITTER_COOKIES",
+          "description": "Path to a JSON file holding your X session cookies, e.g. {\"ct0\": \"...\", \"auth_token\": \"...\"} copied from DevTools. This is a filesystem path, not the credential itself; chmod 600 the file it points at.",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "XCHAT_BROWSER",
+          "description": "Optional. Enables reading XChat (end-to-end encrypted DMs) from the browser's local decrypted store. One of: auto, chrome, chromium, edge, brave, aside. Unset means the XChat tools stay dormant.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "XCHAT_BROWSER_PROFILE",
+          "description": "Optional. Chromium profile directory to read, e.g. Default or 'Profile 2'. Set this when discovery finds more than one XChat store and refuses to guess between them.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "XCHAT_DATABASE_PATH",
+          "description": "Optional. Explicit path to the XChat SQLite file, skipping browser discovery entirely. Useful on a headless host: copy the file over from the machine that runs the browser and point this at it.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "TWIKIT_DOWNLOAD_DIR",
+          "description": "Optional. Directory for download_tweet_video output. Defaults to ~/Downloads/twikit-mcp/ when unset.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
