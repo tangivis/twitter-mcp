@@ -8,6 +8,13 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.42 新增
+
+- **`get_retweeters` 不再因为一个被封账号整个崩掉** — 转推者里只要有一个被封禁/注销,X 对那条 entry 返回 `__typename: UserUnavailable`,里面没有 `rest_id`。而 twikit 的 `User.__init__` 是硬取这个 key 的,于是**一个死账号就让整次调用挂 `KeyError: 'rest_id'`**。现在跳过解析不了的 entry,其余正常返回。`get_favoriters` 走同一段代码,一并修好。这个 bug 是 2026-08-17 的 live-smoke 打真实 X 时抓到的。(issue #37)
+- 同一函数里紧邻的一处也一起加固了:cursor 提取原本假设 timeline 最后两条一定是 cursor,X 限流返回不含 cursor 时会 `KeyError`。现在取不到就是 `None`。
+
+升级:`uv tool upgrade twikit-mcp`(或 `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.41 新增
 
 - **本地读取 XChat(加密私信)** — 新增三个工具,总数到 62:`xchat_status`、`xchat_list_conversations`、`xchat_get_history`。X 的网页客户端本来就会把会话解密并把明文存进本地 SQLite,这几个工具读的就是它。**零新依赖、零网络、零凭据、零写入路径** —— 数据库以 `mode=ro&immutable=1` 打开,所有语句都是 SELECT,永不读取加密密钥,在这里读也不会在 X 上标记已读。用 `XCHAT_BROWSER`(chrome/chromium/edge/brave/aside)、`XCHAT_BROWSER_PROFILE` 或 `XCHAT_DATABASE_PATH` 配置;一个都不设时工具保持休眠,server 其余部分不受影响。详见 [XChat 页面](xchat.md)。(closes #118)

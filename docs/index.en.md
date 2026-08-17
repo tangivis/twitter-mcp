@@ -8,6 +8,13 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.42
+
+- **`get_retweeters` no longer dies on a suspended account** — when one of a tweet's retweeters has been suspended or deleted, X returns `__typename: UserUnavailable` for that entry, which carries no `rest_id`. twikit's `User.__init__` reads that key unconditionally, so a single dead account killed the entire call with `KeyError: 'rest_id'`. Unparseable entries are now skipped and the rest are returned. `get_favoriters` shares the same code path and the same fix. Caught by live-smoke against real X on 2026-08-17. (issue #37)
+- Also hardened one line away in the same function: cursor extraction assumed the last two timeline entries are always cursors, which `KeyError`'d on gated responses that omit them. Missing cursors now yield `None`.
+
+Upgrade with `uv tool upgrade twikit-mcp` (or `pip install --upgrade twikit-mcp`).
+
 ## What's new in 0.1.41
 
 - **Read XChat (encrypted DMs) locally** — three new tools take the registry to 62: `xchat_status`, `xchat_list_conversations`, `xchat_get_history`. X's web client already decrypts your conversations and stores the plaintext in a local SQLite file; these read it. **No new dependencies, no network, no credentials, no write path** — the database is opened `mode=ro&immutable=1`, every statement is a SELECT, encryption keys are never read, and reading here does not mark anything read on X. Configure with `XCHAT_BROWSER` (chrome/chromium/edge/brave/aside), `XCHAT_BROWSER_PROFILE`, or `XCHAT_DATABASE_PATH`; with none set the tools stay dormant and the rest of the server is unaffected. See the [XChat page](xchat.md). (closes #118)

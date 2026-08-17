@@ -8,6 +8,13 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.42 の新機能
+
+- **凍結アカウント 1 つで `get_retweeters` 全体が落ちる問題を修正** — リツイート者の誰かが凍結・削除されていると、X はそのエントリを `__typename: UserUnavailable` として返し、そこには `rest_id` がありません。twikit の `User.__init__` はこのキーを無条件に読むため、**死んだアカウント 1 つで呼び出し全体が `KeyError: 'rest_id'`** で落ちていました。解析できないエントリはスキップし、残りを返すようになりました。`get_favoriters` も同じコードパスなので同時に修正されます。2026-08-17 の live-smoke(実 X)で検出。(issue #37)
+- 同じ関数の 1 行隣も併せて堅牢化:カーソル抽出が「末尾 2 件は必ずカーソル」を前提にしており、カーソルを含まない応答で `KeyError` になっていました。取得できない場合は `None` を返します。
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.41 の新機能
 
 - **XChat(暗号化 DM)をローカルで読む** — 新ツール 3 つでレジストリは 62 に:`xchat_status`、`xchat_list_conversations`、`xchat_get_history`。X の web クライアントは会話を復号して平文をローカルの SQLite に保存しており、これらはそれを読みます。**新規依存なし、ネットワークなし、認証情報なし、書き込み経路なし** — DB は `mode=ro&immutable=1` で開き、全ステートメントが SELECT、暗号鍵は決して読まず、ここで読んでも X 上で既読になりません。`XCHAT_BROWSER`(chrome/chromium/edge/brave/aside)、`XCHAT_BROWSER_PROFILE`、`XCHAT_DATABASE_PATH` で設定します。未設定ならツールは休止し、server の他の部分に影響しません。[XChat ページ](xchat.md)を参照。(closes #118)

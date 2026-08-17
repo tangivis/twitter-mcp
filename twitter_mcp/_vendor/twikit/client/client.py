@@ -1737,17 +1737,38 @@ class Client:
         if not items_:
             return Result([])
         items = items_[0]
-        next_cursor = items[-1]["content"]["value"]
-        previous_cursor = items[-2]["content"]["value"]
+
+        # Defensive: upstream assumed the last two entries are always
+        # cursors and that every `user` entry carries a full User payload.
+        # Neither holds against live X:
+        #   - a retweeter whose account is suspended/deleted comes back as
+        #     `__typename: UserUnavailable`, which has no `rest_id` — and
+        #     `User.__init__` reads that key unconditionally, so one dead
+        #     account used to kill the whole call with KeyError: 'rest_id'.
+        #   - a gated response can omit the cursor entries entirely, which
+        #     KeyError'd on items[-1]["content"]["value"] one line away.
+        # Same failure class as the community guard below and #104's DM
+        # timeline: skip what we can't parse, keep what we can.
+        # twitter-mcp patch (issue #37)
+        def _cursor_at(index: int) -> str | None:
+            try:
+                return items[index]["content"]["value"]
+            except (IndexError, KeyError, TypeError):
+                return None
+
+        next_cursor = _cursor_at(-1)
+        previous_cursor = _cursor_at(-2)
 
         results = []
         for item in items:
-            if not item["entryId"].startswith("user"):
+            if not item.get("entryId", "").startswith("user"):
                 continue
             user_info_ = find_dict(item, "result", True)
             if not user_info_:
                 continue
             user_info = user_info_[0]
+            if "rest_id" not in (user_info or {}):
+                continue
             results.append(User(self, user_info))
 
         return Result(
