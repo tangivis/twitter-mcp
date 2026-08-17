@@ -17,6 +17,7 @@ PyPI は依存に `git+` URL を許可しませんが、PyPI 上の `twikit` 2.3
 | 0.1.5 | `_vendor/twikit/tweet.py` | `Tweet` プロパティと `entities.*` サブツリーを全面防御化 |
 | 0.1.9 | `_vendor/twikit/client/gql.py` | `tweet_result_by_rest_id` の `fieldToggles.withArticlePlainText` を `False` → `True`(issue #10 — 修正前は記事本文が空) |
 | 0.1.21 | `_vendor/twikit/client/client.py` | `get_lists` がブラケットアクセスではなく `.get()` チェーンを使用(issue #37 — リスト 0 個のバーナーアカウントで `KeyError: 'list'`) |
+| 0.1.42 | `_vendor/twikit/client/client.py` | `_get_tweet_engagements` が `rest_id` を持たない result を skip(issue #37 — 凍結済みリツイート者は `UserUnavailable` として返り、`User.__init__` が `rest_id` を無条件に読むため、1 アカウントで `get_retweeters` 全体が `KeyError: 'rest_id'` で落ちていた)。カーソル抽出も末尾 2 件がカーソルである前提をやめた。`get_favoriters` も同じ関数を通るため同時に修正される。 |
 
 ## 撤退戦略
 

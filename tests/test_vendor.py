@@ -460,3 +460,153 @@ def test_package_builds():
     output = result.stdout + result.stderr
     assert result.returncode == 0, f"Build failed: {output}"
     assert "Successfully built" in output
+
+
+# ── issue #37 drift: engagement lists carry non-User results ─
+
+
+def _engagement_response(entries):
+    """Wrap timeline entries in the shape `find_dict(response, 'entries')` sees."""
+    return {
+        "data": {
+            "retweeters_timeline": {
+                "timeline": {
+                    "instructions": [{"type": "TimelineAddEntries", "entries": entries}]
+                }
+            }
+        }
+    }
+
+
+def _user_entry(entry_id, rest_id, screen_name):
+    return {
+        "entryId": entry_id,
+        "content": {
+            "itemContent": {
+                "user_results": {
+                    "result": {
+                        "__typename": "User",
+                        "rest_id": rest_id,
+                        "legacy": {"screen_name": screen_name, "name": screen_name},
+                    }
+                }
+            }
+        },
+    }
+
+
+def _unavailable_entry(entry_id, reason="Suspended"):
+    """X's shape for a retweeter whose account is gone.
+
+    `UserUnavailable` carries no `rest_id`, and `User.__init__` reads that
+    key unconditionally (user.py:94) — this is the live-smoke failure
+    `get_retweeters: KeyError: 'rest_id'` on 2026-08-17.
+    """
+    return {
+        "entryId": entry_id,
+        "content": {
+            "itemContent": {
+                "user_results": {
+                    "result": {"__typename": "UserUnavailable", "reason": reason}
+                }
+            }
+        },
+    }
+
+
+def _cursors():
+    return [
+        {"entryId": "cursor-top-1", "content": {"value": "CURSOR_PREV"}},
+        {"entryId": "cursor-bottom-1", "content": {"value": "CURSOR_NEXT"}},
+    ]
+
+
+async def test_get_retweeters_skips_unavailable_accounts():
+    """issue #37 behavioral: a suspended/deleted retweeter must be skipped,
+    not crash the whole call with KeyError: 'rest_id'."""
+    from unittest.mock import AsyncMock
+
+    from twitter_mcp._vendor.twikit.client.client import Client
+
+    client = Client("en-US")
+    client.gql.retweeters = AsyncMock(
+        return_value=(
+            _engagement_response(
+                [
+                    _user_entry("user-1", "111", "alice"),
+                    _unavailable_entry("user-2"),
+                    _user_entry("user-3", "333", "bob"),
+                    *_cursors(),
+                ]
+            ),
+            None,
+        )
+    )
+
+    result = await client.get_retweeters("20")
+
+    assert [u.id for u in result] == ["111", "333"]
+    assert [u.screen_name for u in result] == ["alice", "bob"]
+    assert result.next_cursor == "CURSOR_NEXT"
+    assert result.previous_cursor == "CURSOR_PREV"
+
+
+async def test_get_favoriters_shares_the_same_protection():
+    """Both engagement lists go through `_get_tweet_engagements`, so the
+    fix must cover favoriters too — X gates them identically."""
+    from unittest.mock import AsyncMock
+
+    from twitter_mcp._vendor.twikit.client.client import Client
+
+    client = Client("en-US")
+    client.gql.favoriters = AsyncMock(
+        return_value=(
+            _engagement_response([_unavailable_entry("user-1"), *_cursors()]),
+            None,
+        )
+    )
+
+    result = await client.get_favoriters("20")
+    assert list(result) == []
+
+
+async def test_engagements_survive_a_timeline_without_cursor_entries():
+    """Adjacent fragility in the same function: `items[-1]['content']['value']`
+    assumes the last two entries are cursors. A gated response that returns
+    only user entries used to KeyError one line away from the rest_id crash."""
+    from unittest.mock import AsyncMock
+
+    from twitter_mcp._vendor.twikit.client.client import Client
+
+    client = Client("en-US")
+    client.gql.retweeters = AsyncMock(
+        return_value=(
+            _engagement_response([_user_entry("user-1", "111", "alice")]),
+            None,
+        )
+    )
+
+    result = await client.get_retweeters("20")
+    assert [u.id for u in result] == ["111"]
+    assert result.next_cursor is None
+
+
+async def test_engagements_empty_timeline_is_empty_result():
+    from unittest.mock import AsyncMock
+
+    from twitter_mcp._vendor.twikit.client.client import Client
+
+    client = Client("en-US")
+    client.gql.retweeters = AsyncMock(return_value=(_engagement_response([]), None))
+    assert list(await client.get_retweeters("20")) == []
+
+
+def test_get_tweet_engagements_patch_marker():
+    """Source marker so a future vendor refresh can't silently drop this."""
+    import inspect
+
+    from twitter_mcp._vendor.twikit.client.client import Client
+
+    source = inspect.getsource(Client._get_tweet_engagements)
+    assert "issue #37" in source, "patch marker for issue #37 missing"
+    assert "rest_id" in source, "the rest_id guard was dropped"

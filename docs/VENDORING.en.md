@@ -20,6 +20,7 @@ Each entry below is a patch applied on top of upstream `twikit`. The Chinese pag
 | 0.1.9 | `_vendor/twikit/client/gql.py` | `tweet_result_by_rest_id` flips `fieldToggles.withArticlePlainText` from `False` to `True` (issue #10 — without this, article body never populates). |
 | 0.1.21 | `_vendor/twikit/client/client.py` | `get_lists` uses `.get()` chain instead of bracket access (issue #37 — burner accounts with 0 lists got `KeyError: 'list'`). |
 | 0.1.37 | `_vendor/twikit/client/client.py` + `twitter_mcp/server.py` | `get_dm_history` skips non-message timeline entries like `trust_conversation` (issue #104 — was `KeyError: 'message'`), attaches `Result.timeline_events`, guards empty post-filter lists; MCP tool surfaces `timeline_events` + E2EE incompleteness `warnings`. |
+| 0.1.42 | `_vendor/twikit/client/client.py` | `_get_tweet_engagements` skips result dicts without `rest_id` (issue #37 — a suspended retweeter comes back as `UserUnavailable`, and `User.__init__` reads `rest_id` unconditionally, so one dead account killed the whole `get_retweeters` call with `KeyError: 'rest_id'`). Cursor extraction no longer assumes the last two entries are cursors. `get_favoriters` shares the function and the fix. |
 
 ## Exit strategy
 
