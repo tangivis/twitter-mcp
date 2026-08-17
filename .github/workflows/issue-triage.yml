@@ -115,17 +115,29 @@ jobs:
               response_format: {type: "json_object"}
             }')
 
+          # `|| curl_status=$?` is load-bearing (issue #124). Under `bash -e`
+          # a non-zero curl exit — timeout, DNS, refused — kills the step
+          # before the guard below runs, so an unreachable API would fail
+          # triage instead of skipping it. pr-review.yml hit exactly that
+          # in run #141.
+          curl_status=0
           http=$(curl -sS -o response.json -w '%{http_code}' \
             --max-time 60 \
             https://api.minimaxi.com/v1/chat/completions \
             -H "Authorization: Bearer $K" \
             -H "Content-Type: application/json" \
-            -d "$payload")
-          echo "http=$http" >> "$GITHUB_OUTPUT"
+            -d "$payload") || curl_status=$?
+
+          if [ "$curl_status" != "0" ]; then
+            echo "::warning::MiniMax unreachable (curl exit $curl_status); triage skipped."
+            http="000"
+          fi
+
+          echo "http=${http:-000}" >> "$GITHUB_OUTPUT"
 
           if [ "$http" != "200" ]; then
             echo "::warning::MiniMax HTTP $http; triage skipped."
-            head -c 1000 response.json
+            head -c 1000 response.json 2>/dev/null || true
             exit 0
           fi
 

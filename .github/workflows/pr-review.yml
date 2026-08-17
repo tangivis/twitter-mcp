@@ -65,6 +65,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           gh pr diff "$PR_NUM" \
             | grep -vE '^(diff --git|---|\+\+\+) .*(/|^)(uv\.lock|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|Gemfile\.lock|Cargo\.lock|composer\.lock)$' \
@@ -72,6 +74,20 @@ jobs:
 
           if [ ! -s pr.diff ]; then
             echo "Empty diff (or only lock files); skipping review."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Issue #124: `ready_for_review` is in the trigger list on purpose
+          # (#81) — an outside contributor flipping a draft to ready wants a
+          # review then. But this repo's own flow opens a draft, flips it to
+          # ready, and merges, so that flip re-fired the workflow on a SHA
+          # that was already reviewed: a wasted LLM call and a red X on a
+          # branch that no longer exists. Skip the duplicate rather than
+          # dropping the event.
+          if gh api "repos/$REPO/issues/$PR_NUM/comments?per_page=100" \
+               --jq '.[] | select(.user.login == "github-actions[bot]") | .body' \
+               2>/dev/null | grep -qF "<!-- review-sha:$HEAD_SHA -->"; then
+            echo "Already reviewed $HEAD_SHA; skipping duplicate review."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -270,6 +286,14 @@ jobs:
               max_tokens: 8000,
               messages: [{role: "user", content: $p}]}')
 
+          # `|| curl_status=$?` is load-bearing (issue #124). GitHub runs
+          # this block under `bash -e`, so a non-zero curl exit — 28
+          # timeout, 6 DNS, 7 refused — used to kill the step right here,
+          # before the guard below could run. Run #141 died exactly that
+          # way and turned an already-approved PR red. Capture the status
+          # instead and fall through to the same warn-and-skip path.
+          curl_status=0
+
           if [ "$ESCALATE" = "true" ]; then
             echo "Escalating to Sonnet 4.6 (5+ MiniMax iters all request-changes)"
             http=$(curl -sS -o response.json -w '%{http_code}' --max-time 180 \
@@ -277,21 +301,28 @@ jobs:
               -H "Authorization: Bearer $A" \
               -H "Content-Type: application/json" \
               -H "anthropic-version: 2023-06-01" \
-              -d "$payload_sonnet")
+              -d "$payload_sonnet") || curl_status=$?
             echo "model=sonnet" >> "$GITHUB_OUTPUT"
           else
             http=$(curl -sS -o response.json -w '%{http_code}' --max-time 180 \
               https://api.minimaxi.com/v1/chat/completions \
               -H "Authorization: Bearer $K" \
               -H "Content-Type: application/json" \
-              -d "$payload_minimax")
+              -d "$payload_minimax") || curl_status=$?
             echo "model=minimax" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "http=$http" >> "$GITHUB_OUTPUT"
+          if [ "$curl_status" != "0" ]; then
+            echo "::warning::Review LLM unreachable (curl exit $curl_status); skipping review."
+            # 000 is what curl's own %{http_code} reports when no response
+            # arrived, so downstream `http == '200'` guards stay correct.
+            http="000"
+          fi
+
+          echo "http=${http:-000}" >> "$GITHUB_OUTPUT"
           if [ "$http" != "200" ]; then
             echo "::warning::Review LLM returned HTTP $http; skipping review."
-            head -c 2000 response.json
+            head -c 2000 response.json 2>/dev/null || true
             exit 0
           fi
 
@@ -342,11 +373,20 @@ jobs:
               temperature: 0.1,
               response_format: {type: "json_object"}}')
 
+          # Same `|| curl_status=$?` reason as the call step (issue #124):
+          # a hung API must skip the critique, not fail the workflow. The
+          # review from the first pass is still perfectly postable.
+          curl_status=0
           http=$(curl -sS -o critique_response.json -w '%{http_code}' --max-time 180 \
             https://api.minimaxi.com/v1/chat/completions \
             -H "Authorization: Bearer $K" \
             -H "Content-Type: application/json" \
-            -d "$payload")
+            -d "$payload") || curl_status=$?
+
+          if [ "$curl_status" != "0" ]; then
+            echo "::warning::Critique pass unreachable (curl exit $curl_status); keeping the first-pass review."
+            http="000"
+          fi
 
           if [ "$http" = "200" ]; then
             # Replace response.json with the critiqued version.
@@ -536,6 +576,11 @@ jobs:
             echo "</details>"
             echo
             echo "<!-- review-iter -->"
+            # Issue #124: records *which* commit this review covered, so a
+            # later draft→ready flip on the same SHA can skip re-reviewing
+            # an identical diff. Kept separate from the marker above — the
+            # #60 escalation ladder counts that one and must not change.
+            echo "<!-- review-sha:${{ github.event.pull_request.head.sha }} -->"
             echo "_Advisory review — maintainer reads + decides. issue #60 quality pass v2 active._"
           } > summary.md
 

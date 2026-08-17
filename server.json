@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.tangivis/twitter-mcp",
   "description": "Read and write Twitter/X with browser cookies — no API key, no billing. 62 tools covering tweets, users, lists, communities, DMs, and locally-decrypted XChat.",
-  "version": "0.1.44",
+  "version": "0.1.45",
   "repository": {
     "url": "https://github.com/tangivis/twitter-mcp",
     "source": "github"
@@ -13,7 +13,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "twikit-mcp",
-      "version": "0.1.44",
+      "version": "0.1.45",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

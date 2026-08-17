@@ -8,6 +8,13 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.45 新增
+
+- **CI:评审 API 连不上不再让 PR 变红** — `pr-review.yml` 本来写了"警告并跳过"的兜底,但 GitHub 的 `run:` 跑在 `bash -e` 下,curl 非零退出(超时 / DNS / 连接被拒)会在兜底之前就杀掉步骤。[Run #141](https://github.com/tangivis/twitter-mcp/actions/runs/32003925207) 就是这么死的,把一个已经 approve 的 PR 弄红了。三处调用点现在都捕获 curl 退出码,按原本意图降级。配套测试**直接从工作流里抽出真实 shell**、配桩 `curl` 执行,所以不会和 CI 实跑的内容脱节 —— 它上线第一次就在 `issue-triage.yml` 里揪出了同一个尚未爆发的洞。(closes #124)
+- **draft→ready 不再触发重复评审** — 评审现在会记录它覆盖的 commit,同一个 SHA 的第二次运行直接跳过,不再多花一次 LLM 调用。`ready_for_review` 保留为触发事件:外部贡献者把草稿标为 ready 时,确实是想要一次评审的。
+
+纯 CI 改动 —— 包本身没变,升级可选。
+
 ## 0.1.44 新增
 
 - **进入官方 MCP registry** — 新增 `server.json`,把本 server 以 `io.github.tangivis/twitter-mcp` 声明给 [`registry.modelcontextprotocol.io`](https://registry.modelcontextprotocol.io):PyPI 包、stdio 传输,以及每个环境变量的可操作说明。配套哨兵测试保证它和 `pyproject.toml` 版本同步,并**双向**核对声明的变量与代码实际读取的变量 —— 既不能宣传一个不存在的开关,也不能漏掉一个用户需要设的。(closes #122)
