@@ -8,6 +8,13 @@
 
 [MCP](https://modelcontextprotocol.io/) サーバー — Claude(や MCP 対応の AI エージェント)がブラウザ cookies で Twitter/X を操作できます。同じ `twikit-mcp` バイナリは CLI としてもシェルスクリプトやデバッグに使えます。
 
+## 0.1.41 の新機能
+
+- **XChat(暗号化 DM)をローカルで読む** — 新ツール 3 つでレジストリは 62 に:`xchat_status`、`xchat_list_conversations`、`xchat_get_history`。X の web クライアントは会話を復号して平文をローカルの SQLite に保存しており、これらはそれを読みます。**新規依存なし、ネットワークなし、認証情報なし、書き込み経路なし** — DB は `mode=ro&immutable=1` で開き、全ステートメントが SELECT、暗号鍵は決して読まず、ここで読んでも X 上で既読になりません。`XCHAT_BROWSER`(chrome/chromium/edge/brave/aside)、`XCHAT_BROWSER_PROFILE`、`XCHAT_DATABASE_PATH` で設定します。未設定ならツールは休止し、server の他の部分に影響しません。[XChat ページ](xchat.md)を参照。(closes #118)
+- [@DJNgoma](https://github.com/DJNgoma) に感謝 — SQLite 読み取りとブラウザプロファイル探索は PR #107 の彼の実装に基づいています。
+
+アップグレード:`uv tool upgrade twikit-mcp`(または `pip install --upgrade twikit-mcp`)。
+
 ## 0.1.40 の新機能
 
 - **DeepSeek Harness(dsh)のセットアップ手順** — [インストールページ](install.md)に [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) を追加。Pi と違い dsh は公式の MCP クライアント(`@deepseek-ai/dsh-mcp-client`)を同梱しているためコミュニティ拡張は不要ですが、設定は通常の `mcpServers` マップではなく `cordis.yml` のプラグインエントリで、**ツールの許可リストがない**ため 59 ツールすべてが登録されます。カードではその両方に加え、知っておく価値のある `failOnStartupError` と `toolCallTimeoutMs` にも触れています。ドキュメントのみの変更 — コードは変更なし、`twikit-mcp` は標準的な stdio MCP server なので特別な対応は不要です。

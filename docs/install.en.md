@@ -137,7 +137,7 @@ Edit `~/.config/opencode/config.json`:
 
 ### Pi
 
-Pi has no built-in MCP support — install a community MCP extension first. [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) fits this server best: same `mcpServers` shape as above, lazy connection, and a `directTools` allowlist that keeps `twikit-mcp`'s 59 tools from crowding a coding session's context.
+Pi has no built-in MCP support — install a community MCP extension first. [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) fits this server best: same `mcpServers` shape as above, lazy connection, and a `directTools` allowlist that keeps `twikit-mcp`'s 62 tools from crowding a coding session's context.
 
 ```bash
 pi install npm:pi-mcp-adapter
@@ -168,7 +168,7 @@ Then edit `~/.config/mcp/mcp.json` (global) or `.mcp.json` (per-project):
 }
 ```
 
-The seven `directTools` register as native tools; the other 52 stay behind a single proxy tool and are discovered on demand. Use an **absolute** `command` path — Pi's subprocess environment may not have `~/.local/bin` on `PATH`.
+The seven `directTools` register as native tools; the other 55 stay behind a single proxy tool and are discovered on demand. Use an **absolute** `command` path — Pi's subprocess environment may not have `~/.local/bin` on `PATH`.
 
 Pi's MCP extensions are community-maintained, not first-party, and run with your full system permissions. Read the source before installing one that will hold your cookie path.
 
@@ -189,7 +189,7 @@ Pi's MCP extensions are community-maintained, not first-party, and run with your
 
 `serverName` namespaces the tools, so they reach the model as `mcp__twitter__get_tweet`, `mcp__twitter__search_tweets`, and so on.
 
-Unlike Pi, **dsh has no tool allowlist** — every one of the 59 tools is registered. There is no supported way to expose a subset, so budget your context accordingly.
+Unlike Pi, **dsh has no tool allowlist** — every one of the 62 tools is registered. There is no supported way to expose a subset, so budget your context accordingly.
 
 Two optional keys worth knowing: `failOnStartupError: true` makes a broken cookie path fail loudly at activation instead of silently registering nothing, and `toolCallTimeoutMs` (default `60000`) is worth raising if you pass a large `count` to the heavier reads.
 
