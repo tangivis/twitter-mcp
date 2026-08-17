@@ -229,11 +229,119 @@ def test_ready_for_review_is_still_a_trigger():
     assert "ready_for_review" in types_line.group(1)
 
 
-def test_a_duplicate_review_for_the_same_sha_is_skipped():
-    """The guard that makes `ready_for_review` cheap: if a review already
-    landed for this head SHA, don't spend another API call on it."""
-    src = _PR_REVIEW.read_text(encoding="utf-8")
-    assert "already reviewed" in src.lower() or "duplicate" in src.lower(), (
-        "no same-SHA dedupe guard found; every draft→ready flip will spend "
-        "a redundant review call (issue #124)"
+def _run_diff_snippet(tmp_path: Path, *, prior_comment_body: str) -> str:
+    """Execute the extracted `diff` step with `gh` stubbed.
+
+    The stub answers both subcommands the step uses: `gh pr diff` returns a
+    non-empty diff, and `gh api` returns whatever comment body the caller
+    wants the dedupe check to see.
+    """
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "gh"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$1" in\n'
+        "  pr) printf '%s\\n' 'diff --git a/f b/f' '+a real change' ;;\n"
+        "  api) printf '%s\\n' \"$STUB_COMMENT_BODY\" ;;\n"
+        "esac\n"
     )
+    stub.chmod(0o755)
+
+    github_output = tmp_path / "github_output"
+    github_output.touch()
+    env = dict(
+        os.environ,
+        PATH=f"{stub_dir}{os.pathsep}{os.environ['PATH']}",
+        GITHUB_OUTPUT=str(github_output),
+        GH_TOKEN="stub-token",
+        PR_NUM="125",
+        REPO="tangivis/twitter-mcp",
+        HEAD_SHA=_FAKE_SHA,
+        STUB_COMMENT_BODY=prior_comment_body,
+    )
+    subprocess.run(
+        ["bash", "-e", "-c", _extract_run_block("diff")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    return github_output.read_text()
+
+
+_FAKE_SHA = "c5a0f7fdb90d25d93490c218d48c7c55dbcc97d2"
+
+
+@_needs_posix_shell
+def test_a_duplicate_review_for_the_same_sha_is_skipped(tmp_path):
+    """A review already recorded for this head SHA must short-circuit.
+
+    Driven behaviorally, not by grepping the workflow for a phrase: an
+    earlier version of this test only checked that the words "already
+    reviewed" appeared in the file, which would have passed with the
+    `then` branch deleted or the grep inverted. Review of PR #125 caught
+    that, correctly.
+    """
+    outputs = _run_diff_snippet(
+        tmp_path,
+        prior_comment_body=(
+            f"## Review by minimax (iter 1)\n<!-- review-iter -->\n"
+            f"<!-- review-sha:{_FAKE_SHA} -->"
+        ),
+    )
+    assert "skip=true" in outputs, (
+        "a review already exists for this SHA but the step did not skip; "
+        "every draft→ready flip would spend a redundant LLM call (#124)"
+    )
+
+
+@_needs_posix_shell
+def test_a_sha_with_no_prior_review_is_not_skipped(tmp_path):
+    """The other half — without this, `skip=true` could be unconditional
+    and reviews would never run at all."""
+    outputs = _run_diff_snippet(
+        tmp_path,
+        prior_comment_body=(
+            "## Review by minimax (iter 1)\n<!-- review-iter -->\n"
+            "<!-- review-sha:0000000000000000000000000000000000000000 -->"
+        ),
+    )
+    assert "skip=true" not in outputs, (
+        "the step skipped a SHA that has no prior review — the dedupe grep "
+        "is matching too broadly"
+    )
+
+
+@_needs_posix_shell
+def test_an_empty_diff_still_skips(tmp_path):
+    """Pins the pre-existing behaviour the dedupe was added alongside."""
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "gh"
+    # `gh pr diff` returns nothing → pr.diff is empty → skip.
+    stub.write_text("#!/usr/bin/env bash\nexit 0\n")
+    stub.chmod(0o755)
+    github_output = tmp_path / "github_output"
+    github_output.touch()
+    subprocess.run(
+        ["bash", "-e", "-c", _extract_run_block("diff")],
+        cwd=tmp_path,
+        env=dict(
+            os.environ,
+            PATH=f"{stub_dir}{os.pathsep}{os.environ['PATH']}",
+            GITHUB_OUTPUT=str(github_output),
+            GH_TOKEN="stub-token",
+            PR_NUM="125",
+            REPO="tangivis/twitter-mcp",
+            HEAD_SHA=_FAKE_SHA,
+            STUB_COMMENT_BODY="",
+        ),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    assert "skip=true" in github_output.read_text()
