@@ -15,14 +15,16 @@ and execute it under bash with a stub `curl` on PATH. That matters: a
 test that reimplemented the logic could pass while CI still broke. Here
 the shell under test is the shell CI runs.
 
-`jq` and `bash` are required; the tests skip rather than fail where they
-are unavailable, so this suite stays honest on a bare Windows runner.
+The snippet-executing tests are POSIX-only; the static checks below them
+are pure Python and run everywhere, which is where their cross-platform
+value is.
 """
 
 import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,9 +33,17 @@ _ROOT = Path(__file__).resolve().parent.parent
 _WORKFLOWS = _ROOT / ".github" / "workflows"
 _PR_REVIEW = _WORKFLOWS / "pr-review.yml"
 
-pytestmark = pytest.mark.skipif(
-    not (shutil.which("bash") and shutil.which("jq")),
-    reason="needs bash + jq to execute the extracted workflow snippet",
+# Windows is excluded by platform, not by probing for `bash`. On a GitHub
+# Windows runner `shutil.which("bash")` finds C:\Windows\System32\bash.exe
+# — the *WSL launcher* — which exists, is not Git Bash, and exits 1 with
+# "Windows Subsystem for Linux has no installed distributions" (in UTF-16,
+# which makes the failure output unreadable too). A probe therefore reports
+# bash as available and the tests run and fail. These workflows only ever
+# execute on ubuntu-latest, so there is nothing to learn from running the
+# snippet under Windows.
+_needs_posix_shell = pytest.mark.skipif(
+    sys.platform == "win32" or not (shutil.which("bash") and shutil.which("jq")),
+    reason="the workflow snippet is POSIX shell and only ever runs on Linux CI",
 )
 
 
@@ -106,6 +116,7 @@ def _run_snippet(tmp_path: Path, *, curl_exit: int, curl_stdout: str = "") -> tu
 # ── the regression: curl itself fails ────────────────
 
 
+@_needs_posix_shell
 @pytest.mark.parametrize(
     ("curl_exit", "label"),
     [(28, "timeout"), (6, "could not resolve host"), (7, "connection refused")],
@@ -126,6 +137,7 @@ def test_curl_failure_degrades_instead_of_failing_the_pr(tmp_path, curl_exit, la
     assert "http=" in outputs, "the downstream http guard needs a defined value"
 
 
+@_needs_posix_shell
 def test_a_failed_call_never_reports_http_200(tmp_path):
     """Downstream steps gate on `steps.call.outputs.http == '200'`. A
     failed call must not accidentally satisfy that."""
@@ -141,6 +153,7 @@ def test_a_failed_call_never_reports_http_200(tmp_path):
 # ── the case that already worked, pinned ─────────────
 
 
+@_needs_posix_shell
 def test_non_200_response_still_degrades(tmp_path):
     """curl succeeds, API returns 500 — the path the author did handle."""
     proc, outputs = _run_snippet(tmp_path, curl_exit=0, curl_stdout="500")
@@ -149,6 +162,7 @@ def test_non_200_response_still_degrades(tmp_path):
     assert "http=500" in outputs
 
 
+@_needs_posix_shell
 def test_happy_path_does_not_warn(tmp_path):
     proc, outputs = _run_snippet(tmp_path, curl_exit=0, curl_stdout="200")
     assert proc.returncode == 0, proc.stderr
