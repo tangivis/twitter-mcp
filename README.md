@@ -139,7 +139,7 @@ Add to your MCP client config (e.g. `mcp.json`, `settings.json`):
 }
 ```
 
-> Works with: Claude Code, Claude Desktop, Cursor, Windsurf, opencode, Cline, etc.
+> Works with: Claude Code, Claude Desktop, Cursor, Windsurf, opencode, Cline, Pi, DeepSeek Harness (dsh), etc. — see the [Install page](https://tangivis.github.io/twitter-mcp/install/).
 
 That's it. Start talking:
 
@@ -424,7 +424,7 @@ claude mcp add twitter -s user \
 }
 ```
 
-> 兼容：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline 等。
+> 兼容：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline、Pi、DeepSeek Harness（dsh）等 —— 详见[安装页](https://tangivis.github.io/twitter-mcp/zh/install/)。
 
 搞定。直接说人话：
 
@@ -674,7 +674,7 @@ MCP クライアントの設定ファイル（`mcp.json`、`settings.json` な�
 }
 ```
 
-> 対応クライアント：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline など。
+> 対応クライアント：Claude Code、Claude Desktop、Cursor、Windsurf、opencode、Cline、Pi、DeepSeek Harness（dsh）など —— [インストールページ](https://tangivis.github.io/twitter-mcp/ja/install/)を参照。
 
 以上です。自然言語で話しかけてください：
 

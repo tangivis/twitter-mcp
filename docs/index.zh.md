@@ -8,6 +8,10 @@
 
 [MCP](https://modelcontextprotocol.io/) server,让 Claude(或任何 MCP 兼容的 AI agent)用浏览器 cookies 操作 Twitter/X。同一个 `twikit-mcp` 二进制还能当 CLI 用,适合 shell 脚本和调试。
 
+## 0.1.43 新增
+
+- **README 的客户端列表不再过期** — Pi(0.1.34 就写了文档)和 DeepSeek Harness(0.1.40)一直没进三语的那句 "Works with" 简介,因为没有任何东西把这句话和安装页连起来。现在都补上了,并加了哨兵测试:安装页上的每张客户端卡片都必须出现在每种语言的 README 简介里,下一个客户端不会再悄悄漏掉。纯文档 + 测试。
+
 ## 0.1.42 新增
 
 - **`get_retweeters` 不再因为一个被封账号整个崩掉** — 转推者里只要有一个被封禁/注销,X 对那条 entry 返回 `__typename: UserUnavailable`,里面没有 `rest_id`。而 twikit 的 `User.__init__` 是硬取这个 key 的,于是**一个死账号就让整次调用挂 `KeyError: 'rest_id'`**。现在跳过解析不了的 entry,其余正常返回。`get_favoriters` 走同一段代码,一并修好。这个 bug 是 2026-08-17 的 live-smoke 打真实 X 时抓到的。(issue #37)

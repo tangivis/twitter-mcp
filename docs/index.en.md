@@ -8,6 +8,10 @@
 
 An [MCP](https://modelcontextprotocol.io/) server that lets Claude (or any MCP-compatible AI agent) interact with Twitter/X using browser cookies. The same `twikit-mcp` binary doubles as a CLI for shell scripts and debugging.
 
+## What's new in 0.1.43
+
+- **README's client list is no longer stale** — Pi (documented in 0.1.34) and DeepSeek Harness (0.1.40) were missing from the one-line "Works with" summary in all three languages, because nothing connected that line to the Install page. Both are now listed, and a sentinel test asserts every client card on the Install page appears in every README summary, so the next one can't quietly go missing. Docs + test only.
+
 ## What's new in 0.1.42
 
 - **`get_retweeters` no longer dies on a suspended account** — when one of a tweet's retweeters has been suspended or deleted, X returns `__typename: UserUnavailable` for that entry, which carries no `rest_id`. twikit's `User.__init__` reads that key unconditionally, so a single dead account killed the entire call with `KeyError: 'rest_id'`. Unparseable entries are now skipped and the rest are returned. `get_favoriters` shares the same code path and the same fix. Caught by live-smoke against real X on 2026-08-17. (issue #37)
