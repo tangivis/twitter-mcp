@@ -167,24 +167,29 @@ def test_cookie_path_is_required_and_not_marked_secret():
     )
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "TWITTER_COOKIES",
-        "XCHAT_BROWSER",
-        "XCHAT_BROWSER_PROFILE",
-        "XCHAT_DATABASE_PATH",
-    ],
-)
+# Parametrized from the manifest itself rather than a hand-written list:
+# a literal list is the same duplicated-fact-with-no-check shape this file
+# exists to prevent, and it silently skipped `TWIKIT_DOWNLOAD_DIR` on the
+# first draft. Declaring a new variable now enrolls it automatically.
+@pytest.mark.parametrize("name", sorted(_declared_env_names()))
 def test_each_env_var_has_an_actionable_description(name):
     declared = {
         var["name"]: var
         for package in _manifest()["packages"]
         for var in package.get("environmentVariables", [])
     }
-    assert name in declared, f"{name} is not declared in server.json"
     description = declared[name].get("description", "")
     assert len(description) >= 25, (
         f"{name}'s description is {len(description)} chars — a stranger reading "
         f"the registry entry should be able to act on it"
+    )
+
+
+def test_the_description_check_covers_every_declared_variable():
+    """Meta-guard: the parametrization above is built at collection time,
+    so this pins that it actually enumerated something and matches the
+    manifest — a silently-empty parametrize would pass vacuously."""
+    assert len(_declared_env_names()) >= 5, (
+        f"only {len(_declared_env_names())} env vars declared; the "
+        f"description check would cover fewer than expected"
     )
