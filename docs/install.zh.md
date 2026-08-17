@@ -191,7 +191,9 @@ Pi 的 MCP 扩展都是社区个人维护、非官方,且以你的完整系统�
 
 和 Pi 不同,**dsh 没有工具白名单** —— 62 个工具会全部注册,没有官方支持的办法只暴露一部分,上下文预算要自己留够。
 
-两个值得知道的可选键:`failOnStartupError: true` 让 cookie 路径写错时在激活阶段直接报错,而不是静悄悄一个工具都不注册;`toolCallTimeoutMs`(默认 `60000`)在你给重读接口传大 `count` 时值得调高。
+几个值得知道的可选键:`failOnStartupError: true` 让 cookie 路径写错时在激活阶段直接报错,而不是静悄悄一个工具都不注册;`toolCallTimeoutMs`(默认 `60000`)在你给重读接口传大 `count` 时值得调高;`reconnect` 那一组(`enabled`、`initialDelayMs`、`maxDelayMs`、`maxAttempts`)控制断线恢复 —— dsh 会按翻倍退避重连,连续失败到 `maxAttempts` 就注销该 server 的工具,连接稳定后重置计数。
+
+如果你要跑多个实例,每个的 `serverName` 必须不同:活跃实例间重名会让后加载的那个插件直接 fail。
 
 dsh 目前是 developer preview,配置形状可能会变;上面这些键要是对不上了,查[插件自己的 README](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md)。
 

@@ -191,7 +191,9 @@ Pi's MCP extensions are community-maintained, not first-party, and run with your
 
 Unlike Pi, **dsh has no tool allowlist** — every one of the 62 tools is registered. There is no supported way to expose a subset, so budget your context accordingly.
 
-Two optional keys worth knowing: `failOnStartupError: true` makes a broken cookie path fail loudly at activation instead of silently registering nothing, and `toolCallTimeoutMs` (default `60000`) is worth raising if you pass a large `count` to the heavier reads.
+Optional keys worth knowing: `failOnStartupError: true` makes a broken cookie path fail loudly at activation instead of silently registering nothing; `toolCallTimeoutMs` (default `60000`) is worth raising if you pass a large `count` to the heavier reads; and the `reconnect` group (`enabled`, `initialDelayMs`, `maxDelayMs`, `maxAttempts`) controls recovery — dsh retries with doubling backoff, unregisters the server's tools after `maxAttempts` consecutive failures, and resets the budget once a connection holds.
+
+If you run more than one instance, give each a distinct `serverName`: a duplicate across live instances fails the later plugin at load.
 
 dsh is in developer preview and its config shape may change; if the keys above no longer match, check [the plugin's README](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md).
 
